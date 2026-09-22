@@ -61,3 +61,33 @@ class UserResponse(BaseModel):
 class LoginResponse(BaseModel):
     user: UserResponse
     tokens: TokenResponse
+
+
+class RefreshRequest(BaseModel):
+    refresh_token: str
+    device_id: str | None = Field(default=None, max_length=128)
+
+
+class DeviceResponse(BaseModel):
+    id: UUID
+    device_id: str
+    name: str | None
+    platform: str | None
+    os_version: str | None
+    app_version: str | None
+    status: str
+    created_at: datetime
+    last_seen_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class SessionResponse(BaseModel):
+    id: UUID
+    status: str
+    ip_country: str | None
+    created_at: datetime
+    last_activity_at: datetime
+    expires_at: datetime
+
+    model_config = {"from_attributes": True}

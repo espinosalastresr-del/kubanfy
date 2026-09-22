@@ -18,7 +18,7 @@ from app.core.config import get_settings
 from app.core.database import Base
 
 # Import all models so metadata is populated
-from app.models import User  # noqa: F401
+from app.models import Device, Permission, Role, RolePermission, Session, User, UserRole  # noqa: F401
 
 config = context.config
 
