@@ -1,0 +1,68 @@
+"""Music API request/response schemas."""
+
+from __future__ import annotations
+
+from uuid import UUID
+
+from pydantic import BaseModel, Field
+
+
+class MusicUpdateRequest(BaseModel):
+    provider: str | None = Field(default=None, max_length=64)
+    provider_track_id: str | None = Field(default=None, max_length=255)
+    query: str | None = Field(default=None, max_length=500)
+
+
+class MusicUpdateResponse(BaseModel):
+    title: str
+    artists: list[str]
+    album: str | None = None
+    duration: float | None = None
+    artwork: str | None = None
+    release_date: str | None = None
+    isrc: str | None = None
+    track_id: UUID | None = None
+    provider: str
+    provider_track_id: str
+    quality_capabilities: list[str] = []
+    preview_available: bool = False
+    resolution_ref: str | None = None
+
+
+class MusicPreviewRequest(BaseModel):
+    provider: str = Field(max_length=64)
+    provider_track_id: str = Field(max_length=255)
+
+
+class MusicPreviewResponse(BaseModel):
+    available: bool
+    url: str | None = None
+    expires_in_seconds: int | None = None
+    duration_seconds: float | None = None
+    codec: str | None = None
+
+
+class MusicDownloadRequest(BaseModel):
+    provider: str = Field(max_length=64)
+    provider_track_id: str = Field(max_length=255)
+    quality: str = Field(default="medium", pattern="^(low|medium|lossless)$")
+
+
+class MusicDownloadResponse(BaseModel):
+    url: str | None = None
+    expires_in_seconds: int | None = None
+    quality: str
+    from_cache: bool
+    track_id: UUID | None = None
+    storage_key: str | None = None
+
+
+class TrackSearchResult(BaseModel):
+    provider: str
+    provider_track_id: str
+    title: str
+    artists: list[str]
+    album: str | None = None
+    duration: float | None = None
+    artwork: str | None = None
+    isrc: str | None = None

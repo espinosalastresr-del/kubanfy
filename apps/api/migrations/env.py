@@ -18,7 +18,24 @@ from app.core.config import get_settings
 from app.core.database import Base
 
 # Import all models so metadata is populated
-from app.models import Device, Job, Permission, Role, RolePermission, Session, User, UserRole  # noqa: F401
+from app.models import (  # noqa: F401
+    Artist,
+    AudioAsset,
+    CacheEntry,
+    Device,
+    Job,
+    Permission,
+    Provider,
+    ProviderTrack,
+    Release,
+    Role,
+    RolePermission,
+    Session,
+    Track,
+    TrackArtist,
+    User,
+    UserRole,
+)
 
 config = context.config
 
