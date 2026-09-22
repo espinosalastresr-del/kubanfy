@@ -4,7 +4,9 @@ from __future__ import annotations
 
 from fastapi import APIRouter
 
+from app.api.v1.artists import router as artists_router
 from app.api.v1.auth import router as auth_router
+from app.api.v1.library import router as library_router
 from app.api.v1.music import router as music_router
 
 api_router = APIRouter()
@@ -21,3 +23,5 @@ async def api_root() -> dict[str, str]:
 
 api_router.include_router(auth_router)
 api_router.include_router(music_router)
+api_router.include_router(artists_router)
+api_router.include_router(library_router)
