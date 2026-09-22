@@ -3,6 +3,7 @@
 Import all models here so Alembic and metadata see them.
 """
 
+from app.models.admin import AuditLog, FeatureFlag, ModerationReport, SystemSetting
 from app.models.analytics import AnalyticsDaily, AnalyticsEvent, RankingSnapshot
 from app.models.artist_member import ArtistMember
 from app.models.device import Device, Session
@@ -54,4 +55,8 @@ __all__ = [
     "AnalyticsEvent",
     "AnalyticsDaily",
     "RankingSnapshot",
+    "ModerationReport",
+    "AuditLog",
+    "FeatureFlag",
+    "SystemSetting",
 ]

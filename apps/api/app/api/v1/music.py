@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Query, Request
+
+from app.services.anti_abuse import AntiAbuseService
 
 from app.api.deps import CurrentUser, DbSession, OptionalUser
 from app.providers.registry import ProviderManager, create_default_registry
@@ -100,9 +102,12 @@ async def music_download(
 
 @router.get("/search", response_model=list[TrackSearchResult])
 async def music_search(
+    request: Request,
     q: str = Query(..., min_length=1, max_length=500),
     limit: int = Query(20, ge=1, le=50),
 ) -> list[TrackSearchResult]:
+    ip = request.client.host if request.client else None
+    await AntiAbuseService().check_search(ip)
     results = await _manager.search(q, limit=limit)
     return [
         TrackSearchResult(

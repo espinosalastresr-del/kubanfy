@@ -6,6 +6,8 @@ from uuid import UUID
 
 from fastapi import APIRouter, Request
 
+from app.services.anti_abuse import AntiAbuseService
+
 from app.api.deps import CurrentUser, DbSession
 from app.schemas.auth import (
     DeviceResponse,
@@ -26,8 +28,11 @@ router = APIRouter(prefix="/auth", tags=["auth"])
 @router.post("/register", response_model=UserResponse, status_code=201)
 async def register(
     body: RegisterRequest,
+    request: Request,
     session: DbSession,
 ) -> UserResponse:
+    ip = request.client.host if request.client else None
+    await AntiAbuseService().check_register(ip)
     service = AuthService(session)
     user = await service.register(body)
     return AuthService.to_response(user)
@@ -39,6 +44,8 @@ async def login(
     request: Request,
     session: DbSession,
 ) -> LoginResponse:
+    ip = request.client.host if request.client else None
+    await AntiAbuseService().check_login(ip, body.email)
     service = AuthService(session)
     user_agent = request.headers.get("user-agent")
     user, tokens = await service.login(body, user_agent=user_agent)
