@@ -33,8 +33,8 @@ api:
 	cd $(API_DIR) && uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 
 worker:
-	@echo "Worker entrypoint will be added with the job system (step 11)"
-	@# cd $(API_DIR) && python -m app.workers.main
+	cd $(API_DIR) && PYTHONPATH=. python -m app.workers.runner
+	
 
 migrate:
 	cd $(API_DIR) && alembic upgrade head
