@@ -70,6 +70,12 @@ def create_app() -> FastAPI:
         expose_headers=["X-Request-ID", "X-Correlation-ID"],
     )
 
+    # Request ID + metrics (order: last added = outermost for BaseHTTPMiddleware)
+    from app.core.middleware import RequestContextMiddleware, RequestIdHeaderMiddleware
+
+    app.add_middleware(RequestIdHeaderMiddleware)
+    app.add_middleware(RequestContextMiddleware)
+
     # Exception handlers
     @app.exception_handler(KubanFyError)
     async def kubanfy_error_handler(request: Request, exc: KubanFyError) -> JSONResponse:
@@ -137,6 +143,8 @@ def create_app() -> FastAPI:
     @app.get("/health/ready", tags=["health"])
     async def health_ready() -> dict[str, Any]:
         """Readiness — checks critical dependencies."""
+        from app.core.metrics import DB_UP, REDIS_UP
+
         checks: dict[str, str] = {"api": "ok"}
         overall = "ok"
 
@@ -148,13 +156,16 @@ def create_app() -> FastAPI:
             if engine is None:
                 checks["database"] = "not_initialized"
                 overall = "degraded"
+                DB_UP.set(0)
             else:
                 async with engine.connect() as conn:
                     await conn.execute(text("SELECT 1"))
                 checks["database"] = "ok"
+                DB_UP.set(1)
         except Exception as exc:
             checks["database"] = f"error: {type(exc).__name__}"
             overall = "not_ready"
+            DB_UP.set(0)
 
         # Redis check
         try:
@@ -163,11 +174,21 @@ def create_app() -> FastAPI:
             r = get_redis()
             await r.ping()
             checks["redis"] = "ok"
+            REDIS_UP.set(1)
         except Exception as exc:
             checks["redis"] = f"error: {type(exc).__name__}"
-            # Redis is important but we can still serve some traffic
+            REDIS_UP.set(0)
             if overall == "ok":
                 overall = "degraded"
+
+        # Storage health (non-fatal)
+        try:
+            from app.storage import get_storage
+
+            ok = await get_storage().health_check()
+            checks["storage"] = "ok" if ok else "degraded"
+        except Exception as exc:
+            checks["storage"] = f"error: {type(exc).__name__}"
 
         status_code = 200 if overall in ("ok", "degraded") else 503
         return JSONResponse(
@@ -183,6 +204,14 @@ def create_app() -> FastAPI:
             "version": settings.app_version,
             "environment": settings.environment.value,
         }
+
+    @app.get("/metrics", tags=["ops"], include_in_schema=False)
+    async def metrics() -> Response:
+        from app.core.metrics import metrics_payload
+        from starlette.responses import Response as StarletteResponse
+
+        body, content_type = metrics_payload()
+        return StarletteResponse(content=body, media_type=content_type)
 
     # Mount versioned API
     from app.api.router import api_router

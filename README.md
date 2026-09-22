@@ -77,6 +77,20 @@ make worker       # Worker de background
 make api          # Solo API
 ```
 
+## Operaciones (API)
+
+| Endpoint | Uso |
+|----------|-----|
+| `GET /health/live` | Liveness (K8s) |
+| `GET /health/ready` | Readiness (DB, Redis, storage) |
+| `GET /health` | Versión y entorno |
+| `GET /metrics` | Prometheus scrape |
+| `GET /docs` | OpenAPI (no producción) |
+
+Headers de respuesta: `X-Request-ID`, `X-Correlation-ID`.
+
+CI: GitHub Actions (`.github/workflows/ci.yml`) — pytest + Alembic + build Docker.
+
 ## Documentación
 
 - [ARCHITECTURE.md](docs/ARCHITECTURE.md)
