@@ -3,6 +3,7 @@
 Import all models here so Alembic and metadata see them.
 """
 
+from app.models.analytics import AnalyticsDaily, AnalyticsEvent, RankingSnapshot
 from app.models.artist_member import ArtistMember
 from app.models.device import Device, Session
 from app.models.entitlement import Entitlement, Plan, PlanPrice, Subscription
@@ -17,6 +18,7 @@ from app.models.music import (
     Track,
     TrackArtist,
 )
+from app.models.payment import PaymentOrder
 from app.models.playlist import Favorite, Playlist, PlaylistTrack
 from app.models.rbac import Permission, Role, RolePermission, UserRole
 from app.models.rights import LicenseRecord
@@ -48,4 +50,8 @@ __all__ = [
     "PlanPrice",
     "Subscription",
     "Entitlement",
+    "PaymentOrder",
+    "AnalyticsEvent",
+    "AnalyticsDaily",
+    "RankingSnapshot",
 ]

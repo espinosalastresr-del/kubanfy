@@ -1,0 +1,145 @@
+"""Analytics event ingestion.
+
+Idempotent via event_id. No unnecessary PII. Aggregation jobs fill analytics_daily.
+"""
+
+from __future__ import annotations
+
+from datetime import UTC, datetime
+from typing import Any
+from uuid import UUID, uuid4
+
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.core.config import Settings, get_settings
+from app.core.logging import get_logger
+from app.models.analytics import AnalyticsEvent
+
+logger = get_logger(__name__)
+
+# Allowed event types from plan §56 (subset enforced for validation)
+KNOWN_EVENT_TYPES = frozenset(
+    {
+        "app_open",
+        "search",
+        "search_result_click",
+        "track_impression",
+        "play_start",
+        "play_qualified",
+        "play_25",
+        "play_50",
+        "play_75",
+        "play_100",
+        "pause",
+        "resume",
+        "skip",
+        "playback_error",
+        "download_start",
+        "download_complete",
+        "cache_hit",
+        "cache_miss",
+        "playlist_create",
+        "playlist_add",
+        "playlist_remove",
+        "favorite",
+        "share",
+        "artist_page_view",
+        "release_view",
+        "preview",
+        "subscription_view",
+        "payment_created",
+        "payment_approved",
+        "entitlement_granted",
+        "entitlement_revoked",
+        "provider_resolution",
+        "provider_failure",
+        "artist_upload",
+        "artist_publish",
+        "admin_action",
+        "security_event",
+    }
+)
+
+
+class AnalyticsService:
+    def __init__(self, session: AsyncSession, settings: Settings | None = None) -> None:
+        self.session = session
+        self.settings = settings or get_settings()
+
+    async def ingest(
+        self,
+        event_type: str,
+        *,
+        event_id: str | None = None,
+        user_id: UUID | None = None,
+        session_id: str | None = None,
+        device_id: str | None = None,
+        track_id: UUID | None = None,
+        release_id: UUID | None = None,
+        artist_id: UUID | None = None,
+        country: str | None = None,
+        region: str | None = None,
+        app_version: str | None = None,
+        os: str | None = None,
+        platform: str | None = None,
+        metadata: dict[str, Any] | None = None,
+        timestamp: datetime | None = None,
+    ) -> AnalyticsEvent | None:
+        event_id = event_id or str(uuid4())
+
+        existing = await self.session.scalar(
+            select(AnalyticsEvent).where(AnalyticsEvent.event_id == event_id)
+        )
+        if existing:
+            return existing
+
+        if event_type not in KNOWN_EVENT_TYPES:
+            logger.debug("unknown_event_type", event_type=event_type)
+            # Accept but log — clients may ship new types before server update
+
+        evt = AnalyticsEvent(
+            event_id=event_id,
+            timestamp=timestamp or datetime.now(UTC),
+            user_id=user_id,
+            session_id=session_id,
+            device_id=device_id,
+            track_id=track_id,
+            release_id=release_id,
+            artist_id=artist_id,
+            event_type=event_type,
+            country=(country or self.settings.default_country).upper()[:2],
+            region=region,
+            app_version=app_version,
+            os=os,
+            platform=platform,
+            metadata_json=metadata or {},
+        )
+        self.session.add(evt)
+        await self.session.flush()
+        return evt
+
+    async def ingest_batch(self, events: list[dict[str, Any]]) -> int:
+        count = 0
+        for raw in events:
+            try:
+                await self.ingest(
+                    raw["event_type"],
+                    event_id=raw.get("event_id"),
+                    user_id=UUID(raw["user_id"]) if raw.get("user_id") else None,
+                    session_id=raw.get("session_id"),
+                    device_id=raw.get("device_id"),
+                    track_id=UUID(raw["track_id"]) if raw.get("track_id") else None,
+                    release_id=UUID(raw["release_id"]) if raw.get("release_id") else None,
+                    artist_id=UUID(raw["artist_id"]) if raw.get("artist_id") else None,
+                    country=raw.get("country"),
+                    region=raw.get("region"),
+                    app_version=raw.get("app_version"),
+                    os=raw.get("os"),
+                    platform=raw.get("platform"),
+                    metadata=raw.get("metadata"),
+                )
+                count += 1
+            except Exception as exc:
+                logger.warning("analytics_ingest_item_failed", error=str(exc))
+        return count

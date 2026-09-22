@@ -19,6 +19,8 @@ from app.core.database import Base
 
 # Import all models so metadata is populated
 from app.models import (  # noqa: F401
+    AnalyticsDaily,
+    AnalyticsEvent,
     Artist,
     ArtistMember,
     AudioAsset,
@@ -28,6 +30,7 @@ from app.models import (  # noqa: F401
     Favorite,
     Job,
     LicenseRecord,
+    PaymentOrder,
     Permission,
     Plan,
     PlanPrice,
@@ -35,6 +38,7 @@ from app.models import (  # noqa: F401
     PlaylistTrack,
     Provider,
     ProviderTrack,
+    RankingSnapshot,
     Release,
     Role,
     RolePermission,
