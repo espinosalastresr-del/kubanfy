@@ -5,7 +5,7 @@
 KubanFy es un monolito modular + workers. No se introducen microservicios innecesarios en la fase inicial.
 
 ```
-Cliente (Mobile / Admin / Artist)
+Cliente (App móvil unificada: listener + artist + admin)
           |
           v
        FastAPI (/v1)
@@ -25,6 +25,20 @@ Cliente (Mobile / Admin / Artist)
          - kubanfy-cache/      (temporal)
          - kubanfy-permanent/  (catálogo de artistas)
 ```
+
+
+## Cliente móvil unificado
+
+Una sola app React Native CLI + TypeScript atiende:
+
+- **Listener** — todos los usuarios autenticados
+- **Artist** — roles ARTIST / ARTIST_MANAGER
+- **Admin** — roles de operación (SUPER_ADMIN, ADMIN, MODERATOR, …)
+
+El conmutador de modo es solo UI. **La autorización real es del API** (JWT + RBAC + audit).
+No se confía en el cliente para roles, país ni entitlements.
+
+Builds de release: GitHub Actions → APK (Android) e IPA (iOS).
 
 ## Principios
 
