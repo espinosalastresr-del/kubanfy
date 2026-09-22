@@ -30,6 +30,7 @@ from app.models.music import (
 )
 from app.providers.base import ResolvedSource, TrackMetadata
 from app.providers.registry import ProviderManager, create_default_registry
+from app.services.cache import CacheService
 from app.storage import StorageBucket, get_storage
 from app.storage.base import SignedUrl, StorageProvider
 
@@ -187,10 +188,7 @@ class MusicEngine:
     ) -> DownloadResult:
         """
         Authorization/entitlement should be checked by the API layer before calling.
-        Flow: cache lookup → HIT signed URL | MISS → resolve → (enqueue acquire job).
-
-        This implementation resolves metadata + cache; full binary acquisition
-        is performed when a ResolvedSource.body is present or via job for URL sources.
+        Flow: cache lookup → HIT signed URL | MISS → resolve → store (single-flight).
         """
         try:
             aq = AudioQuality(quality.lower())
@@ -198,43 +196,46 @@ class MusicEngine:
             aq = AudioQuality.MEDIUM
             quality = aq.value
 
-        # Cache lookup
-        cache = await self._find_cache(provider, provider_track_id, aq)
-        if cache is not None and cache.status == CacheEntryStatus.READY:
-            await self._touch_cache(cache)
-            signed = await self.storage.signed_url(
-                cache.storage_key,
-                bucket=StorageBucket.CACHE,
-            )
+        cache_svc = CacheService(self.session, storage=self.storage, settings=self.settings)
+
+        hit = await cache_svc.lookup(
+            provider=provider, provider_track_id=provider_track_id, quality=aq
+        )
+        if hit is not None:
+            signed = await cache_svc.signed_delivery(hit)
             return DownloadResult(
                 signed_url=signed,
-                storage_key=cache.storage_key,
+                storage_key=hit.storage_key,
                 quality=quality,
                 from_cache=True,
-                track_id=cache.track_id,
-                content_hash=cache.content_hash,
-                expires_at=cache.expires_at,
+                track_id=hit.track_id,
+                content_hash=hit.content_hash,
+                expires_at=hit.expires_at,
             )
 
-        # Cache miss — resolve source
         source = await self.providers.resolve(provider, provider_track_id, quality=quality)
         if source is None:
             raise ProviderUnavailableError("Could not resolve audio source")
 
-        # If body is available (mock / some adapters), store immediately
         if source.body is not None:
-            return await self._store_and_cache(
+            entry, from_cache = await cache_svc.get_or_acquire(
                 provider=provider,
                 provider_track_id=provider_track_id,
                 quality=aq,
-                body=source.body,
-                source=source,
+                acquire_fn=lambda: _async_const(source.body),
+            )
+            signed = await cache_svc.signed_delivery(entry)
+            return DownloadResult(
+                signed_url=signed,
+                storage_key=entry.storage_key,
+                quality=quality,
+                from_cache=from_cache,
+                track_id=entry.track_id,
+                content_hash=entry.content_hash,
+                expires_at=entry.expires_at,
             )
 
-        # URL-based source: for now return the temporary provider signed URL.
-        # Full transfer worker will materialize into R2 asynchronously.
-        # Plan: never store temporary URLs as permanent truth — only return them
-        # for immediate playback with short TTL awareness.
+        # URL-based source: return temporary provider URL (never persist as truth).
         from app.storage.base import SignedUrl as SU
 
         expires_in = 3600
@@ -261,6 +262,10 @@ class MusicEngine:
             from_cache=False,
             track_id=None,
         )
+
+
+async def _async_const(value: bytes) -> bytes:
+    return value
 
     # ------------------------------------------------------------------
     # Internals

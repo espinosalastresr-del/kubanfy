@@ -31,3 +31,4 @@ def test_handlers_registered() -> None:
     assert JobType.GENERIC in _handlers
     assert JobType.NOTIFICATION in _handlers
     assert JobType.CACHE_CLEANUP in _handlers
+    assert JobType.TRANSCODE in _handlers

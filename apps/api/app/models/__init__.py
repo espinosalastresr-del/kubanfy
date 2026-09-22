@@ -3,6 +3,7 @@
 Import all models here so Alembic and metadata see them.
 """
 
+from app.models.artist_member import ArtistMember
 from app.models.device import Device, Session
 from app.models.job import Job
 from app.models.music import (
@@ -16,6 +17,7 @@ from app.models.music import (
     TrackArtist,
 )
 from app.models.rbac import Permission, Role, RolePermission, UserRole
+from app.models.rights import LicenseRecord
 from app.models.user import User
 
 __all__ = [
@@ -35,4 +37,6 @@ __all__ = [
     "ProviderTrack",
     "AudioAsset",
     "CacheEntry",
+    "ArtistMember",
+    "LicenseRecord",
 ]

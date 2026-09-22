@@ -20,10 +20,12 @@ from app.core.database import Base
 # Import all models so metadata is populated
 from app.models import (  # noqa: F401
     Artist,
+    ArtistMember,
     AudioAsset,
     CacheEntry,
     Device,
     Job,
+    LicenseRecord,
     Permission,
     Provider,
     ProviderTrack,
