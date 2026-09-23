@@ -106,7 +106,7 @@ class EngagementService:
         if position_ms < 0:
             raise ValidationError("position_ms must be non-negative")
         row = await self.session.scalar(
-            select(PlaybackSession).where(PlaybackSession.token_hash == _hash_token(token))
+            select(PlaybackSession).where(PlaybackSession.token_hash == _hash_token(token)).with_for_update()
         )
         if row is None:
             raise AuthError("Invalid playback session")
@@ -206,7 +206,7 @@ class EngagementService:
         self, *, user_id: UUID, token: str, size_bytes: int | None
     ) -> DownloadReceipt:
         row = await self.session.scalar(
-            select(DownloadReceipt).where(DownloadReceipt.ticket_hash == _hash_token(token))
+            select(DownloadReceipt).where(DownloadReceipt.ticket_hash == _hash_token(token)).with_for_update()
         )
         if row is None or row.user_id != user_id:
             raise AuthError("Invalid download ticket")
@@ -272,7 +272,7 @@ class EngagementService:
         recipient_user_id: UUID | None = None,
     ) -> ShareLink:
         row = await self.session.scalar(
-            select(ShareLink).where(ShareLink.token_hash == _hash_token(token))
+            select(ShareLink).where(ShareLink.token_hash == _hash_token(token)).with_for_update()
         )
         if row is None or row.expires_at <= datetime.now(UTC):
             raise NotFoundError("Share link expired or invalid")
