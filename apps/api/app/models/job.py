@@ -39,6 +39,7 @@ class JobType(str, enum.Enum):
     ARTWORK = "artwork"
     MODERATION = "moderation"
     NOTIFICATION = "notification"
+    PUBLICATION_SCHEDULE = "publication_schedule"
     GENERIC = "generic"
 
 
