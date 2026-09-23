@@ -12,6 +12,7 @@ const REFRESH_KEY = 'kubanfy.refresh_token';
 const DEVICE_KEY = 'kubanfy.device_id';
 const AUTH_KEYCHAIN_SERVICE = 'com.kubanfy.auth';
 const DEVICE_KEYCHAIN_SERVICE = 'com.kubanfy.device';
+const OFFLINE_USER_KEYCHAIN_SERVICE = 'com.kubanfy.offline-user';
 
 export type ApiErrorBody = {
   error?: {code?: string; message?: string; details?: Record<string, unknown>};
@@ -41,6 +42,26 @@ export async function getDeviceId(): Promise<string> {
     await AsyncStorage.removeItem(DEVICE_KEY);
   }
   return id;
+}
+
+export async function setOfflineUserId(userId: string): Promise<void> {
+  await Keychain.setGenericPassword('user', userId, {
+    service: OFFLINE_USER_KEYCHAIN_SERVICE,
+    accessible: Keychain.ACCESSIBLE.WHEN_UNLOCKED_THIS_DEVICE_ONLY,
+  });
+}
+
+export async function getOfflineUserId(): Promise<string | null> {
+  try {
+    const credentials = await Keychain.getGenericPassword({service: OFFLINE_USER_KEYCHAIN_SERVICE});
+    return credentials?.password || null;
+  } catch {
+    return null;
+  }
+}
+
+export async function clearOfflineUserId(): Promise<void> {
+  await Keychain.resetGenericPassword({service: OFFLINE_USER_KEYCHAIN_SERVICE});
 }
 
 export async function setTokens(access: string, refresh: string): Promise<void> {
