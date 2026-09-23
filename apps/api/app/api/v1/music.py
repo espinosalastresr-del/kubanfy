@@ -21,6 +21,7 @@ from app.schemas.music import (
 )
 from app.services.entitlement import EntitlementService
 from app.services.music_engine import MusicEngine
+from app.services.offline_license import OfflineLicenseService
 
 router = APIRouter(prefix="/music", tags=["music"])
 def _audio_media_type(result) -> str:
@@ -136,6 +137,20 @@ async def music_download(
             bucket=result.storage_bucket,
         )
 
+    offline_license = None
+    offline_license_expires_at = None
+    if body.device_id is not None:
+        if body.track_id is None:
+            from app.core.exceptions import ValidationError
+            raise ValidationError("Device-bound offline licenses require a first-party track_id")
+        license_row, offline_license = await OfflineLicenseService(session).issue(
+            user_id=user.id,
+            device_id=body.device_id,
+            track_id=body.track_id,
+            quality=body.quality,
+        )
+        offline_license_expires_at = license_row.expires_at.isoformat()
+
     return MusicDownloadResponse(
         url=result.signed_url.url if result.signed_url else None,
         expires_in_seconds=(
@@ -147,6 +162,8 @@ async def music_download(
         storage_key=result.storage_key,
         content_hash=result.content_hash,
         size_bytes=size_bytes,
+        offline_license=offline_license,
+        offline_license_expires_at=offline_license_expires_at,
     )
 
 
