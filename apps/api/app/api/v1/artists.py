@@ -35,7 +35,7 @@ from app.schemas.catalog import (
 from app.services.artist_upload import ArtistUploadService
 from app.services.release_track import ReleaseTrackService
 from app.services.rights_royalty import RightsRoyaltyService
-from app.schemas.rights import CollaboratorSplitsRequest, CollaboratorSplitResponse, RoyaltyLedgerRequest, RoyaltyLedgerResponse
+from app.schemas.rights import CollaboratorSplitsRequest, CollaboratorSplitResponse, RoyaltyLedgerRequest, RoyaltyLedgerResponse, RoyaltySettlementRequest, RoyaltySettlementResponse
 
 router = APIRouter(prefix="/artist", tags=["artist"])
 
@@ -287,6 +287,69 @@ async def append_royalty_ledger(
         source_id=body.source_id, currency=body.currency, metadata=body.metadata,
     )
     return RoyaltyLedgerResponse.model_validate(row)
+
+
+@router.post("/{artist_id}/royalties/settlements", response_model=RoyaltySettlementResponse, status_code=201)
+async def create_royalty_settlement(
+    artist_id: UUID,
+    body: RoyaltySettlementRequest,
+    user: Annotated[User, Depends(require_permissions("royalties.write"))],
+    session: DbSession,
+) -> RoyaltySettlementResponse:
+    service = RightsRoyaltyService(session)
+    await service._authorized(user.id, artist_id)
+    row = await service.create_settlement(
+        artist_id=artist_id,
+        period_start=body.period_start,
+        period_end=body.period_end,
+        gross_cents=body.gross_cents,
+        net_cents=body.net_cents,
+        idempotency_key=body.idempotency_key,
+        currency=body.currency,
+    )
+    return RoyaltySettlementResponse.model_validate(row)
+
+
+@router.post("/{artist_id}/royalties/settlements/{settlement_id}/approve", response_model=RoyaltySettlementResponse)
+async def approve_royalty_settlement(
+    artist_id: UUID,
+    settlement_id: UUID,
+    user: Annotated[User, Depends(require_permissions("royalties.write"))],
+    session: DbSession,
+) -> RoyaltySettlementResponse:
+    row = await RightsRoyaltyService(session).approve_settlement(user_id=user.id, settlement_id=settlement_id)
+    account = await session.get(__import__("app.models.rights", fromlist=["RoyaltyAccount"]).RoyaltyAccount, row.account_id)
+    if account is None or account.artist_id != artist_id:
+        raise NotFoundError("Settlement not found")
+    return RoyaltySettlementResponse.model_validate(row)
+
+
+@router.post("/{artist_id}/royalties/settlements/{settlement_id}/pay", response_model=RoyaltySettlementResponse)
+async def pay_royalty_settlement(
+    artist_id: UUID,
+    settlement_id: UUID,
+    user: Annotated[User, Depends(require_permissions("royalties.write"))],
+    session: DbSession,
+) -> RoyaltySettlementResponse:
+    row = await RightsRoyaltyService(session).mark_settlement_paid(user_id=user.id, settlement_id=settlement_id)
+    account = await session.get(__import__("app.models.rights", fromlist=["RoyaltyAccount"]).RoyaltyAccount, row.account_id)
+    if account is None or account.artist_id != artist_id:
+        raise NotFoundError("Settlement not found")
+    return RoyaltySettlementResponse.model_validate(row)
+
+
+@router.post("/{artist_id}/royalties/settlements/{settlement_id}/reject", response_model=RoyaltySettlementResponse)
+async def reject_royalty_settlement(
+    artist_id: UUID,
+    settlement_id: UUID,
+    user: Annotated[User, Depends(require_permissions("royalties.write"))],
+    session: DbSession,
+) -> RoyaltySettlementResponse:
+    row = await RightsRoyaltyService(session).reject_settlement(user_id=user.id, settlement_id=settlement_id)
+    account = await session.get(__import__("app.models.rights", fromlist=["RoyaltyAccount"]).RoyaltyAccount, row.account_id)
+    if account is None or account.artist_id != artist_id:
+        raise NotFoundError("Settlement not found")
+    return RoyaltySettlementResponse.model_validate(row)
 
 
 @router.get("/{artist_id}", response_model=ArtistResponse)
