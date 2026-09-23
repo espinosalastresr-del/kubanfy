@@ -235,21 +235,20 @@ class MusicEngine:
                 expires_at=entry.expires_at,
             )
 
-        # URL-based source: return temporary provider URL (never persist as truth).
-        from app.storage.base import SignedUrl as SU
+        # URL-based source: acquire internally, then deliver only our signed storage URL.
+        from app.services.transfer import TransferManager
 
-        expires_in = 3600
-        if source.expiry:
-            remaining = int((source.expiry - datetime.now(UTC)).total_seconds())
-            expires_in = max(60, min(remaining, 3600))
-
-        signed = SU(
-            url=source.url or "",
-            expires_in_seconds=expires_in,
-            method="GET",
+        transfer = TransferManager()
+        body = await transfer.acquire(source)
+        entry, from_cache = await cache_svc.get_or_acquire(
+            provider=provider,
+            provider_track_id=provider_track_id,
+            quality=aq,
+            acquire_fn=lambda: _async_const(body),
         )
+        signed = await cache_svc.signed_delivery(entry)
         logger.info(
-            "download_cache_miss_external_url",
+            "download_transferred_and_cached",
             provider=provider,
             provider_track_id=provider_track_id,
             quality=quality,
@@ -257,10 +256,12 @@ class MusicEngine:
         )
         return DownloadResult(
             signed_url=signed,
-            storage_key=None,
+            storage_key=entry.storage_key,
             quality=quality,
-            from_cache=False,
-            track_id=None,
+            from_cache=from_cache,
+            track_id=entry.track_id,
+            content_hash=entry.content_hash,
+            expires_at=entry.expires_at,
         )
 
 
