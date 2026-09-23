@@ -19,6 +19,7 @@ from app.schemas.music import (
     MusicUpdateResponse,
     TrackSearchResult,
 )
+from app.services.entitlement import EntitlementService
 from app.services.music_engine import MusicEngine
 
 router = APIRouter(prefix="/music", tags=["music"])
@@ -64,19 +65,9 @@ async def music_preview(
 ) -> MusicPreviewResponse:
     engine = MusicEngine(session, provider_manager=_manager)
     if body.track_id is not None:
-        # Catalog track: try download path for a playable URL (preview-grade)
-        try:
-            result = await engine.download_by_track_id(
-                track_id=body.track_id, quality="low"
-            )
-            if result.signed_url:
-                return MusicPreviewResponse(
-                    available=True,
-                    url=result.signed_url.url,
-                    expires_in_seconds=result.signed_url.expires_in_seconds,
-                )
-        except Exception:
-            return MusicPreviewResponse(available=False)
+        # A catalog track does not automatically have a provider-native preview.
+        # Never turn preview into a full-track low-quality download.
+        return MusicPreviewResponse(available=False)
     if not body.provider or not body.provider_track_id:
         return MusicPreviewResponse(available=False)
     result = await engine.preview(
@@ -106,6 +97,7 @@ async def music_download(
     await AntiAbuseService().check_download(str(user.id), ip)
     engine = MusicEngine(session, provider_manager=_manager)
     if body.track_id is not None:
+        await EntitlementService(session).require_track_access(user.id, body.track_id)
         result = await engine.download_by_track_id(
             track_id=body.track_id,
             quality=body.quality,
@@ -173,6 +165,7 @@ async def music_content_stream(
     ip = request.client.host if request.client else None
     await AntiAbuseService().check_download(str(user.id), ip)
     engine = MusicEngine(session, provider_manager=_manager)
+    await EntitlementService(session).require_track_access(user.id, track_id)
     try:
         result = await engine.download_by_track_id(track_id=track_id, quality=quality)
     except Exception as exc:
