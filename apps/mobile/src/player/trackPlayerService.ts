@@ -79,7 +79,31 @@ async function tryLoadNative(): Promise<boolean> {
   }
 }
 
+export async function cleanupOfflinePlaybackTemps(): Promise<void> {
+  try {
+    const RNFS = require('react-native-fs');
+    const dir = `${RNFS.DocumentDirectoryPath}/kubanfy/offline`;
+    if (!(await RNFS.exists(dir))) return;
+    const entries = await RNFS.readDir(dir);
+    await Promise.all(
+      entries
+        .filter((entry: {name: string}) =>
+          entry.name.endsWith('.playback') ||
+          entry.name.endsWith('.playback.part') ||
+          entry.name.endsWith('.kfy.part') ||
+          entry.name.endsWith('.meta.part'),
+        )
+        .map((entry: {path: string}) =>
+          RNFS.unlink(entry.path).catch(() => undefined),
+        ),
+    );
+  } catch {
+    // Best-effort cleanup; an unavailable filesystem must not block startup.
+  }
+}
+
 export async function setupPlayerEngine(): Promise<{native: boolean}> {
+  await cleanupOfflinePlaybackTemps();
   const native = await tryLoadNative();
   return {native};
 }
