@@ -6,11 +6,11 @@ from contextlib import asynccontextmanager
 from typing import Any
 
 from fastapi import FastAPI
-from starlette.responses import Response as StarletteResponse, Request, status
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, ORJSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
+from starlette.responses import Request, Response as StarletteResponse, status
 
 from app import __version__
 from app.core.config import get_settings
