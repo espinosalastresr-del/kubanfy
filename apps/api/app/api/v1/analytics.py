@@ -1,4 +1,4 @@
-"""Analytics ingestion endpoints."""
+"""Analytics ingestion and qualified engagement endpoints."""
 
 from __future__ import annotations
 
@@ -8,8 +8,9 @@ from uuid import UUID
 from fastapi import APIRouter, Request
 from pydantic import BaseModel, Field
 
-from app.api.deps import DbSession, OptionalUser
+from app.api.deps import CurrentUser, DbSession, OptionalUser
 from app.services.analytics import AnalyticsService
+from app.services.engagement import EngagementService
 from app.services.geo import GeoService
 
 router = APIRouter(prefix="/analytics", tags=["analytics"])
@@ -31,6 +32,40 @@ class AnalyticsEventIn(BaseModel):
 
 class AnalyticsBatchIn(BaseModel):
     events: list[AnalyticsEventIn] = Field(max_length=100)
+
+
+class PlaybackStartIn(BaseModel):
+    track_id: UUID
+    quality: str = Field(default="low", pattern="^(low|medium|lossless)$")
+    device_id: str | None = Field(default=None, max_length=128)
+    session_id: str | None = Field(default=None, max_length=64)
+
+
+class PlaybackHeartbeatIn(BaseModel):
+    token: str = Field(min_length=20, max_length=256)
+    position_ms: int = Field(ge=0)
+    paused: bool = False
+    completed: bool = False
+
+
+class DownloadTicketIn(BaseModel):
+    track_id: UUID
+    quality: str = Field(default="low", pattern="^(low|medium|lossless)$")
+    device_id: str | None = Field(default=None, max_length=128)
+
+
+class DownloadCompleteIn(BaseModel):
+    ticket: str = Field(min_length=20, max_length=256)
+    size_bytes: int | None = Field(default=None, ge=0)
+
+
+class ShareCreateIn(BaseModel):
+    track_id: UUID
+
+
+class ShareOpenIn(BaseModel):
+    token: str = Field(min_length=20, max_length=256)
+    recipient_key: str = Field(min_length=8, max_length=128)
 
 
 @router.post("/events", status_code=202)
@@ -93,3 +128,112 @@ async def ingest_batch(
         )
     count = await svc.ingest_batch(raw)
     return {"accepted": count}
+
+
+@router.post("/playback/start")
+async def start_playback(
+    body: PlaybackStartIn,
+    request: Request,
+    session: DbSession,
+    user: OptionalUser,
+) -> dict[str, Any]:
+    country = GeoService().resolve(ip=request.client.host if request.client else None).country
+    row, token = await EngagementService(session).start_playback(
+        user_id=user.id if user else None,
+        device_id=body.device_id,
+        session_id=body.session_id,
+        track_id=body.track_id,
+        quality=body.quality,
+        country=country,
+    )
+    return {
+        "playback_token": token,
+        "playback_session_id": str(row.id),
+        "heartbeat_interval_seconds": 10,
+        "qualifying_listen_seconds": 30,
+        "asset_version": row.asset_version,
+        "content_hash": row.content_hash,
+    }
+
+
+@router.post("/playback/heartbeat")
+async def playback_heartbeat(
+    body: PlaybackHeartbeatIn,
+    session: DbSession,
+) -> dict[str, Any]:
+    row = await EngagementService(session).heartbeat(
+        token=body.token,
+        position_ms=body.position_ms,
+        paused=body.paused,
+        completed=body.completed,
+    )
+    return {
+        "qualified": row.qualified_at is not None,
+        "listened_ms": row.listened_ms,
+        "suspicious_score": row.suspicious_score,
+    }
+
+
+@router.post("/downloads/ticket")
+async def issue_download_ticket(
+    body: DownloadTicketIn,
+    session: DbSession,
+    user: CurrentUser,
+) -> dict[str, Any]:
+    row, token = await EngagementService(session).issue_download_ticket(
+        user_id=user.id,
+        device_id=body.device_id,
+        track_id=body.track_id,
+        quality=body.quality,
+    )
+    return {
+        "download_ticket": token,
+        "expires_in_seconds": 24 * 60 * 60,
+        "asset_version": row.asset_version,
+        "content_hash": row.content_hash,
+    }
+
+
+@router.post("/downloads/complete")
+async def complete_download(
+    body: DownloadCompleteIn,
+    session: DbSession,
+    user: CurrentUser,
+) -> dict[str, Any]:
+    row = await EngagementService(session).complete_download(
+        user_id=user.id,
+        token=body.ticket,
+        size_bytes=body.size_bytes,
+    )
+    return {"qualified": row.completed_at is not None}
+
+
+@router.post("/shares")
+async def create_share(
+    body: ShareCreateIn,
+    session: DbSession,
+    user: OptionalUser,
+) -> dict[str, str]:
+    _, token = await EngagementService(session).create_share(
+        user_id=user.id if user else None,
+        track_id=body.track_id,
+    )
+    return {"token": token, "expires_in_seconds": 30 * 24 * 60 * 60}
+
+
+@router.post("/shares/open")
+async def open_share(
+    body: ShareOpenIn,
+    session: DbSession,
+    user: OptionalUser,
+) -> dict[str, Any]:
+    row = await EngagementService(session).open_share(
+        token=body.token,
+        recipient_key=body.recipient_key,
+        recipient_user_id=user.id if user else None,
+    )
+    return {
+        "track_id": str(row.track_id),
+        "qualified_share": row.qualified_share,
+        "unique_recipients": row.open_count,
+    }
