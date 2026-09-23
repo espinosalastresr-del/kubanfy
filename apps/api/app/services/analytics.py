@@ -13,13 +13,14 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import Settings, get_settings
+from app.core.exceptions import ValidationError
 from app.core.logging import get_logger
 from app.models.analytics import AnalyticsEvent
 
 logger = get_logger(__name__)
 
 # Allowed event types from plan §56 (subset enforced for validation)
-KNOWN_EVENT_TYPES = frozenset(
+PROTECTED_EVENT_TYPES = frozenset({"play_qualified", "download_complete", "share"})\n\nKNOWN_EVENT_TYPES = frozenset(
     {
         "app_open",
         "search",
