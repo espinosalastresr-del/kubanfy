@@ -51,6 +51,7 @@ class EntitlementService:
             status=EntitlementStatus.ACTIVE,
             expires_at=expires_at,
             metadata_json=metadata or {},
+            payment_order_id=payment_order_id,
         )
         self.session.add(ent)
         await self.session.flush()
