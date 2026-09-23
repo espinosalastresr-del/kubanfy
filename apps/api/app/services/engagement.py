@@ -34,6 +34,10 @@ def _hash_token(token: str) -> str:
     return hashlib.sha256(token.encode("utf-8")).hexdigest()
 
 
+def _event_id(prefix: str, value: str) -> str:
+    return f"{prefix}:{hashlib.sha256(value.encode('utf-8')).hexdigest()[:32]}"
+
+
 class EngagementService:
     def __init__(self, session: AsyncSession) -> None:
         self.session = session
@@ -145,7 +149,7 @@ class EngagementService:
         return row
 
     async def _record_qualified_play(self, row: PlaybackSession) -> None:
-        event_id = f"qualified-play:{row.id}"
+        event_id = _event_id("qualified-play", str(row.id))
         existing = await self.session.scalar(
             select(AnalyticsEvent).where(AnalyticsEvent.event_id == event_id)
         )
@@ -198,7 +202,9 @@ class EngagementService:
         await self.session.flush()
         return row, token
 
-    async def complete_download(self, *, user_id: UUID, token: str, size_bytes: int | None) -> DownloadReceipt:
+    async def complete_download(
+        self, *, user_id: UUID, token: str, size_bytes: int | None
+    ) -> DownloadReceipt:
         row = await self.session.scalar(
             select(DownloadReceipt).where(DownloadReceipt.ticket_hash == _hash_token(token))
         )
@@ -219,7 +225,7 @@ class EngagementService:
         row.completed_at = datetime.now(UTC)
         await self.session.flush()
 
-        event_id = f"qualified-download:{row.id}"
+        event_id = _event_id("qualified-download", str(row.id))
         existing = await self.session.scalar(
             select(AnalyticsEvent).where(AnalyticsEvent.event_id == event_id)
         )
@@ -284,16 +290,15 @@ class EngagementService:
         if existing is None:
             self.session.add(ShareOpen(share_link_id=row.id, recipient_key=recipient_key))
             row.open_count += 1
-            if row.open_count >= 1:
-                row.qualified_share = True
-                self.session.add(
-                    AnalyticsEvent(
-                        event_id=f"qualified-share:{row.id}:{recipient_key}",
-                        user_id=recipient_user_id,
-                        track_id=row.track_id,
-                        event_type="share",
-                        metadata_json={"qualified": True},
-                    )
+            row.qualified_share = True
+            self.session.add(
+                AnalyticsEvent(
+                    event_id=_event_id("qualified-share", f"{row.id}:{recipient_key}"),
+                    user_id=recipient_user_id,
+                    track_id=row.track_id,
+                    event_type="share",
+                    metadata_json={"qualified": True},
                 )
+            )
             await self.session.flush()
         return row
