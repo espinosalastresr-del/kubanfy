@@ -9,6 +9,8 @@ import {colors} from '../theme/tokens';
 import {LoginScreen} from '../screens/auth/LoginScreen';
 import {ListenerHomeScreen} from '../screens/listener/HomeScreen';
 import {LibraryScreen} from '../screens/listener/LibraryScreen';
+import {SearchScreen} from '../screens/listener/SearchScreen';
+import {PlaylistsScreen} from '../screens/listener/PlaylistsScreen';
 import {ArtistHubScreen} from '../screens/artist/ArtistHubScreen';
 import {AdminHubScreen} from '../screens/admin/AdminHubScreen';
 import {MiniPlayer} from '../components/MiniPlayer';
@@ -37,21 +39,33 @@ function ListenerTabs() {
           tabBarStyle: {
             backgroundColor: colors.bgElevated,
             borderTopColor: colors.border,
-            height: 56,
+            height: 58,
             paddingBottom: 6,
+            paddingTop: 4,
           },
           tabBarActiveTintColor: colors.primary,
           tabBarInactiveTintColor: colors.textMuted,
+          tabBarLabelStyle: {fontSize: 11, fontWeight: '600'},
         }}>
         <Tab.Screen
           name="Discover"
           component={ListenerHomeScreen}
-          options={{title: 'Inicio', tabBarLabel: 'Inicio'}}
+          options={{tabBarLabel: 'Inicio'}}
+        />
+        <Tab.Screen
+          name="Search"
+          component={SearchScreen}
+          options={{tabBarLabel: 'Buscar'}}
+        />
+        <Tab.Screen
+          name="Playlists"
+          component={PlaylistsScreen}
+          options={{tabBarLabel: 'Listas'}}
         />
         <Tab.Screen
           name="Library"
           component={LibraryScreen}
-          options={{title: 'Offline', tabBarLabel: 'Offline'}}
+          options={{tabBarLabel: 'Offline'}}
         />
       </Tab.Navigator>
       <MiniPlayer />

@@ -30,6 +30,26 @@ Riesgo residual: la UI de admin viaja en el binario. Mitigación: no se muestran
 - TanStack Query
 - Design system dark-first (tokens en `src/theme`)
 
+## Tabs (modo escuchar)
+
+| Tab | Pantalla |
+|-----|----------|
+| Inicio | Discovery / home |
+| Buscar | `/v1/music/search` + play |
+| Listas | Playlists + favoritos |
+| Offline | Biblioteca y cola de descarga |
+
+## Proyectos nativos
+
+```bash
+cd apps/mobile
+npm run bootstrap:native   # genera android/ + ios/ (RN 0.76)
+npm run android
+npm run ios                # solo macOS
+```
+
+Dependencias nativas para offline audio real: `react-native-fs`, `react-native-track-player`.
+
 ## Desarrollo
 
 ```bash

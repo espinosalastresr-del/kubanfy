@@ -9,7 +9,8 @@
     "test": "jest",
     "lint": "eslint . --ext .js,.jsx,.ts,.tsx",
     "typecheck": "tsc --noEmit",
-    "clean": "react-native clean"
+    "clean": "react-native clean",
+    "bootstrap:native": "bash scripts/bootstrap-native.sh"
   },
   "dependencies": {
     "@react-native-async-storage/async-storage": "^2.1.0",
@@ -25,7 +26,9 @@
     "react-native-safe-area-context": "^5.0.0",
     "react-native-screens": "^4.4.0",
     "react-native-svg": "^15.11.1",
-    "zustand": "^5.0.2"
+    "zustand": "^5.0.2",
+    "react-native-fs": "^2.20.0",
+    "react-native-track-player": "^4.1.1"
   },
   "devDependencies": {
     "@babel/core": "^7.26.0",
