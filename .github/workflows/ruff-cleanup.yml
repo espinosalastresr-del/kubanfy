@@ -21,7 +21,8 @@ jobs:
         working-directory: apps/api
         run: |
           ruff check app tests --fix || true
-          ruff format app tests      - name: Commit cleanup
+          ruff format app tests
+      - name: Commit cleanup
         run: |
           if git diff --quiet; then exit 0; fi
           git config user.name "github-actions[bot]"
