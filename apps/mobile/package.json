@@ -30,7 +30,10 @@
     "react-native-fs": "^2.20.0",
     "react-native-track-player": "^4.1.1",
     "react-native-document-picker": "^9.3.1",
-    "react-native-keychain": "^9.1.0"
+    "react-native-keychain": "^9.1.0",
+    "react-native-quick-base64": "^3.0.0",
+    "react-native-nitro-modules": "^0.31.2",
+    "react-native-quick-crypto": "^1.1.7"
   },
   "devDependencies": {
     "@babel/core": "^7.26.0",
