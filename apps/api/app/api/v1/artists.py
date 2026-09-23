@@ -28,6 +28,7 @@ from app.schemas.catalog import (
     ReleaseCreateRequest,
     ReleaseResponse,
     ReleaseUpdateRequest,
+    ReleaseScheduleRequest,
     TrackStatusResponse,
     TrackUpdateRequest,
 )
@@ -112,6 +113,24 @@ async def update_release(artist_id: UUID, release_id: UUID, body: ReleaseUpdateR
     release = await ReleaseTrackService(session).update_release(
         user_id=user.id, artist_id=artist_id, release_id=release_id, title=body.title, type=body.type,
         description=body.description, artwork_asset=body.artwork_asset, release_date=body.release_date,
+    )
+    return ReleaseResponse.model_validate(release)
+
+
+@router.post("/{artist_id}/releases/{release_id}/schedule", response_model=ReleaseResponse)
+async def schedule_release(
+    artist_id: UUID,
+    release_id: UUID,
+    body: ReleaseScheduleRequest,
+    user: CurrentUser,
+    session: DbSession,
+) -> ReleaseResponse:
+    release = await ReleaseTrackService(session).schedule_release(
+        user_id=user.id,
+        artist_id=artist_id,
+        release_id=release_id,
+        publish_at=body.publish_at,
+        unpublish_at=body.unpublish_at,
     )
     return ReleaseResponse.model_validate(release)
 
