@@ -8,7 +8,7 @@
  * are intentionally short-lived. Resume uses HTTP Range against that URL.
  */
 
-import {apiRequest} from '../api/client';
+import {apiRequest, getDeviceId, getOfflineUserId} from '../api/client';
 import {encryptOfflineFile} from './offlineCrypto';
 import {verifyOfflineLicense} from './offlineLicenseVerifier';
 import {
@@ -136,9 +136,14 @@ async function downloadWithResume(
         ) {
           throw new Error('Offline metadata mismatch');
         }
+        const deviceId = await getDeviceId();
+        const userId = await getOfflineUserId();
+        if (!userId) throw new Error('Offline license account binding unavailable');
         verifyOfflineLicense(job.offlineLicense, {
           trackId: job.trackId,
           quality: job.quality,
+          deviceId,
+          userId,
           contentHash: job.contentHash,
         });
         return {
