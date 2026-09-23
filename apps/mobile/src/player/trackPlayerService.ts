@@ -9,6 +9,7 @@
 import type {OfflineTrackMeta, PlayerTrack} from '../offline/types';
 import {decryptOfflineFile} from '../offline/offlineCrypto';
 import {verifyOfflineLicense} from '../offline/offlineLicenseVerifier';
+import {getDeviceId} from '../api/client';
 
 export type EngineStatus = 'idle' | 'loading' | 'playing' | 'paused' | 'stopped' | 'error';
 
@@ -197,6 +198,7 @@ export async function enginePlayOffline(track: OfflineTrackMeta): Promise<void> 
   verifyOfflineLicense(track.offlineLicense || '', {
     trackId: track.trackId,
     quality: track.quality,
+    deviceId: await getDeviceId(),
     contentHash: track.contentHash,
   });
   const outputPath = encryptedPath + '.playback';
