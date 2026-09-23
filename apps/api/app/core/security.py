@@ -57,6 +57,9 @@ def create_offline_license_token(
         "type": "offline_license",
     }
     if extra_claims:
+        reserved = {"sub", "iat", "exp", "jti", "type"}
+        if reserved.intersection(extra_claims):
+            raise ValueError("Offline license extra claims cannot override reserved claims")
         payload.update(extra_claims)
     return jwt.encode(
         payload,
@@ -81,6 +84,21 @@ def decode_offline_license_token(
         )
     except JWTError as exc:
         raise ValueError("Invalid or expired offline license") from exc
+    required_string_claims = (
+        "sub",
+        "jti",
+        "type",
+        "license_id",
+        "device_id",
+        "track_id",
+        "quality",
+        "content_hash",
+    )
+    if any(not isinstance(payload.get(name), str) or not payload[name] for name in required_string_claims):
+        raise ValueError("Invalid offline license claims")
+    asset_version = payload.get("asset_version")
+    if not isinstance(asset_version, int) or isinstance(asset_version, bool) or asset_version < 1:
+        raise ValueError("Invalid offline license asset version")
     if payload.get("type") != "offline_license":
         raise ValueError("Invalid offline license type")
     return payload
