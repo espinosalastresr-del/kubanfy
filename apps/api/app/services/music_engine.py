@@ -416,6 +416,7 @@ class MusicEngine:
             .where(
                 AudioAsset.track_id == track_id,
                 AudioAsset.quality == aq,
+                AudioAsset.is_active.is_(True),
             )
             .order_by(AudioAsset.created_at.desc())
             .limit(1)
