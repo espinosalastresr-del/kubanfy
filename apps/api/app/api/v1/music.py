@@ -189,12 +189,12 @@ async def music_content_stream(
     from app.storage import StorageBucket, get_storage
     from app.core.exceptions import NotFoundError, ValidationError
 
-    async def storage_range_stream(storage, key, start, end):
+    async def storage_range_stream(storage, key, start, end, bucket):
         yield await storage.get_range(
             key,
             start,
             end,
-            bucket=StorageBucket.CACHE,
+            bucket=bucket,
         )
 
     ip = request.client.host if request.client else None
@@ -211,7 +211,7 @@ async def music_content_stream(
         raise ValidationError("No local object; use POST /music/download for signed URL")
 
     storage = get_storage()
-    total = await storage.size(storage_key, bucket=StorageBucket.CACHE)
+    total = await storage.size(storage_key, bucket=result.storage_bucket)
     range_header = request.headers.get("range") or request.headers.get("Range")
     br = parse_bytes_range(range_header, total)
 
@@ -249,8 +249,8 @@ async def music_content_stream(
         "Content-Length": str(br.length),
     }
     return StreamingResponse(
-        storage_range_stream(storage, storage_key, br.start, br.end),
+        storage_range_stream(storage, storage_key, br.start, br.end, result.storage_bucket),
         status_code=206,
-        media_type="audio/mpeg",
+        media_type=_audio_media_type(result),
         headers=headers,
     )
