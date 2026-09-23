@@ -16,7 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import Settings, get_settings
 from app.core.exceptions import ConflictError, ForbiddenError, NotFoundError, ValidationError
 from app.core.logging import get_logger
-from app.models.entitlement import EntitlementScope, EntitlementSource, Plan, PlanPrice, Plan, PlanPrice
+from app.models.entitlement import EntitlementScope, EntitlementSource, Plan, PlanPrice
 from app.models.payment import PaymentMethod, PaymentOrder, PaymentStatus
 from app.services.entitlement import EntitlementService
 
