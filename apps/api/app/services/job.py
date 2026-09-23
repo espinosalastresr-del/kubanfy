@@ -61,11 +61,12 @@ class JobService:
         )
         self.session.add(job)
         try:
-            await self.session.flush()
+            # Keep an idempotency race from rolling back unrelated changes
+            # already staged in the caller transaction.
+            async with self.session.begin_nested():
+                await self.session.flush()
         except Exception:
-            # Unique constraint on idempotency_key under race
             if idempotency_key:
-                await self.session.rollback()
                 existing = await self.session.scalar(
                     select(Job).where(Job.idempotency_key == idempotency_key)
                 )
