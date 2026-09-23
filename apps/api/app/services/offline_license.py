@@ -130,6 +130,7 @@ class OfflineLicenseService:
 
         if (
             payload.get("device_id") != device_id
+            or payload.get("sub") != str(row.user_id)
             or payload.get("track_id") != str(row.track_id)
             or payload.get("license_id") != str(row.id)
             or payload.get("quality") != row.quality
@@ -141,6 +142,10 @@ class OfflineLicenseService:
         # A license is bound to an exact asset generation. Replacements must
         # not silently make an older offline authorization valid for the new
         # bytes, and deleted/revoked assets must stop validating as well.
+        track = await self.session.scalar(select(Track).where(Track.id == row.track_id))
+        if track is None or track.status.value != "published":
+            raise AuthError("Offline license track is no longer published")
+
         asset = await self.session.scalar(
             select(AudioAsset).where(
                 AudioAsset.track_id == row.track_id,
