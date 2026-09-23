@@ -239,12 +239,11 @@ class MusicEngine:
         from app.services.transfer import TransferManager
 
         transfer = TransferManager()
-        body = await transfer.acquire(source)
         entry, from_cache = await cache_svc.get_or_acquire(
             provider=provider,
             provider_track_id=provider_track_id,
             quality=aq,
-            acquire_fn=lambda: _async_const(body),
+            acquire_fn=lambda: transfer.acquire(source),
         )
         signed = await cache_svc.signed_delivery(entry)
         logger.info(
