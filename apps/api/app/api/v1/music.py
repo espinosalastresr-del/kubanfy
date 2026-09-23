@@ -213,7 +213,7 @@ async def music_content_stream(
     request: Request,
     session: DbSession,
     user: CurrentUser,
-    quality: str = Query("medium"),
+    quality: str = Query("low"),
 ):
     """Stream audio with HTTP Range (resume). Uses cache object when available."""
     from fastapi.responses import Response, StreamingResponse
