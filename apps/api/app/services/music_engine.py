@@ -419,14 +419,10 @@ class MusicEngine:
             quality = aq.value
 
         track = await self.session.get(Track, track_id)
-        if track is None or track.status not in (
-            TrackStatus.PUBLISHED,
-            TrackStatus.PROCESSING,
-            TrackStatus.DRAFT,
-        ):
-            # Still allow published primarily
-            if track is None:
-                raise NotFoundError("Track not found")
+        if track is None:
+            raise NotFoundError("Track not found")
+        if track.status != TrackStatus.PUBLISHED:
+            raise NotFoundError("Track is not published")
 
         cache_svc = CacheService(self.session, storage=self.storage, settings=self.settings)
         hit = await cache_svc.lookup_by_track(track_id=track_id, quality=aq)
