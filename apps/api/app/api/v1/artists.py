@@ -12,7 +12,7 @@ from sqlalchemy import select
 from app.api.deps import CurrentUser, DbSession
 from app.core.exceptions import ConflictError, NotFoundError, ValidationError
 from app.models.artist_member import ArtistMember, ArtistMemberRole
-from app.models.music import Artist, Release, Track, TrackArtist, TrackStatus
+from app.models.music import Artist, AudioAsset, Release, Track, TrackArtist, TrackStatus
 from app.schemas.artist import (
     ArtistCreateRequest,
     ArtistUpdateRequest,
