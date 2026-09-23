@@ -145,11 +145,14 @@ class RightsRoyaltyService:
         if not await RbacService(self.session).user_has_permission(user_id, "royalties.write"):
             await self._authorized(user_id, account.artist_id)
 
-    async def approve_settlement(self, *, user_id: UUID, settlement_id: UUID) -> RoyaltySettlement:
+    async def approve_settlement(self, *, user_id: UUID, artist_id: UUID, settlement_id: UUID) -> RoyaltySettlement:
         settlement = await self.session.scalar(
             select(RoyaltySettlement).where(RoyaltySettlement.id == settlement_id).with_for_update()
         )
         if settlement is None:
+            raise NotFoundError("Settlement not found")
+        account = await self.session.get(RoyaltyAccount, settlement.account_id)
+        if account is None or account.artist_id != artist_id:
             raise NotFoundError("Settlement not found")
         await self._settlement_authorized(user_id, settlement)
         if settlement.status == "approved":
@@ -160,11 +163,14 @@ class RightsRoyaltyService:
         await self.session.flush()
         return settlement
 
-    async def reject_settlement(self, *, user_id: UUID, settlement_id: UUID) -> RoyaltySettlement:
+    async def reject_settlement(self, *, user_id: UUID, artist_id: UUID, settlement_id: UUID) -> RoyaltySettlement:
         settlement = await self.session.scalar(
             select(RoyaltySettlement).where(RoyaltySettlement.id == settlement_id).with_for_update()
         )
         if settlement is None:
+            raise NotFoundError("Settlement not found")
+        account = await self.session.get(RoyaltyAccount, settlement.account_id)
+        if account is None or account.artist_id != artist_id:
             raise NotFoundError("Settlement not found")
         await self._settlement_authorized(user_id, settlement)
         if settlement.status == "rejected":
@@ -175,11 +181,14 @@ class RightsRoyaltyService:
         await self.session.flush()
         return settlement
 
-    async def mark_settlement_paid(self, *, user_id: UUID, settlement_id: UUID) -> RoyaltySettlement:
+    async def mark_settlement_paid(self, *, user_id: UUID, artist_id: UUID, settlement_id: UUID) -> RoyaltySettlement:
         settlement = await self.session.scalar(
             select(RoyaltySettlement).where(RoyaltySettlement.id == settlement_id).with_for_update()
         )
         if settlement is None:
+            raise NotFoundError("Settlement not found")
+        account = await self.session.get(RoyaltyAccount, settlement.account_id)
+        if account is None or account.artist_id != artist_id:
             raise NotFoundError("Settlement not found")
         if not await RbacService(self.session).user_has_permission(user_id, "royalties.write"):
             raise NotFoundError("Settlement not found")
