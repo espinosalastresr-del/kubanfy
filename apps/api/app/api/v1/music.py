@@ -7,6 +7,7 @@ from uuid import UUID
 from fastapi import APIRouter, Query, Request
 
 from app.api.deps import CurrentUser, DbSession, OptionalUser
+from app.core.exceptions import AuthError
 from app.providers.registry import ProviderManager, create_default_registry
 from app.schemas.music import (
     MusicDownloadRequest,
@@ -124,7 +125,7 @@ async def music_download(
             user_id=user.id,
         )
     else:
-        from app.core.exceptions import AuthError, ValidationError
+        from app.core.exceptions import ValidationError
 
         raise ValidationError("Provide track_id or provider + provider_track_id")
 
