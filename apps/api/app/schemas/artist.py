@@ -1,4 +1,4 @@
-"""Artist portal schemas."""
+"""Artist portal and public catalog schemas."""
 
 from __future__ import annotations
 
@@ -25,6 +25,26 @@ class ArtistResponse(BaseModel):
     created_at: datetime
 
     model_config = {"from_attributes": True}
+
+
+class PublicTrackResponse(BaseModel):
+    id: UUID
+    title: str
+    slug: str
+    duration: float | None
+    explicit: bool
+    language: str | None
+    release_id: UUID | None
+    release_title: str | None
+
+
+class PublicReleaseResponse(BaseModel):
+    id: UUID
+    title: str
+    type: str
+    artwork_asset: str | None
+    release_date: datetime | None
+    status: str
 
 
 class TrackUploadResponse(BaseModel):
