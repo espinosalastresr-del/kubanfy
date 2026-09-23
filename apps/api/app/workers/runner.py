@@ -22,8 +22,6 @@ from app.core.redis import close_redis, init_redis
 from app.models.job import Job, JobType
 from app.services.job import JobService
 
-# Register built-in handlers
-import app.workers.handlers  # noqa: F401, E402
 
 logger = get_logger(__name__)
 
@@ -40,6 +38,10 @@ def register_handler(job_type: JobType):
         return fn
 
     return decorator
+
+
+# Register built-in handlers after the registry and decorator are defined.
+import app.workers.handlers  # noqa: E402,F401
 
 
 async def _default_handler(job: Job, session: Any) -> dict[str, Any] | None:
