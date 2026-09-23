@@ -6,6 +6,7 @@ import {colors, radius, spacing, typography} from '../../theme/tokens';
 import {ModeSwitcher} from '../../components/ModeSwitcher';
 import {Button} from '../../ui/Button';
 import {Screen} from '../../ui/Screen';
+import {ArtistUploadScreen} from './ArtistUploadScreen';
 
 type Artist = {
   id: string;
@@ -18,6 +19,8 @@ type Artist = {
 export function ArtistHubScreen() {
   const [artists, setArtists] = useState<Artist[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [uploadFor, setUploadFor] = useState<Artist | null>(null);
+  const [createName, setCreateName] = useState('');
 
   const load = async () => {
     try {
@@ -37,6 +40,34 @@ export function ArtistHubScreen() {
     load();
   }, []);
 
+  if (uploadFor) {
+    return (
+      <ArtistUploadScreen
+        artistId={uploadFor.id}
+        artistName={uploadFor.name}
+        onBack={() => setUploadFor(null)}
+        onUploaded={() => {
+          setUploadFor(null);
+          load();
+        }}
+      />
+    );
+  }
+
+  const createArtist = async () => {
+    const name = createName.trim() || 'Mi proyecto';
+    try {
+      await apiRequest('/v1/artist', {
+        method: 'POST',
+        body: JSON.stringify({name, country: 'CU'}),
+      });
+      setCreateName('');
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'No se pudo crear el artista');
+    }
+  };
+
   return (
     <Screen scroll>
       <Text style={styles.title}>Portal artista</Text>
@@ -54,21 +85,22 @@ export function ArtistHubScreen() {
             @{a.slug} · {a.verified ? 'Verificado' : 'Sin verificar'} · {a.status}
           </Text>
           <Button
-            title="Subir pista (próximo)"
-            variant="secondary"
-            onPress={() => {}}
+            title="Subir pista"
+            onPress={() => setUploadFor(a)}
             style={styles.btn}
           />
         </View>
       ))}
 
-      {!artists.length && !error ? (
+      {!artists.length ? (
         <View style={styles.emptyCard}>
-          <Text style={styles.emptyTitle}>Aún no tienes perfil de artista</Text>
+          <Text style={styles.emptyTitle}>Crear perfil de artista</Text>
           <Text style={styles.emptyBody}>
-            Cuando un admin te asigne el rol ARTIST o crees tu perfil, aparecerá aquí.
+            Si tu cuenta tiene rol ARTIST o eres el primer perfil, puedes crear
+            tu página aquí.
           </Text>
-          <Button title="Actualizar" onPress={load} style={styles.btn} />
+          <Button title="Crear artista" onPress={createArtist} style={styles.btn} />
+          <Button title="Actualizar" variant="secondary" onPress={load} />
         </View>
       ) : null}
     </Screen>

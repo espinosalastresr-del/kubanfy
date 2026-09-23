@@ -71,6 +71,10 @@ API local: por defecto `http://10.0.2.2:8000` (emulador Android). iOS simulador:
 
 ## Builds de release (GitHub Actions)
 
+> Detalle completo: [docs/CI_MOBILE.md](../../docs/CI_MOBILE.md)
+
+## Builds de release (GitHub Actions)
+
 Workflow: `.github/workflows/mobile-release.yml`
 
 | Artefacto | Runner | Notas |

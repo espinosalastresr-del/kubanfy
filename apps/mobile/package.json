@@ -28,7 +28,8 @@
     "react-native-svg": "^15.11.1",
     "zustand": "^5.0.2",
     "react-native-fs": "^2.20.0",
-    "react-native-track-player": "^4.1.1"
+    "react-native-track-player": "^4.1.1",
+    "react-native-document-picker": "^9.3.1"
   },
   "devDependencies": {
     "@babel/core": "^7.26.0",

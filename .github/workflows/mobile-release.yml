@@ -1,13 +1,23 @@
-name: Mobile release
+name: Mobile release (APK + IPA)
+
+# Builds always run on GitHub Actions.
+# - Tags v*: release artifacts + GitHub Release
+# - workflow_dispatch: on-demand
+# - push to main (apps/mobile): Android APK (debug if no keystore)
 
 on:
   push:
     tags:
       - "v*"
+    branches:
+      - main
+    paths:
+      - "apps/mobile/**"
+      - ".github/workflows/mobile-release.yml"
   workflow_dispatch:
     inputs:
       build_ios:
-        description: "Build iOS IPA (requires Apple secrets + macos)"
+        description: "Build iOS IPA"
         type: boolean
         default: true
       build_android:
@@ -19,10 +29,18 @@ concurrency:
   group: mobile-release-${{ github.ref }}
   cancel-in-progress: true
 
+env:
+  NODE_VERSION: "20"
+  JAVA_VERSION: "17"
+  RN_VERSION: "0.76.5"
+
 jobs:
-  android-apk:
-    name: Android APK
-    if: ${{ github.event_name == 'push' || inputs.build_android }}
+  android:
+    name: Android APK (GitHub Actions)
+    if: |
+      (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')) ||
+      (github.event_name == 'workflow_dispatch' && inputs.build_android) ||
+      (github.event_name == 'push' && github.ref == 'refs/heads/main')
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -32,57 +50,84 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          node-version: ${{ env.NODE_VERSION }}
           cache: npm
           cache-dependency-path: apps/mobile/package.json
 
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: "17"
+          java-version: ${{ env.JAVA_VERSION }}
 
-      - name: Install JS deps
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install JS dependencies
         run: npm ci || npm install
 
-      - name: Check native project
-        id: native
+      - name: Ensure native android/ project
         run: |
-          if [ -d android ]; then
-            echo "present=true" >> "$GITHUB_OUTPUT"
+          if [ -d android ] && [ -f android/gradlew ]; then
+            echo "Native android/ already in repo"
           else
-            echo "present=false" >> "$GITHUB_OUTPUT"
-            echo "::warning::apps/mobile/android not generated yet. Run RN init and commit android/ folder."
+            echo "Scaffolding android/ via RN CLI in CI…"
+            npx --yes @react-native-community/cli@15.1.3 init KubanFyCI \
+              --version "${RN_VERSION}" \
+              --skip-install \
+              --pm npm \
+              --directory /tmp/KubanFyCI
+            rm -rf android
+            cp -R /tmp/KubanFyCI/android ./android
+            if [ -f android/app/build.gradle ]; then
+              sed -i 's/applicationId "[^"]*"/applicationId "com.kubanfy.app"/' android/app/build.gradle || true
+            fi
           fi
+          chmod +x android/gradlew
 
-      - name: Decode keystore
-        if: steps.native.outputs.present == 'true' && env.ANDROID_KEYSTORE_BASE64 != ''
+      - name: Decode release keystore (optional)
+        id: sign
         env:
           ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
         run: |
-          echo "$ANDROID_KEYSTORE_BASE64" | base64 -d > android/app/release.keystore
+          if [ -n "${ANDROID_KEYSTORE_BASE64}" ]; then
+            echo "$ANDROID_KEYSTORE_BASE64" | base64 -d > android/app/release.keystore
+            echo "signed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "signed=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::No ANDROID_KEYSTORE_BASE64 — building debug APK"
+          fi
 
-      - name: Assemble release APK
-        if: steps.native.outputs.present == 'true'
+      - name: Build release APK
+        if: steps.sign.outputs.signed == 'true'
         env:
           ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: |
           cd android
-          chmod +x gradlew
-          ./gradlew assembleRelease --no-daemon
+          ./gradlew assembleRelease --no-daemon --stacktrace
 
-      - name: Upload APK
-        if: steps.native.outputs.present == 'true'
+      - name: Build debug APK (no secrets)
+        if: steps.sign.outputs.signed != 'true'
+        run: |
+          cd android
+          ./gradlew assembleDebug --no-daemon --stacktrace
+
+      - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: kubanfy-android-apk
-          path: apps/mobile/android/app/build/outputs/apk/release/*.apk
+          name: kubanfy-android-${{ github.ref_name }}
+          path: |
+            apps/mobile/android/app/build/outputs/apk/release/*.apk
+            apps/mobile/android/app/build/outputs/apk/debug/*.apk
           if-no-files-found: warn
+          retention-days: 30
 
-  ios-ipa:
-    name: iOS IPA
-    if: ${{ github.event_name == 'push' || inputs.build_ios }}
+  ios:
+    name: iOS IPA (GitHub Actions)
+    if: |
+      (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')) ||
+      (github.event_name == 'workflow_dispatch' && inputs.build_ios)
     runs-on: macos-latest
     defaults:
       run:
@@ -92,63 +137,105 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          node-version: ${{ env.NODE_VERSION }}
           cache: npm
           cache-dependency-path: apps/mobile/package.json
 
-      - name: Install JS deps
+      - name: Install JS dependencies
         run: npm ci || npm install
 
-      - name: Check native project
-        id: native
+      - name: Ensure native ios/ project
         run: |
           if [ -d ios ]; then
-            echo "present=true" >> "$GITHUB_OUTPUT"
+            echo "ios/ present"
           else
-            echo "present=false" >> "$GITHUB_OUTPUT"
-            echo "::warning::apps/mobile/ios not generated yet. Run RN init on macOS and commit ios/ folder."
+            npx --yes @react-native-community/cli@15.1.3 init KubanFyCI \
+              --version "${RN_VERSION}" \
+              --skip-install \
+              --pm npm \
+              --directory /tmp/KubanFyCI
+            rm -rf ios
+            cp -R /tmp/KubanFyCI/ios ./ios
           fi
 
-      - name: Install pods
-        if: steps.native.outputs.present == 'true'
-        run: |
-          cd ios
-          pod install
+      - name: CocoaPods
+        run: cd ios && pod install
 
-      - name: Import signing (optional)
-        if: steps.native.outputs.present == 'true' && env.IOS_CERTIFICATE_P12_BASE64 != ''
+      - name: Import Apple signing
+        id: apple
         env:
           IOS_CERTIFICATE_P12_BASE64: ${{ secrets.IOS_CERTIFICATE_P12_BASE64 }}
           IOS_CERTIFICATE_PASSWORD: ${{ secrets.IOS_CERTIFICATE_PASSWORD }}
           IOS_PROVISIONING_PROFILE_BASE64: ${{ secrets.IOS_PROVISIONING_PROFILE_BASE64 }}
         run: |
-          echo "$IOS_CERTIFICATE_P12_BASE64" | base64 -d > cert.p12
+          if [ -z "${IOS_CERTIFICATE_P12_BASE64}" ] || [ -z "${IOS_PROVISIONING_PROFILE_BASE64}" ]; then
+            echo "signed=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::Missing iOS secrets — unsigned archive attempt"
+            exit 0
+          fi
+          echo "$IOS_CERTIFICATE_P12_BASE64" | base64 -d > /tmp/cert.p12
           security create-keychain -p "" build.keychain
           security default-keychain -s build.keychain
           security unlock-keychain -p "" build.keychain
-          security import cert.p12 -k build.keychain -P "$IOS_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
+          security import /tmp/cert.p12 -k build.keychain -P "${IOS_CERTIFICATE_PASSWORD}" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple: -s -k "" build.keychain
           mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles
           echo "$IOS_PROVISIONING_PROFILE_BASE64" | base64 -d > ~/Library/MobileDevice/Provisioning\ Profiles/kubanfy.mobileprovision
+          echo "signed=true" >> "$GITHUB_OUTPUT"
 
-      - name: Archive & export IPA
-        if: steps.native.outputs.present == 'true'
+      - name: Archive + export IPA
+        continue-on-error: true
         run: |
           cd ios
-          xcodebuild -workspace KubanFy.xcworkspace \
-            -scheme KubanFy \
-            -configuration Release \
-            -archivePath $PWD/build/KubanFy.xcarchive \
-            archive CODE_SIGN_STYLE=Automatic || true
-          # Export IPA requires ExportOptions.plist + valid signing; artifact step is best-effort until secrets are set.
+          WORKSPACE=$(ls -d *.xcworkspace 2>/dev/null | head -1)
+          SCHEME=$(xcodebuild -list -workspace "$WORKSPACE" 2>/dev/null | awk '/Schemes:/{getline; print; exit}' | xargs)
+          echo "Workspace=$WORKSPACE Scheme=$SCHEME"
           mkdir -p build
-          find . -name "*.ipa" -o -name "*.xcarchive" | head
+          xcodebuild -workspace "$WORKSPACE" -scheme "$SCHEME" -configuration Release \
+            -archivePath "$PWD/build/KubanFy.xcarchive" -destination "generic/platform=iOS" archive \
+            CODE_SIGNING_ALLOWED=YES || \
+          xcodebuild -workspace "$WORKSPACE" -scheme "$SCHEME" -configuration Release \
+            -archivePath "$PWD/build/KubanFy.xcarchive" -destination "generic/platform=iOS" archive \
+            CODE_SIGNING_ALLOWED=NO || true
+          cat > ExportOptions.plist << 'PLIST'
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0"><dict>
+            <key>method</key><string>ad-hoc</string>
+            <key>compileBitcode</key><false/>
+          </dict></plist>
+          PLIST
+          if [ -d build/KubanFy.xcarchive ]; then
+            xcodebuild -exportArchive -archivePath "$PWD/build/KubanFy.xcarchive" \
+              -exportPath "$PWD/build/ipa" -exportOptionsPlist ExportOptions.plist || true
+          fi
 
       - name: Upload IPA / archive
-        if: steps.native.outputs.present == 'true'
         uses: actions/upload-artifact@v4
         with:
-          name: kubanfy-ios-ipa
+          name: kubanfy-ios-${{ github.ref_name }}
           path: |
-            apps/mobile/ios/build/**/*.ipa
+            apps/mobile/ios/build/ipa/*.ipa
             apps/mobile/ios/build/**/*.xcarchive
           if-no-files-found: warn
+          retention-days: 30
+
+  github-release:
+    name: Attach artifacts to GitHub Release
+    needs: [android]
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+      - name: Publish release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/**/*.apk
+          generate_release_notes: true
+          fail_on_unmatched_files: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
