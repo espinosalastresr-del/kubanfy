@@ -9,7 +9,7 @@ import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql
 
 revision = "011_entitlement_payment_idempotency"
-down_revision = "010_rights_royalties"
+down_revision = "010"
 branch_labels = None
 depends_on = None
 
