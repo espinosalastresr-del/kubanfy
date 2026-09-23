@@ -22,7 +22,7 @@ from app.models.music import (
 from app.models.payment import PaymentOrder
 from app.models.playlist import Favorite, Playlist, PlaylistTrack
 from app.models.rbac import Permission, Role, RolePermission, UserRole
-from app.models.rights import LicenseRecord
+from app.models.rights import CollaboratorSplit, LicenseRecord, RoyaltyAccount, RoyaltyLedgerEntry, RoyaltySettlement
 from app.models.user import User
 
 __all__ = [
@@ -44,6 +44,10 @@ __all__ = [
     "CacheEntry",
     "ArtistMember",
     "LicenseRecord",
+    "CollaboratorSplit",
+    "RoyaltyAccount",
+    "RoyaltyLedgerEntry",
+    "RoyaltySettlement",
     "Playlist",
     "PlaylistTrack",
     "Favorite",

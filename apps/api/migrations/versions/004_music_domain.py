@@ -50,13 +50,6 @@ def upgrade() -> None:
         "ready", "processing", "expired", "failed", name="cache_entry_status"
     )
 
-    track_status.create(op.get_bind(), checkfirst=True)
-    release_type.create(op.get_bind(), checkfirst=True)
-    audio_quality.create(op.get_bind(), checkfirst=True)
-    quality_confidence.create(op.get_bind(), checkfirst=True)
-    source_type.create(op.get_bind(), checkfirst=True)
-    cache_entry_status.create(op.get_bind(), checkfirst=True)
-
     op.create_table(
         "releases",
         sa.Column("id", postgresql.UUID(as_uuid=True), nullable=False),

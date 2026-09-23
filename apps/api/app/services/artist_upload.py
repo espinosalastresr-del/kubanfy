@@ -17,13 +17,15 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import Settings, get_settings
-from app.core.exceptions import ForbiddenError, NotFoundError, RightsError, ValidationError
+from app.core.exceptions import ConflictError, ForbiddenError, NotFoundError, RightsError, ValidationError
 from app.core.logging import get_logger
 from app.models.artist_member import ArtistMember, ArtistMemberRole
 from app.models.music import (
     Artist,
     AudioAsset,
     AudioQuality,
+    Release,
+    ReleaseType,
     QualityConfidence,
     SourceType,
     Track,
@@ -137,10 +139,23 @@ class ArtistUploadService:
         try:
             probe = await self.validator.validate_for_storage(tmp_path)
 
+            # Every first-party upload starts inside an explicit release.
+            # This establishes Artist -> Release -> Track before publication.
+            release = Release(
+                artist_id=artist_id,
+                title=title.strip(),
+                type=ReleaseType.SINGLE,
+                status=TrackStatus.DRAFT,
+            )
+            self.session.add(release)
+            await self.session.flush()
+
             track = Track(
                 title=title.strip(),
                 slug=_slugify(f"{title}-{artist.slug}"),
                 duration=probe.duration,
+                release_id=release.id,
+                album_id=release.id,
                 status=TrackStatus.PROCESSING,
                 explicit=explicit,
                 language=language,
@@ -160,6 +175,7 @@ class ArtistUploadService:
             # Rights record
             license_rec = LicenseRecord(
                 track_id=track.id,
+                release_id=release.id,
                 artist_id=artist_id,
                 accepted_by_user_id=user_id,
                 storage_allowed=True,
@@ -241,6 +257,120 @@ class ArtistUploadService:
             except OSError:
                 pass
 
+    async def replace_track_audio(
+        self,
+        *,
+        user_id: UUID,
+        artist_id: UUID,
+        track_id: UUID,
+        file_bytes: bytes,
+        filename: str,
+        accept_license: bool = True,
+    ) -> UploadResult:
+        """Safely replace the owned master and derivatives.
+
+        New assets are written inactive. They become active only after the new
+        master, LOW and MEDIUM derivatives have all passed validation. The old
+        active generation is never disabled on a partial failure.
+        """
+        if not self.settings.feature_artist_publishing:
+            raise ForbiddenError("Artist publishing is disabled")
+        await self.assert_can_edit(user_id, artist_id)
+        track = await self.session.get(Track, track_id)
+        if track is None or track.release_id is None:
+            raise NotFoundError("Track not found")
+        release = await self.session.get(Release, track.release_id)
+        if release is None or release.artist_id != artist_id:
+            raise RightsError("Track does not belong to this artist")
+        if track.status == TrackStatus.DELETED:
+            raise ValidationError("Deleted track cannot be replaced")
+        if not accept_license:
+            raise RightsError("License must be accepted before replacement")
+
+        ext = Path(filename).suffix.lstrip(".").lower()
+        if ext not in self.settings.allowed_audio_ext_list:
+            raise ValidationError(f"File extension '.{ext}' not allowed")
+        max_bytes = self.settings.max_upload_size_mb * 1024 * 1024
+        if len(file_bytes) > max_bytes:
+            raise ValidationError(f"File exceeds max size of {self.settings.max_upload_size_mb} MB")
+
+        with tempfile.NamedTemporaryFile(suffix=f".{ext}", delete=False) as tmp:
+            tmp.write(file_bytes)
+            tmp_path = Path(tmp.name)
+        written_keys: list[str] = []
+        try:
+            probe = await self.validator.validate_for_storage(tmp_path)
+            old_assets = list((await self.session.scalars(
+                select(AudioAsset).where(AudioAsset.track_id == track_id, AudioAsset.is_active.is_(True))
+            )).all())
+            next_version = max((a.version for a in old_assets), default=0) + 1
+            generation = f"v{next_version}"
+            master_key = f"artists/{artist_id}/tracks/{track_id}/{generation}/master/{probe.content_hash[:16]}.{ext or 'bin'}"
+            await self.storage.put(master_key, file_bytes, bucket=StorageBucket.PERMANENT,
+                                    content_type=f"audio/{probe.codec or ext or 'mpeg'}")
+            written_keys.append(master_key)
+
+            master_asset = AudioAsset(
+                track_id=track_id, storage_key=master_key, codec=probe.codec,
+                bitrate=(probe.bitrate // 1000) if probe.bitrate else None,
+                bit_depth=probe.bit_depth, sample_rate=probe.sample_rate,
+                channels=probe.channels, duration=probe.duration, size=probe.size,
+                quality=AudioQuality.LOSSLESS if (probe.codec or "").lower() in
+                ("flac", "alac", "pcm_s16le", "pcm_s24le") else AudioQuality.MEDIUM,
+                quality_confidence=QualityConfidence.VERIFIED,
+                source_type=SourceType.ARTIST_UPLOAD, content_hash=probe.content_hash,
+                version=next_version, is_active=False,
+            )
+            self.session.add(master_asset)
+            await self.session.flush()
+
+            derivative_outputs = await self.transcoder.generate_derivatives(
+                tmp_path, qualities=[AudioQuality.LOW, AudioQuality.MEDIUM]
+            )
+            derivative_assets: list[AudioAsset] = []
+            for output in derivative_outputs:
+                key = f"artists/{artist_id}/tracks/{track_id}/{generation}/{output.quality.value}/{output.probe.content_hash[:16]}.m4a"
+                data = output.path.read_bytes()
+                await self.storage.put(key, data, bucket=StorageBucket.PERMANENT,
+                                        content_type="audio/mp4")
+                written_keys.append(key)
+                asset = AudioAsset(
+                    track_id=track_id, storage_key=key, codec=output.probe.codec,
+                    bitrate=output.bitrate_kbps, sample_rate=output.probe.sample_rate,
+                    channels=output.probe.channels, duration=output.probe.duration,
+                    size=output.probe.size, quality=output.quality,
+                    quality_confidence=QualityConfidence.VERIFIED,
+                    source_type=SourceType.DERIVATIVE, content_hash=output.probe.content_hash,
+                    version=next_version, is_active=False,
+                )
+                self.session.add(asset)
+                derivative_assets.append(asset)
+            await self.session.flush()
+
+            if len(derivative_assets) != 2 or {a.quality for a in derivative_assets} != {AudioQuality.LOW, AudioQuality.MEDIUM}:
+                raise ValidationError("Replacement derivatives are incomplete")
+
+            for asset in old_assets:
+                asset.is_active = False
+            master_asset.is_active = True
+            for asset in derivative_assets:
+                asset.is_active = True
+            track.duration = probe.duration
+            await self.session.flush()
+            return UploadResult(track_id=track.id, status=track.status.value,
+                                master_storage_key=master_key, content_hash=probe.content_hash,
+                                duration=probe.duration, job_id=None)
+        except Exception:
+            # DB rollback by request transaction leaves old assets active. New
+            # objects are deliberately retained for asynchronous orphan cleanup.
+            raise
+        finally:
+            try:
+                tmp_path.unlink(missing_ok=True)
+            except OSError:
+                pass
+
+
     async def publish_track(self, *, user_id: UUID, track_id: UUID, artist_id: UUID) -> Track:
         await self.assert_can_edit(user_id, artist_id)
         track = await self.session.get(Track, track_id)
@@ -251,10 +381,55 @@ class ArtistUploadService:
                 return track
             raise ValidationError(f"Cannot publish track in status {track.status.value}")
 
-        # Require active license
+        # Validate the complete first-party ownership chain:
+        # Artist -> Release -> Track -> AudioAsset -> LicenseRecord.
+        release = await self.session.get(Release, track.release_id) if track.release_id else None
+        if release is None or release.artist_id != artist_id:
+            raise RightsError("Track must belong to a release owned by the publishing artist")
+
+        artist_link = await self.session.scalar(
+            select(TrackArtist).where(
+                TrackArtist.track_id == track_id,
+                TrackArtist.artist_id == artist_id,
+            )
+        )
+        if artist_link is None:
+            raise RightsError("Track artist ownership record is required to publish")
+
+        asset = await self.session.scalar(
+            select(AudioAsset).where(AudioAsset.track_id == track_id, AudioAsset.is_active.is_(True)).order_by(AudioAsset.created_at.desc()).limit(1)
+        )
+        if asset is None or not asset.storage_key or not asset.content_hash:
+            raise ValidationError(
+                "A validated audio asset with storage key and content hash is required to publish"
+            )
+        if asset.source_type != SourceType.ARTIST_UPLOAD:
+            raise RightsError(
+                "Published artist catalog tracks require an artist-uploaded audio asset"
+            )
+
+        # Publication is allowed only after the offline-friendly playback
+        # derivatives are actually present and verified.
+        derivative_qualities = await self.session.scalars(
+            select(AudioAsset.quality).where(
+                AudioAsset.track_id == track_id,
+                AudioAsset.is_active.is_(True),
+                AudioAsset.source_type == SourceType.DERIVATIVE,
+                AudioAsset.quality.in_([AudioQuality.LOW, AudioQuality.MEDIUM]),
+                AudioAsset.content_hash.is_not(None),
+                AudioAsset.storage_key != "",
+            )
+        )
+        if set(derivative_qualities.all()) != {AudioQuality.LOW, AudioQuality.MEDIUM}:
+            raise ValidationError(
+                "LOW and MEDIUM verified derivatives are required before publication"
+            )
+
         license_rec = await self.session.scalar(
             select(LicenseRecord).where(
                 LicenseRecord.track_id == track_id,
+                LicenseRecord.release_id == release.id,
+                LicenseRecord.artist_id == artist_id,
                 LicenseRecord.status == LicenseStatus.ACTIVE,
             )
         )
@@ -262,6 +437,7 @@ class ArtistUploadService:
             raise RightsError("Active streaming license required to publish")
 
         track.status = TrackStatus.PUBLISHED
+        release.status = TrackStatus.PUBLISHED
         await self.session.flush()
         logger.info("track_published", track_id=str(track_id), user_id=str(user_id))
         return track

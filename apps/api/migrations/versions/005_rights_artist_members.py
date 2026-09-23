@@ -24,8 +24,6 @@ def upgrade() -> None:
         "owner", "manager", "editor", "analyst", name="artist_member_role"
     )
     license_status = sa.Enum("active", "revoked", "expired", name="license_status")
-    artist_member_role.create(op.get_bind(), checkfirst=True)
-    license_status.create(op.get_bind(), checkfirst=True)
 
     op.create_table(
         "artist_members",

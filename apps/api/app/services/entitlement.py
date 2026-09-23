@@ -41,6 +41,7 @@ class EntitlementService:
         source: EntitlementSource = EntitlementSource.MANUAL,
         expires_at: datetime | None = None,
         metadata: dict | None = None,
+        payment_order_id: UUID | None = None,
     ) -> Entitlement:
         ent = Entitlement(
             user_id=user_id,
@@ -50,6 +51,7 @@ class EntitlementService:
             status=EntitlementStatus.ACTIVE,
             expires_at=expires_at,
             metadata_json=metadata or {},
+            payment_order_id=payment_order_id,
         )
         self.session.add(ent)
         await self.session.flush()
@@ -60,6 +62,38 @@ class EntitlementService:
             source=source.value,
         )
         return ent
+
+    async def grant_payment_entitlement(
+        self,
+        *,
+        user_id: UUID,
+        payment_order_id: UUID,
+        scope_type: EntitlementScope,
+        source: EntitlementSource,
+        expires_at: datetime | None = None,
+        metadata: dict | None = None,
+    ) -> Entitlement:
+        """Grant an entitlement once for a payment order."""
+        payment_ref = str(payment_order_id)
+        existing = await self.session.scalar(
+            select(Entitlement).where(
+                Entitlement.user_id == user_id,
+                Entitlement.scope_type == scope_type,
+                Entitlement.payment_order_id == payment_order_id,
+            )
+        )
+        if existing is not None:
+            return existing
+        payload = dict(metadata or {})
+        payload["payment_order_id"] = payment_ref
+        return await self.grant(
+            user_id,
+            scope_type,
+            source=source,
+            expires_at=expires_at,
+            metadata=payload,
+            payment_order_id=payment_order_id,
+        )
 
     async def revoke(self, entitlement_id: UUID) -> Entitlement:
         ent = await self.session.get(Entitlement, entitlement_id)
@@ -80,7 +114,7 @@ class EntitlementService:
         )
         active: list[Entitlement] = []
         for ent in result.scalars().all():
-            if ent.expires_at and ent.expires_at.replace(tzinfo=UTC) < now:
+            if ent.expires_at and ent.expires_at.replace(tzinfo=UTC) <= now:
                 ent.status = EntitlementStatus.EXPIRED
                 continue
             active.append(ent)

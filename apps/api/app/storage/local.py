@@ -86,9 +86,19 @@ class LocalStorage(StorageProvider):
         bucket: StorageBucket = StorageBucket.CACHE,
         chunk_size: int = 65536,
     ) -> AsyncIterator[bytes]:
-        data = await self.get(key, bucket=bucket)
-        for i in range(0, len(data), chunk_size):
-            yield data[i : i + chunk_size]
+        path = self._path(key, bucket)
+        if not path.is_file():
+            raise StorageError("Object not found", status_code=404)
+
+        f = await asyncio.to_thread(path.open, "rb")
+        try:
+            while True:
+                chunk = await asyncio.to_thread(f.read, chunk_size)
+                if not chunk:
+                    break
+                yield chunk
+        finally:
+            await asyncio.to_thread(f.close)
 
     async def delete(
         self,

@@ -62,6 +62,16 @@ async def test_stream(storage: LocalStorage) -> None:
 
 
 @pytest.mark.asyncio
+async def test_size_and_range(storage: LocalStorage) -> None:
+    payload = b"0123456789"
+    await storage.put("range.bin", payload)
+
+    assert await storage.size("range.bin") == 10
+    assert await storage.get_range("range.bin", 2, 5) == b"2345"
+    assert await storage.get_range("range.bin", 8, 9) == b"89"
+
+
+@pytest.mark.asyncio
 async def test_signed_url(storage: LocalStorage) -> None:
     await storage.put("a.mp3", b"data")
     signed = await storage.signed_url("a.mp3", expires_in=60)

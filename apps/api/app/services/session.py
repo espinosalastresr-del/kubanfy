@@ -210,10 +210,15 @@ class SessionService:
             raise AuthError("Invalid refresh token")
         if sess.status != SessionStatus.ACTIVE:
             raise AuthError("Session has been revoked")
-        if sess.expires_at.replace(tzinfo=UTC) < datetime.now(UTC):
+        now = datetime.now(UTC)
+        if sess.expires_at.replace(tzinfo=UTC) <= now:
             sess.status = SessionStatus.EXPIRED
             await self.db.flush()
             raise AuthError("Session expired")
-        sess.last_activity_at = datetime.now(UTC)
+        if sess.last_activity_at.replace(tzinfo=UTC) + timedelta(minutes=self.settings.session_idle_timeout_minutes) <= now:
+            sess.status = SessionStatus.EXPIRED
+            await self.db.flush()
+            raise AuthError("Session idle timeout")
+        sess.last_activity_at = now
         await self.db.flush()
         return sess
