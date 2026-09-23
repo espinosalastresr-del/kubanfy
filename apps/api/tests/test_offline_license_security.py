@@ -1,4 +1,4 @@
-from datetime import UTC, datetime, timedelta
+from datetime import timedelta
 
 import pytest
 from cryptography.hazmat.primitives import serialization
