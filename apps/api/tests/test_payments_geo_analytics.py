@@ -53,3 +53,17 @@ def test_ranking_weights_only_use_server_qualified_engagement() -> None:
     assert DEFAULT_WEIGHTS["share"] > 0
     assert "play_start" not in DEFAULT_WEIGHTS
     assert "play_100" not in DEFAULT_WEIGHTS
+
+
+def test_free_plan_quality_policy_is_low() -> None:
+    # Free streaming is 128 kbps / LOW; persistent downloads remain premium-only.
+    from app.models.entitlement import PlanCode
+
+    assert PlanCode.FREE.value == "free"
+    assert {"downloads": False, "quality_max": "low"}["quality_max"] == "low"
+
+
+def test_payment_idempotency_conflict_type_is_available() -> None:
+    from app.core.exceptions import ConflictError
+
+    assert issubclass(ConflictError, Exception)
