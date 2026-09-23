@@ -294,6 +294,22 @@ class ArtistUploadService:
                 "Published artist catalog tracks require an artist-uploaded audio asset"
             )
 
+        # Publication is allowed only after the offline-friendly playback
+        # derivatives are actually present and verified.
+        derivative_qualities = await self.session.scalars(
+            select(AudioAsset.quality).where(
+                AudioAsset.track_id == track_id,
+                AudioAsset.source_type == SourceType.DERIVATIVE,
+                AudioAsset.quality.in_([AudioQuality.LOW, AudioQuality.MEDIUM]),
+                AudioAsset.content_hash.is_not(None),
+                AudioAsset.storage_key != "",
+            )
+        )
+        if set(derivative_qualities.all()) != {AudioQuality.LOW, AudioQuality.MEDIUM}:
+            raise ValidationError(
+                "LOW and MEDIUM verified derivatives are required before publication"
+            )
+
         license_rec = await self.session.scalar(
             select(LicenseRecord).where(
                 LicenseRecord.track_id == track_id,
