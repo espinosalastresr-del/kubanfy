@@ -15,6 +15,7 @@ from app.models.artist_member import ArtistMember, ArtistMemberRole
 from app.models.music import Artist, Release, Track, TrackArtist, TrackStatus
 from app.schemas.artist import (
     ArtistCreateRequest,
+    ArtistUpdateRequest,
     ArtistResponse,
     PublicReleaseResponse,
     PublicTrackResponse,
@@ -82,7 +83,7 @@ async def my_artists(user: CurrentUser, session: DbSession) -> list[ArtistRespon
 @router.patch("/{artist_id}", response_model=ArtistResponse)
 async def update_artist(
     artist_id: UUID,
-    body: ArtistCreateRequest,
+    body: ArtistUpdateRequest,
     user: CurrentUser,
     session: DbSession,
 ) -> ArtistResponse:
