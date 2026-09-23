@@ -23,13 +23,10 @@ logger = get_logger(__name__)
 
 # Configurable weights (can move to system_settings later)
 DEFAULT_WEIGHTS = {
-    "qualified_play": 3.0,
-    "play_start": 1.0,
-    "play_100": 2.0,
-    "favorite": 2.5,
-    "playlist_add": 2.0,
+    # Only server-qualified engagement is authoritative for discovery.
+    "play_qualified": 3.0,
     "download_complete": 1.5,
-    "skip": -0.5,
+    "share": 1.5,
 }
 
 
