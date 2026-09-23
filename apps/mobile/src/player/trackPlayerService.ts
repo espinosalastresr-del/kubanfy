@@ -89,9 +89,7 @@ export async function cleanupOfflinePlaybackTemps(): Promise<void> {
       entries
         .filter((entry: {name: string}) =>
           entry.name.endsWith('.playback') ||
-          entry.name.endsWith('.playback.part') ||
-          entry.name.endsWith('.kfy.part') ||
-          entry.name.endsWith('.meta.part'),
+          entry.name.endsWith('.playback.part'),
         )
         .map((entry: {path: string}) =>
           RNFS.unlink(entry.path).catch(() => undefined),
