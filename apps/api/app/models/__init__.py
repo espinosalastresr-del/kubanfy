@@ -20,6 +20,7 @@ from app.models.music import (
     TrackArtist,
 )
 from app.models.payment import PaymentOrder
+from app.models.offline import OfflineLicense
 from app.models.playlist import Favorite, Playlist, PlaylistTrack
 from app.models.rbac import Permission, Role, RolePermission, UserRole
 from app.models.rights import CollaboratorSplit, LicenseRecord, RoyaltyAccount, RoyaltyLedgerEntry, RoyaltySettlement
@@ -56,6 +57,7 @@ __all__ = [
     "Subscription",
     "Entitlement",
     "PaymentOrder",
+    "OfflineLicense",
     "AnalyticsEvent",
     "AnalyticsDaily",
     "RankingSnapshot",
