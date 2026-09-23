@@ -34,6 +34,7 @@ export function verifyOfflineLicense(
     trackId: string;
     quality: string;
     deviceId: string;
+    userId: string;
     contentHash?: string;
     publicKeyPem?: string;
     nowMs?: number;
@@ -73,7 +74,8 @@ export function verifyOfflineLicense(
   if (
     claims.track_id !== expected.trackId ||
     claims.quality !== expected.quality ||
-    claims.device_id !== expected.deviceId
+    claims.device_id !== expected.deviceId ||
+    claims.sub !== expected.userId
   ) {
     throw new Error('Offline license track binding mismatch');
   }
