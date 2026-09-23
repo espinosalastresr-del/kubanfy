@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import Settings, get_settings
 from app.core.exceptions import AuthError, NotFoundError, ValidationError
-from app.core.security import create_access_token, decode_token
+from app.core.security import create_offline_license_token, decode_offline_license_token
 from app.models.device import Device, DeviceStatus
 from app.models.music import AudioAsset, AudioQuality, SourceType, Track
 from app.models.offline import OfflineLicense
@@ -80,7 +80,7 @@ class OfflineLicenseService:
         self.session.add(license_row)
         await self.session.flush()
 
-        token = create_access_token(
+        token = create_offline_license_token(
             str(user_id),
             extra_claims={
                 "type": "offline_license",
@@ -106,7 +106,7 @@ class OfflineLicenseService:
         device_id: str,
     ) -> OfflineLicense:
         try:
-            payload = decode_token(token, self.settings)
+            payload = decode_offline_license_token(token, self.settings)
         except ValueError as exc:
             raise AuthError("Invalid or expired offline license") from exc
         if payload.get("type") != "offline_license" or payload.get("sub") != str(user_id):
