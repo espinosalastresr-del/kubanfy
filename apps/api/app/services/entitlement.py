@@ -164,7 +164,7 @@ class EntitlementService:
             raise EntitlementRequiredError("Premium entitlement required for downloads")
 
     async def require_quality_access(self, user_id: UUID, quality: str) -> None:
-        """Enforce the plan's maximum streaming/download quality."""
+        """Enforce the maximum quality explicitly granted by the active entitlement."""
         order = {"low": 0, "medium": 1, "lossless": 2}
         requested = quality.lower()
         if requested not in order:
@@ -174,11 +174,10 @@ class EntitlementService:
         for ent in await self.list_active(user_id):
             if ent.scope_type != EntitlementScope.USER_PREMIUM:
                 continue
-            plan_code = (ent.metadata_json or {}).get("plan_code")
-            if plan_code in {PlanCode.PREMIUM.value, PlanCode.FAMILY.value, PlanCode.STUDENT.value}:
-                max_quality = "lossless"
-                break
-            max_quality = "medium"
+            features = ent.metadata_json or {}
+            granted = str(features.get("quality_max", "")).lower()
+            if granted in order and order[granted] > order[max_quality]:
+                max_quality = granted
 
         if order[requested] > order[max_quality]:
             raise EntitlementRequiredError(
