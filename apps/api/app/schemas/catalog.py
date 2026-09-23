@@ -24,6 +24,11 @@ class ReleaseUpdateRequest(BaseModel):
     release_date: datetime | None = None
 
 
+class ReleaseScheduleRequest(BaseModel):
+    publish_at: datetime | None = None
+    unpublish_at: datetime | None = None
+
+
 class ReleaseResponse(BaseModel):
     id: UUID
     artist_id: UUID
@@ -33,6 +38,8 @@ class ReleaseResponse(BaseModel):
     release_date: datetime | None
     status: str
     description: str | None
+    scheduled_publish_at: datetime | None = None
+    scheduled_unpublish_at: datetime | None = None
 
     model_config = {"from_attributes": True}
 
