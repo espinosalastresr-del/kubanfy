@@ -16,7 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import Settings, get_settings
 from app.core.exceptions import ConflictError, ForbiddenError, NotFoundError, ValidationError
 from app.core.logging import get_logger
-from app.models.entitlement import EntitlementScope, EntitlementSource, Plan, PlanPrice
+from app.models.entitlement import EntitlementScope, EntitlementSource, Plan, PlanPrice, Plan, PlanPrice
 from app.models.payment import PaymentMethod, PaymentOrder, PaymentStatus
 from app.services.entitlement import EntitlementService
 
@@ -172,7 +172,7 @@ class PaymentService:
         order.verified_at = datetime.now(UTC)
         await self.session.flush()
 
-        if grant_premium and order.plan_code in ("premium", "family", "student"):
+        if grant_premium and order.plan_code:
             ent_svc = EntitlementService(self.session)
             await ent_svc.grant_payment_entitlement(
                 user_id=order.user_id,
@@ -189,7 +189,7 @@ class PaymentService:
     async def reject(
         self, order_id: UUID, admin_user_id: UUID, *, reason: str | None = None
     ) -> PaymentOrder:
-        order = await self.session.get(PaymentOrder, order_id)
+        order = await self.session.scalar(select(PaymentOrder).where(PaymentOrder.id == order_id).with_for_update())
         if order is None:
             raise NotFoundError("Payment order not found")
         order.status = PaymentStatus.REJECTED
