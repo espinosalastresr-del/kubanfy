@@ -113,7 +113,7 @@ async function downloadWithResume(
   await ensureDir(RNFS, dir);
 
   const part = job.tempPath || `${dir}/${job.trackId}_${job.quality}.audio.part`;
-  const final = job.finalPath || `${dir}/${job.trackId}_${job.quality}.myapp`;
+  const final = job.finalPath || `${dir}/${job.trackId}_${job.quality}.kfy`;
   const metadata = `${final}.meta`;
   await updateJob(job.id, {tempPath: part, finalPath: final});
 
@@ -130,7 +130,7 @@ async function downloadWithResume(
           plaintextSize?: number;
         };
         if (
-          envelope.format !== 'kubanfy-aes256gcm-v1' ||
+          envelope.format !== 'kubanfy-kfy-aes256gcm-v1' ||
           envelope.contentHash !== job.contentHash ||
           !Number.isFinite(Number(envelope.plaintextSize))
         ) {
