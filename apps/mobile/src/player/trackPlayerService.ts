@@ -8,6 +8,7 @@
 
 import type {OfflineTrackMeta, PlayerTrack} from '../offline/types';
 import {decryptOfflineFile} from '../offline/offlineCrypto';
+import {verifyOfflineLicense} from '../offline/offlineLicenseVerifier';
 
 export type EngineStatus = 'idle' | 'loading' | 'playing' | 'paused' | 'stopped' | 'error';
 
@@ -193,6 +194,11 @@ export async function enginePlayOffline(track: OfflineTrackMeta): Promise<void> 
   const RNFS = await (async () => require('react-native-fs'))();
   await cleanupEphemeralPlayback();
   const encryptedPath = track.localUri.replace(/^file:\/\//, '');
+  verifyOfflineLicense(track.offlineLicense || '', {
+    trackId: track.trackId,
+    quality: track.quality,
+    contentHash: track.contentHash,
+  });
   const outputPath = encryptedPath + '.playback';
   await decryptOfflineFile({
     RNFS,
