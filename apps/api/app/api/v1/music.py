@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from uuid import UUID
+
 from fastapi import APIRouter, Query, Request
 
 from app.services.anti_abuse import AntiAbuseService
@@ -148,3 +150,75 @@ async def music_search(
         )
         for name, meta in results
     ]
+
+
+@router.get("/content/{track_id}")
+async def music_content_stream(
+    track_id: UUID,
+    request: Request,
+    session: DbSession,
+    user: CurrentUser,
+    quality: str = Query("medium"),
+):
+    """Stream audio with HTTP Range (resume). Uses cache object when available."""
+    from fastapi.responses import Response, StreamingResponse
+
+    from app.services.http_range import parse_bytes_range
+    from app.storage import StorageBucket, get_storage
+    from app.core.exceptions import NotFoundError, ValidationError
+
+    engine = MusicEngine(session, provider_manager=_manager)
+    try:
+        result = await engine.download_by_track_id(track_id=track_id, quality=quality)
+    except Exception as exc:
+        raise NotFoundError("Audio not available") from exc
+
+    storage_key = result.storage_key
+    if not storage_key:
+        raise ValidationError("No local object; use POST /music/download for signed URL")
+
+    storage = get_storage()
+    if not hasattr(storage, "size") or not hasattr(storage, "get_range"):
+        raise ValidationError("Range streaming not supported on this storage backend")
+
+    total = await storage.size(storage_key, bucket=StorageBucket.CACHE)
+    range_header = request.headers.get("range") or request.headers.get("Range")
+    br = parse_bytes_range(range_header, total)
+
+    if range_header and br is None:
+        return Response(status_code=416, headers={"Content-Range": f"bytes */{total}"})
+
+    if br is None:
+        data = await storage.get(storage_key, bucket=StorageBucket.CACHE)
+
+        async def full():
+            yield data
+
+        return StreamingResponse(
+            full(),
+            media_type="audio/mpeg",
+            headers={
+                "Accept-Ranges": "bytes",
+                "Content-Length": str(total),
+                "Cache-Control": "private, max-age=60",
+            },
+        )
+
+    data = await storage.get_range(
+        storage_key, br.start, br.end, bucket=StorageBucket.CACHE
+    )
+
+    async def partial():
+        yield data
+
+    return StreamingResponse(
+        partial(),
+        status_code=206,
+        media_type="audio/mpeg",
+        headers={
+            "Accept-Ranges": "bytes",
+            "Content-Range": br.content_range_header(),
+            "Content-Length": str(br.length),
+            "Cache-Control": "private, max-age=60",
+        },
+    )

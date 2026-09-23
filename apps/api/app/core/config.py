@@ -170,6 +170,7 @@ class Settings(BaseSettings):
     # -------------------------------------------------------------------------
     # CORS
     # -------------------------------------------------------------------------
+    allowed_hosts: str = Field(default="*", description="Comma-separated hosts or *")
     cors_origins: str = "http://localhost:3000,http://localhost:3001,http://localhost:8081"
 
     # -------------------------------------------------------------------------

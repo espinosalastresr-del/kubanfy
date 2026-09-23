@@ -100,6 +100,42 @@ class LocalStorage(StorageProvider):
         if path.is_file():
             await asyncio.to_thread(path.unlink)
 
+
+    async def get_range(
+        self,
+        key: str,
+        start: int,
+        end: int,
+        *,
+        bucket: StorageBucket = StorageBucket.CACHE,
+    ) -> bytes:
+        """Read inclusive byte range [start, end]."""
+        path = self._path(key, bucket)
+        if not path.is_file():
+            raise StorageError("Object not found", status_code=404)
+
+        def _read() -> bytes:
+            size = path.stat().st_size
+            if start < 0 or start >= size:
+                raise StorageError("Invalid range", status_code=416)
+            length = min(end, size - 1) - start + 1
+            with path.open("rb") as f:
+                f.seek(start)
+                return f.read(length)
+
+        return await asyncio.to_thread(_read)
+
+    async def size(
+        self,
+        key: str,
+        *,
+        bucket: StorageBucket = StorageBucket.CACHE,
+    ) -> int:
+        path = self._path(key, bucket)
+        if not path.is_file():
+            raise StorageError("Object not found", status_code=404)
+        return await asyncio.to_thread(lambda: path.stat().st_size)
+
     async def exists(
         self,
         key: str,
