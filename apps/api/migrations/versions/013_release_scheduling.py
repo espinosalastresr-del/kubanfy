@@ -8,7 +8,7 @@ from alembic import op
 import sqlalchemy as sa
 
 revision = "013_release_scheduling"
-down_revision = "012_offline_licenses"
+down_revision = "012"
 branch_labels = None
 depends_on = None
 
