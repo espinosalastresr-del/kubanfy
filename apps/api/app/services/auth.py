@@ -145,7 +145,7 @@ class AuthService:
     ) -> tuple[TokenResponse, str]:
         access = create_access_token(
             str(user.id),
-            extra_claims={"email": user.email, "status": user.status.value},
+            extra_claims={"email": user.email, "status": user.status.value, **({"device_id": device_id} if device_id else {})},
             settings=self.settings,
         )
         refresh = create_refresh_token(
