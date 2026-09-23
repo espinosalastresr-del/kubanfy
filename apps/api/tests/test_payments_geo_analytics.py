@@ -48,6 +48,8 @@ def test_analytics_known_events_cover_core() -> None:
     assert required.issubset(KNOWN_EVENT_TYPES)
 
 
-def test_ranking_weights_include_qualified_play() -> None:
-    assert DEFAULT_WEIGHTS["qualified_play"] > DEFAULT_WEIGHTS["play_start"]
-    assert DEFAULT_WEIGHTS["skip"] < 0
+def test_ranking_weights_only_use_server_qualified_engagement() -> None:
+    assert DEFAULT_WEIGHTS["play_qualified"] > DEFAULT_WEIGHTS["download_complete"]
+    assert DEFAULT_WEIGHTS["share"] > 0
+    assert "play_start" not in DEFAULT_WEIGHTS
+    assert "play_100" not in DEFAULT_WEIGHTS
