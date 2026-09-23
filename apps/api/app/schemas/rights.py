@@ -30,7 +30,7 @@ class RoyaltyLedgerRequest(BaseModel):
     direction: str = "credit"
     source_id: UUID | None = None
     currency: str = "CUP"
-    metadata: dict = {}
+    metadata: dict = Field(default_factory=dict)
 
 class RoyaltyLedgerResponse(BaseModel):
     id: UUID
