@@ -395,21 +395,10 @@ class MusicEngine:
         if track.status != TrackStatus.PUBLISHED:
             raise NotFoundError("Track is not published")
 
-        cache_svc = CacheService(self.session, storage=self.storage, settings=self.settings)
-        hit = await cache_svc.lookup_by_track(track_id=track_id, quality=aq)
-        if hit is not None:
-            signed = await cache_svc.signed_delivery(hit)
-            return DownloadResult(
-                signed_url=signed,
-                storage_key=hit.storage_key,
-                quality=quality,
-                from_cache=True,
-                track_id=track_id,
-                content_hash=hit.content_hash,
-                expires_at=hit.expires_at,
-            )
-
-        # First-party catalog playback must use its owned permanent asset.
+        # First-party catalog playback must use its current owned permanent asset.
+        # Do not serve a provider/cache object here: a cached copy can outlive an
+        # asset replacement, rights change, takedown, or content-hash/version switch.
+        # The permanent asset is the source of truth for first-party tracks.
         # ProviderTrack is metadata/reference only and must never replace it.
         asset = await self.session.scalar(
             select(AudioAsset)
