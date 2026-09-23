@@ -71,6 +71,7 @@ services:
       context: ../apps/api
       dockerfile: Dockerfile
     container_name: kubanfy-api
+    command: ["sh", "scripts/entrypoint.sh"]
     environment:
       ENVIRONMENT: staging
       DATABASE_URL: postgresql+asyncpg://kubanfy:kubanfy@postgres:5432/kubanfy
@@ -78,6 +79,7 @@ services:
       JWT_SECRET: change-me-staging-must-be-long-enough-32chars
       STORAGE_BACKEND: local
       LOCAL_STORAGE_PATH: /data/storage
+      CORS_ORIGINS: "*"
     ports:
       - "8000:8000"
     volumes:
@@ -91,8 +93,8 @@ services:
       test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8000/health/live"]
       interval: 15s
       timeout: 5s
-      retries: 5
-      start_period: 25s
+      retries: 8
+      start_period: 40s
     restart: unless-stopped
 
   worker:

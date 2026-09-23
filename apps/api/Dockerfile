@@ -26,6 +26,7 @@ COPY app ./app
 COPY migrations ./migrations
 COPY alembic.ini ./
 COPY scripts ./scripts
+RUN chmod +x scripts/entrypoint.sh || true
 
 RUN useradd --create-home --uid 10001 kubanfy && chown -R kubanfy:kubanfy /app
 USER kubanfy

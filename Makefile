@@ -83,3 +83,15 @@ clean:
 	find $(ROOT) -type d -name .ruff_cache -exec rm -rf {} + 2>/dev/null || true
 	find $(ROOT) -type d -name "*.egg-info" -exec rm -rf {} + 2>/dev/null || true
 	rm -rf $(API_DIR)/.coverage $(API_DIR)/htmlcov
+
+
+.PHONY: staging-up staging-down load-smoke
+
+staging-up:
+	docker compose -f infrastructure/docker-compose.yml --profile staging up -d --build
+
+staging-down:
+	docker compose -f infrastructure/docker-compose.yml --profile staging down
+
+load-smoke:
+	k6 run -e BASE_URL=$${BASE_URL:-http://127.0.0.1:8000} loadtests/k6_smoke.js
