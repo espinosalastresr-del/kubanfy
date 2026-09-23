@@ -24,3 +24,9 @@ k6 run -e BASE_URL=http://127.0.0.1:8000 -e VUS=50 -e DURATION=2m loadtests/k6_s
 - p95 latencia `< 1.5s` en smoke
 
 Añadir escenarios de login/download cuando existan usuarios de prueba en staging.
+
+## Auth smoke (opcional)
+
+```bash
+k6 run -e BASE_URL=http://127.0.0.1:8000 -e EMAIL=admin@test.local -e PASSWORD='...' loadtests/k6_auth_smoke.js
+```

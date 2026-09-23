@@ -95,3 +95,7 @@ staging-down:
 
 load-smoke:
 	k6 run -e BASE_URL=$${BASE_URL:-http://127.0.0.1:8000} loadtests/k6_smoke.js
+
+.PHONY: backup-db
+backup-db:
+	./infrastructure/scripts/backup_postgres.sh
