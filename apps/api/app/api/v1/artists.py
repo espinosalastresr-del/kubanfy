@@ -77,6 +77,37 @@ async def my_artists(user: CurrentUser, session: DbSession) -> list[ArtistRespon
     return [ArtistResponse.model_validate(a) for a in result.scalars().all()]
 
 
+
+
+@router.patch("/{artist_id}", response_model=ArtistResponse)
+async def update_artist(
+    artist_id: UUID,
+    body: ArtistCreateRequest,
+    user: CurrentUser,
+    session: DbSession,
+) -> ArtistResponse:
+    artist = await session.get(Artist, artist_id)
+    if artist is None:
+        raise NotFoundError("Artist not found")
+    member = await session.scalar(select(ArtistMember).where(
+        ArtistMember.artist_id == artist_id,
+        ArtistMember.user_id == user.id,
+    ))
+    if member is None or member.role not in (ArtistMemberRole.OWNER, ArtistMemberRole.MANAGER):
+        raise NotFoundError("Artist not found")
+    artist.name = body.name.strip()
+    artist.bio = body.bio
+    artist.country = body.country.upper()
+    new_slug = _slugify(artist.name)
+    if new_slug != artist.slug:
+        conflict = await session.scalar(select(Artist).where(Artist.slug == new_slug, Artist.id != artist.id))
+        if conflict:
+            raise ConflictError("Artist slug already exists")
+        artist.slug = new_slug
+    await session.flush()
+    return ArtistResponse.model_validate(artist)
+
+
 @router.get("/{artist_id}", response_model=ArtistResponse)
 async def get_artist(artist_id: UUID, session: DbSession) -> ArtistResponse:
     artist = await session.get(Artist, artist_id)
