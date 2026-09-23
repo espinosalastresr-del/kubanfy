@@ -73,3 +73,25 @@ volumes:
   kubanfy_pgdata:
   kubanfy_redis:
   kubanfy_minio:
+
+  # --- Staging-oriented API (profile: staging) ---
+  # Usage: docker compose -f infrastructure/docker-compose.yml --profile staging up -d
+  api:
+    profiles: ["staging"]
+    build:
+      context: ../apps/api
+      dockerfile: Dockerfile
+    container_name: kubanfy-api-staging
+    environment:
+      ENVIRONMENT: staging
+      DATABASE_URL: postgresql+asyncpg://kubanfy:kubanfy@postgres:5432/kubanfy
+      REDIS_URL: redis://redis:6379/0
+      JWT_SECRET: change-me-staging-must-be-long-enough-32chars
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped

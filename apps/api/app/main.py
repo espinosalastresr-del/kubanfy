@@ -71,8 +71,13 @@ def create_app() -> FastAPI:
     )
 
     # Request ID + metrics (order: last added = outermost for BaseHTTPMiddleware)
-    from app.core.middleware import RequestContextMiddleware, RequestIdHeaderMiddleware
+    from app.core.middleware import (
+        RequestContextMiddleware,
+        RequestIdHeaderMiddleware,
+        SecurityHeadersMiddleware,
+    )
 
+    app.add_middleware(SecurityHeadersMiddleware)
     app.add_middleware(RequestIdHeaderMiddleware)
     app.add_middleware(RequestContextMiddleware)
 

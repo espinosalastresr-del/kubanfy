@@ -83,7 +83,12 @@ async def run_worker(
     settings = get_settings()
     setup_logging(settings)
     worker_id = f"worker-{uuid.uuid4().hex[:8]}"
-    logger.info("worker_starting", worker_id=worker_id, environment=settings.environment.value)
+    logger.info(
+        "worker_starting",
+        worker_id=worker_id,
+        environment=settings.environment.value,
+        registered_handlers=[t.value for t in _handlers],
+    )
 
     init_db(settings)
     try:
