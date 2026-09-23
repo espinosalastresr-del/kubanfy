@@ -56,7 +56,7 @@ export async function setTokens(access: string, refresh: string): Promise<void> 
 
 async function getCredentials(): Promise<Keychain.UserCredentials | null> {
   try {
-    const credentials = await Keychain.getGenericPassword({service: DEVICE_KEYCHAIN_SERVICE});
+    const credentials = await Keychain.getGenericPassword({service: AUTH_KEYCHAIN_SERVICE});
     return credentials || null;
   } catch {
     return null;
