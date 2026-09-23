@@ -72,7 +72,7 @@ def create_app() -> FastAPI:
 
     # Request ID + metrics (order: last added = outermost for BaseHTTPMiddleware)
     from app.core.maintenance import MaintenanceMiddleware
-from app.core.middleware import (
+    from app.core.middleware import (
         RequestContextMiddleware,
         RequestIdHeaderMiddleware,
         SecurityHeadersMiddleware,
