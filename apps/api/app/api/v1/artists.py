@@ -6,12 +6,14 @@ import re
 import unicodedata
 from uuid import UUID
 
-from fastapi import APIRouter, File, Form, UploadFile
+from fastapi import APIRouter, Depends, File, Form, UploadFile
+from typing import Annotated
 from sqlalchemy import select
 
-from app.api.deps import CurrentUser, DbSession
+from app.api.deps import CurrentUser, DbSession, require_permissions
 from app.core.exceptions import ConflictError, NotFoundError, ValidationError
 from app.models.artist_member import ArtistMember, ArtistMemberRole
+from app.models.user import User
 from app.models.music import Artist, AudioAsset, Release, Track, TrackArtist, TrackStatus
 from app.schemas.artist import (
     ArtistCreateRequest,
@@ -255,7 +257,10 @@ async def get_rights_splits(
 
 @router.post("/{artist_id}/royalties/ledger", response_model=RoyaltyLedgerResponse, status_code=201)
 async def append_royalty_ledger(
-    artist_id: UUID, body: RoyaltyLedgerRequest, user: CurrentUser, session: DbSession
+    artist_id: UUID,
+    body: RoyaltyLedgerRequest,
+    user: Annotated[User, Depends(require_permissions("royalties.write"))],
+    session: DbSession,
 ) -> RoyaltyLedgerResponse:
     row = await RightsRoyaltyService(session).append_ledger(
         user_id=user.id, artist_id=artist_id, amount_cents=body.amount_cents, source_type=body.source_type,
