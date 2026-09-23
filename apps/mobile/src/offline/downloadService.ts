@@ -58,6 +58,22 @@ async function ensureDir(RNFS: any, dir: string): Promise<void> {
   }
 }
 
+async function cleanupInterruptedKfyArtifacts(RNFS: any, dir: string): Promise<void> {
+  try {
+    if (!(await RNFS.exists(dir))) return;
+    const entries = await RNFS.readDir(dir);
+    await Promise.all(
+      entries
+        .filter((entry: {name: string}) =>
+          entry.name.endsWith('.kfy.part') || entry.name.endsWith('.meta.part'),
+        )
+        .map((entry: {path: string}) => RNFS.unlink(entry.path).catch(() => undefined)),
+    );
+  } catch {
+    // Best-effort cleanup; resumable source .audio.part files are preserved.
+  }
+}
+
 async function appendFileInChunks(
   RNFS: any,
   source: string,
@@ -350,6 +366,11 @@ export async function processQueue(): Promise<void> {
   queueRunning = true;
 
   try {
+    const RNFS = await loadRNFS();
+    const dir = `${RNFS.DocumentDirectoryPath}/kubanfy/offline`;
+    await ensureDir(RNFS, dir);
+    await cleanupInterruptedKfyArtifacts(RNFS, dir);
+
     while (true) {
       const jobs = await listDownloadJobs();
       // A persisted "running" job is an interrupted job after app restart.
