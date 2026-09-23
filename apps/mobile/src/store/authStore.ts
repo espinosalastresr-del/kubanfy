@@ -53,6 +53,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       });
     } catch {
       await clearTokens();
+      await clearOfflineUserId();
       set({user: null, modes: ['listener'], activeMode: 'listener', isHydrated: true});
     }
   },
