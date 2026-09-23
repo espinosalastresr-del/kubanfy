@@ -23,6 +23,20 @@ from app.services.entitlement import EntitlementService
 from app.services.music_engine import MusicEngine
 
 router = APIRouter(prefix="/music", tags=["music"])
+def _audio_media_type(result) -> str:
+    key = (result.storage_key or "").lower()
+    if key.endswith(".flac"):
+        return "audio/flac"
+    if key.endswith(".m4a") or key.endswith(".mp4"):
+        return "audio/mp4"
+    if key.endswith(".ogg") or key.endswith(".oga"):
+        return "audio/ogg"
+    if key.endswith(".opus"):
+        return "audio/opus"
+    if key.endswith(".wav"):
+        return "audio/wav"
+    return "audio/mpeg"
+
 
 _manager = ProviderManager(create_default_registry(include_mock=True))
 
@@ -119,7 +133,7 @@ async def music_download(
         storage = get_storage()
         size_bytes = await storage.size(
             result.storage_key,
-            bucket=StorageBucket.CACHE,
+            bucket=result.storage_bucket,
         )
 
     return MusicDownloadResponse(
@@ -210,8 +224,9 @@ async def music_content_stream(
     common_headers = {
         "Accept-Ranges": "bytes",
         "Cache-Control": "private, max-age=60",
-        "ETag": f'"{result.content_hash}"' if result.content_hash else "",
     }
+    if result.content_hash:
+        common_headers["ETag"] = f'"{result.content_hash}"'
 
     if br is None:
         headers = {
@@ -221,10 +236,10 @@ async def music_content_stream(
         return StreamingResponse(
             storage.stream(
                 storage_key,
-                bucket=StorageBucket.CACHE,
+                bucket=result.storage_bucket,
                 chunk_size=65536,
             ),
-            media_type="audio/mpeg",
+            media_type=_audio_media_type(result),
             headers=headers,
         )
 
