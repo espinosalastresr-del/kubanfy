@@ -10,6 +10,7 @@
 
 import {apiRequest} from '../api/client';
 import {encryptOfflineFile} from './offlineCrypto';
+import {verifyOfflineLicense} from './offlineLicenseVerifier';
 import {
   listDownloadJobs,
   saveDownloadJobs,
@@ -122,13 +123,35 @@ async function downloadWithResume(
     if (job.totalBytes && size !== job.totalBytes) {
       await RNFS.unlink(final).catch(() => {});
     } else if (job.contentHash && job.offlineLicense) {
-      return {
-        path: final,
-        contentHash: job.contentHash,
-        sizeBytes: size,
-        offlineLicense: job.offlineLicense,
-        offlineLicenseExpiresAt: job.offlineLicenseExpiresAt,
-      };
+      try {
+        const envelope = JSON.parse(await RNFS.readFile(metadata, 'utf8')) as {
+          format?: string;
+          contentHash?: string;
+          plaintextSize?: number;
+        };
+        if (
+          envelope.format !== 'kubanfy-aes256gcm-v1' ||
+          envelope.contentHash !== job.contentHash ||
+          !Number.isFinite(Number(envelope.plaintextSize))
+        ) {
+          throw new Error('Offline metadata mismatch');
+        }
+        verifyOfflineLicense(job.offlineLicense, {
+          trackId: job.trackId,
+          quality: job.quality,
+          contentHash: job.contentHash,
+        });
+        return {
+          path: final,
+          contentHash: job.contentHash,
+          sizeBytes: size,
+          offlineLicense: job.offlineLicense,
+          offlineLicenseExpiresAt: job.offlineLicenseExpiresAt,
+        };
+      } catch {
+        await RNFS.unlink(final).catch(() => {});
+        await RNFS.unlink(metadata).catch(() => {});
+      }
     } else {
       await RNFS.unlink(final).catch(() => {});
       await RNFS.unlink(metadata).catch(() => {});
