@@ -16,7 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import Settings, get_settings
 from app.core.exceptions import ConflictError, ForbiddenError, NotFoundError, ValidationError
 from app.core.logging import get_logger
-from app.models.entitlement import EntitlementScope, EntitlementSource
+from app.models.entitlement import EntitlementScope, EntitlementSource, Plan, PlanPrice
 from app.models.payment import PaymentMethod, PaymentOrder, PaymentStatus
 from app.services.entitlement import EntitlementService
 
@@ -76,6 +76,28 @@ class PaymentService:
 
         if amount_cents <= 0:
             raise ValidationError("amount_cents must be positive")
+
+        if self.settings.feature_monetization:
+            if not plan_code:
+                raise ValidationError("plan_code is required when monetization is enabled")
+            plan = await self.session.scalar(
+                select(Plan).where(
+                    Plan.code == plan_code,
+                    Plan.is_active.is_(True),
+                )
+            )
+            if plan is None:
+                raise ValidationError("Unknown or inactive plan")
+            price = await self.session.scalar(
+                select(PlanPrice).where(
+                    PlanPrice.plan_id == plan.id,
+                    PlanPrice.currency == currency.upper(),
+                    PlanPrice.amount_cents == amount_cents,
+                    PlanPrice.is_active.is_(True),
+                )
+            )
+            if price is None:
+                raise ValidationError("Payment amount does not match an active plan price")
 
         if idempotency_key:
             existing = await self.session.scalar(
