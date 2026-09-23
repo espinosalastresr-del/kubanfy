@@ -48,7 +48,10 @@ class OfflineLicenseService:
         if track is None or track.status.value != "published":
             raise NotFoundError("Track not available")
 
-        await EntitlementService(self.session).require_track_access(user_id, track_id)
+        entitlement = EntitlementService(self.session)
+        await entitlement.require_download_access(user_id)
+        await entitlement.require_track_access(user_id, track_id)
+        await entitlement.require_quality_access(user_id, quality)
 
         asset = await self.session.scalar(
             select(AudioAsset)
