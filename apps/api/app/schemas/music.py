@@ -31,8 +31,7 @@ class MusicUpdateResponse(BaseModel):
 
 class MusicPreviewRequest(BaseModel):
     provider: str | None = Field(default=None, max_length=64)
-    provider_track_id: str | None = Field(default=None, max_length=255)
-    track_id: UUID | None = None
+    provider_track_id: UUID | None = None
 
 
 class MusicPreviewResponse(BaseModel):
@@ -57,6 +56,8 @@ class MusicDownloadResponse(BaseModel):
     from_cache: bool
     track_id: UUID | None = None
     storage_key: str | None = None
+    content_hash: str | None = None
+    size_bytes: int | None = None
 
 
 class TrackSearchResult(BaseModel):
