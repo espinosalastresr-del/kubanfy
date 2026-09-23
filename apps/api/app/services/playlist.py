@@ -54,9 +54,7 @@ class PlaylistService:
 
     async def list_for_user(self, user_id: UUID) -> list[Playlist]:
         result = await self.session.execute(
-            select(Playlist)
-            .where(Playlist.user_id == user_id)
-            .order_by(Playlist.updated_at.desc())
+            select(Playlist).where(Playlist.user_id == user_id).order_by(Playlist.updated_at.desc())
         )
         return list(result.scalars().all())
 
@@ -109,7 +107,9 @@ class PlaylistService:
         await self.session.delete(pt)
         await self.session.flush()
 
-    async def list_tracks(self, playlist_id: UUID, user_id: UUID | None = None) -> list[PlaylistTrack]:
+    async def list_tracks(
+        self, playlist_id: UUID, user_id: UUID | None = None
+    ) -> list[PlaylistTrack]:
         await self.get(playlist_id, user_id)
         result = await self.session.execute(
             select(PlaylistTrack)
@@ -131,9 +131,7 @@ class FavoriteService:
     def __init__(self, session: AsyncSession) -> None:
         self.session = session
 
-    async def add(
-        self, user_id: UUID, target_type: FavoriteType, target_id: UUID
-    ) -> Favorite:
+    async def add(self, user_id: UUID, target_type: FavoriteType, target_id: UUID) -> Favorite:
         existing = await self.session.scalar(
             select(Favorite).where(
                 Favorite.user_id == user_id,
@@ -148,9 +146,7 @@ class FavoriteService:
         await self.session.flush()
         return fav
 
-    async def remove(
-        self, user_id: UUID, target_type: FavoriteType, target_id: UUID
-    ) -> None:
+    async def remove(self, user_id: UUID, target_type: FavoriteType, target_id: UUID) -> None:
         fav = await self.session.scalar(
             select(Favorite).where(
                 Favorite.user_id == user_id,

@@ -3,6 +3,7 @@
 Provider URLs are temporary acquisition inputs only. This service never returns
 provider URLs to API clients.
 """
+
 from __future__ import annotations
 
 from datetime import UTC, datetime
@@ -40,26 +41,28 @@ class TransferManager:
 
         timeout_cfg = httpx.Timeout(timeout)
         try:
-            async with httpx.AsyncClient(
-                timeout=timeout_cfg,
-                follow_redirects=False,
-            ) as client:
-                async with client.stream("GET", source.url, headers=source.headers) as response:
-                    response.raise_for_status()
-                    length = response.headers.get("content-length")
-                    if length and int(length) > self.max_size_bytes:
-                        raise ProviderUnavailableError("Resolved source exceeds transfer size limit")
+            async with (
+                httpx.AsyncClient(
+                    timeout=timeout_cfg,
+                    follow_redirects=False,
+                ) as client,
+                client.stream("GET", source.url, headers=source.headers) as response,
+            ):
+                response.raise_for_status()
+                length = response.headers.get("content-length")
+                if length and int(length) > self.max_size_bytes:
+                    raise ProviderUnavailableError("Resolved source exceeds transfer size limit")
 
-                    chunks: list[bytes] = []
-                    total = 0
-                    async for chunk in response.aiter_bytes():
-                        total += len(chunk)
-                        if total > self.max_size_bytes:
-                            raise ProviderUnavailableError(
-                                "Resolved source exceeds transfer size limit"
-                            )
-                        chunks.append(chunk)
-                    return b"".join(chunks)
+                chunks: list[bytes] = []
+                total = 0
+                async for chunk in response.aiter_bytes():
+                    total += len(chunk)
+                    if total > self.max_size_bytes:
+                        raise ProviderUnavailableError(
+                            "Resolved source exceeds transfer size limit"
+                        )
+                    chunks.append(chunk)
+                return b"".join(chunks)
         except ProviderUnavailableError:
             raise
         except (httpx.HTTPError, ValueError) as exc:

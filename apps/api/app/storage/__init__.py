@@ -12,8 +12,8 @@ from app.core.logging import get_logger
 from app.storage.base import (
     SignedUrl,
     StorageBucket,
-    StoredObject,
     StorageProvider,
+    StoredObject,
 )
 from app.storage.local import LocalStorage
 from app.storage.r2 import R2Storage
@@ -21,12 +21,12 @@ from app.storage.r2 import R2Storage
 logger = get_logger(__name__)
 
 __all__ = [
-    "StorageProvider",
-    "StorageBucket",
-    "StoredObject",
-    "SignedUrl",
     "LocalStorage",
     "R2Storage",
+    "SignedUrl",
+    "StorageBucket",
+    "StorageProvider",
+    "StoredObject",
     "get_storage",
 ]
 

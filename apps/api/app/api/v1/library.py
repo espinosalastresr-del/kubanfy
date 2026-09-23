@@ -65,9 +65,7 @@ async def rename_playlist(
 
 
 @router.delete("/playlists/{playlist_id}", status_code=204)
-async def delete_playlist(
-    playlist_id: UUID, user: CurrentUser, session: DbSession
-) -> None:
+async def delete_playlist(playlist_id: UUID, user: CurrentUser, session: DbSession) -> None:
     await PlaylistService(session).delete(playlist_id, user.id)
 
 
@@ -79,9 +77,7 @@ async def add_to_playlist(
     session: DbSession,
 ) -> PlaylistTrackResponse:
     pt = await PlaylistService(session).add_track(playlist_id, user.id, track_id)
-    return PlaylistTrackResponse(
-        track_id=pt.track_id, position=pt.position, added_at=pt.added_at
-    )
+    return PlaylistTrackResponse(track_id=pt.track_id, position=pt.position, added_at=pt.added_at)
 
 
 @router.delete("/playlists/{playlist_id}/tracks/{track_id}", status_code=204)
@@ -138,8 +134,6 @@ async def list_favorites(user: CurrentUser, session: DbSession) -> list[Favorite
 
 
 @router.get("/entitlements", response_model=list[EntitlementResponse])
-async def list_entitlements(
-    user: CurrentUser, session: DbSession
-) -> list[EntitlementResponse]:
+async def list_entitlements(user: CurrentUser, session: DbSession) -> list[EntitlementResponse]:
     items = await EntitlementService(session).list_active(user.id)
     return [EntitlementResponse.model_validate(e) for e in items]

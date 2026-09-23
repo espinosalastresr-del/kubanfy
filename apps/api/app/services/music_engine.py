@@ -20,15 +20,15 @@ from app.core.config import Settings, get_settings
 from app.core.exceptions import NotFoundError, ProviderUnavailableError
 from app.core.logging import get_logger
 from app.models.music import (
+    AudioAsset,
     AudioQuality,
     CacheEntry,
     CacheEntryStatus,
     Provider,
     ProviderTrack,
+    SourceType,
     Track,
     TrackStatus,
-    AudioAsset,
-    SourceType,
 )
 from app.providers.base import ResolvedSource, TrackMetadata
 from app.providers.registry import ProviderManager, create_default_registry

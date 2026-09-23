@@ -140,12 +140,14 @@ class AuthService:
         logger.info("token_refreshed", user_id=str(user.id))
         return tokens
 
-    def _issue_tokens(
-        self, user: User, device_id: str | None = None
-    ) -> tuple[TokenResponse, str]:
+    def _issue_tokens(self, user: User, device_id: str | None = None) -> tuple[TokenResponse, str]:
         access = create_access_token(
             str(user.id),
-            extra_claims={"email": user.email, "status": user.status.value, **({"device_id": device_id} if device_id else {})},
+            extra_claims={
+                "email": user.email,
+                "status": user.status.value,
+                **({"device_id": device_id} if device_id else {}),
+            },
             settings=self.settings,
         )
         refresh = create_refresh_token(

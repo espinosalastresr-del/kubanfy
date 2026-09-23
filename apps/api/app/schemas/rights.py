@@ -1,17 +1,22 @@
 from __future__ import annotations
+
 from datetime import datetime
 from uuid import UUID
+
 from pydantic import BaseModel, Field
+
 
 class CollaboratorSplitRequest(BaseModel):
     artist_id: UUID
     role: str = Field(default="artist", min_length=1, max_length=32)
     share_bps: int = Field(gt=0, le=10000)
 
+
 class CollaboratorSplitsRequest(BaseModel):
     scope_type: str
     scope_id: UUID
     splits: list[CollaboratorSplitRequest]
+
 
 class CollaboratorSplitResponse(BaseModel):
     id: UUID
@@ -21,7 +26,8 @@ class CollaboratorSplitResponse(BaseModel):
     generation: int
     active: bool
     created_at: datetime
-    model_config={"from_attributes":True}
+    model_config = {"from_attributes": True}
+
 
 class RoyaltyLedgerRequest(BaseModel):
     amount_cents: int = Field(ge=0)
@@ -32,6 +38,7 @@ class RoyaltyLedgerRequest(BaseModel):
     currency: str = "CUP"
     metadata: dict = Field(default_factory=dict)
 
+
 class RoyaltyLedgerResponse(BaseModel):
     id: UUID
     account_id: UUID
@@ -41,7 +48,7 @@ class RoyaltyLedgerResponse(BaseModel):
     source_type: str
     idempotency_key: str
     created_at: datetime
-    model_config={"from_attributes":True}
+    model_config = {"from_attributes": True}
 
 
 class RoyaltySettlementRequest(BaseModel):

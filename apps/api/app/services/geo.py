@@ -33,7 +33,9 @@ class GeoService:
             except Exception as exc:
                 logger.warning("geoip_db_load_failed", error=str(exc))
 
-    def resolve_client_ip(self, request_ip: str | None, *, forwarded_for: str | None = None) -> str | None:
+    def resolve_client_ip(
+        self, request_ip: str | None, *, forwarded_for: str | None = None
+    ) -> str | None:
         """Use X-Forwarded-For only from trusted proxies."""
         trusted = self.settings.trusted_proxy_ip_list
         if forwarded_for and request_ip and request_ip in trusted:

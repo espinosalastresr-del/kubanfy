@@ -191,7 +191,10 @@ class Settings(BaseSettings):
         if self.environment == Environment.PRODUCTION:
             if self.debug:
                 raise ValueError("DEBUG must be false in production")
-            if "change-me" in self.jwt_secret_key.lower() or "dev-only" in self.jwt_secret_key.lower():
+            if (
+                "change-me" in self.jwt_secret_key.lower()
+                or "dev-only" in self.jwt_secret_key.lower()
+            ):
                 raise ValueError("JWT_SECRET_KEY must be changed for production")
             if "change-me" in self.super_admin_password.lower():
                 raise ValueError("SUPER_ADMIN_PASSWORD must be changed for production")

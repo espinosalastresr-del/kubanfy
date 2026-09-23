@@ -67,4 +67,7 @@ async def new_releases(
     limit: int = Query(20, ge=1, le=50),
 ) -> list[dict[str, Any]]:
     tracks = await DiscoveryService(session).new_releases(limit=limit)
-    return [{"id": t.id, "title": t.title, "duration": t.duration, "status": t.status.value} for t in tracks]
+    return [
+        {"id": t.id, "title": t.title, "duration": t.duration, "status": t.status.value}
+        for t in tracks
+    ]

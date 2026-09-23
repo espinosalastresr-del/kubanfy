@@ -6,8 +6,6 @@ from uuid import UUID
 
 from fastapi import APIRouter, Request
 
-from app.services.anti_abuse import AntiAbuseService
-
 from app.api.deps import CurrentUser, DbSession
 from app.schemas.auth import (
     DeviceResponse,
@@ -19,6 +17,7 @@ from app.schemas.auth import (
     TokenResponse,
     UserResponse,
 )
+from app.services.anti_abuse import AntiAbuseService
 from app.services.auth import AuthService
 from app.services.session import SessionService
 

@@ -98,9 +98,7 @@ def create_app() -> FastAPI:
         )
 
     @app.exception_handler(StarletteHTTPException)
-    async def http_exception_handler(
-        request: Request, exc: StarletteHTTPException
-    ) -> JSONResponse:
+    async def http_exception_handler(request: Request, exc: StarletteHTTPException) -> JSONResponse:
         return JSONResponse(
             status_code=exc.status_code,
             content={
@@ -157,8 +155,9 @@ def create_app() -> FastAPI:
 
         # DB check
         try:
-            from app.core.database import engine
             from sqlalchemy import text
+
+            from app.core.database import engine
 
             if engine is None:
                 checks["database"] = "not_initialized"
@@ -214,8 +213,9 @@ def create_app() -> FastAPI:
 
     @app.get("/metrics", tags=["ops"], include_in_schema=False)
     async def metrics() -> Response:
-        from app.core.metrics import metrics_payload
         from starlette.responses import Response as StarletteResponse
+
+        from app.core.metrics import metrics_payload
 
         body, content_type = metrics_payload()
         return StarletteResponse(content=body, media_type=content_type)

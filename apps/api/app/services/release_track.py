@@ -10,13 +10,22 @@ from uuid import UUID
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.exceptions import ConflictError, NotFoundError, RightsError, ValidationError
+from app.core.exceptions import NotFoundError, RightsError, ValidationError
 from app.models.artist_member import ArtistMember, ArtistMemberRole
-from app.models.music import Artist, AudioAsset, AudioQuality, QualityConfidence, Release, SourceType, Track, TrackArtist, TrackStatus
-from app.models.rights import LicenseRecord, LicenseStatus
 from app.models.job import JobType
+from app.models.music import (
+    Artist,
+    AudioAsset,
+    AudioQuality,
+    QualityConfidence,
+    Release,
+    SourceType,
+    Track,
+    TrackArtist,
+    TrackStatus,
+)
+from app.models.rights import LicenseRecord, LicenseStatus
 from app.services.job import JobService
-
 
 EDIT_ROLES = {
     ArtistMemberRole.OWNER,
@@ -43,7 +52,9 @@ class ReleaseTrackService:
     def __init__(self, session: AsyncSession) -> None:
         self.session = session
 
-    async def _member(self, user_id: UUID, artist_id: UUID, roles: set[ArtistMemberRole]) -> ArtistMember:
+    async def _member(
+        self, user_id: UUID, artist_id: UUID, roles: set[ArtistMemberRole]
+    ) -> ArtistMember:
         member = await self.session.scalar(
             select(ArtistMember).where(
                 ArtistMember.artist_id == artist_id,
@@ -60,7 +71,17 @@ class ReleaseTrackService:
             raise NotFoundError("Artist not found")
         return artist
 
-    async def create_release(self, *, user_id: UUID, artist_id: UUID, title: str, type, description, artwork_asset, release_date) -> Release:
+    async def create_release(
+        self,
+        *,
+        user_id: UUID,
+        artist_id: UUID,
+        title: str,
+        type,
+        description,
+        artwork_asset,
+        release_date,
+    ) -> Release:
         await self._artist(artist_id)
         await self._member(user_id, artist_id, EDIT_ROLES)
         release = Release(
@@ -76,7 +97,18 @@ class ReleaseTrackService:
         await self.session.flush()
         return release
 
-    async def update_release(self, *, user_id: UUID, artist_id: UUID, release_id: UUID, title: str, type, description, artwork_asset, release_date) -> Release:
+    async def update_release(
+        self,
+        *,
+        user_id: UUID,
+        artist_id: UUID,
+        release_id: UUID,
+        title: str,
+        type,
+        description,
+        artwork_asset,
+        release_date,
+    ) -> Release:
         await self._member(user_id, artist_id, EDIT_ROLES)
         release = await self.session.get(Release, release_id)
         if release is None or release.artist_id != artist_id:
@@ -94,20 +126,26 @@ class ReleaseTrackService:
         await self.session.flush()
         return release
 
-    async def set_release_status(self, *, user_id: UUID, artist_id: UUID, release_id: UUID, status: TrackStatus) -> Release:
+    async def set_release_status(
+        self, *, user_id: UUID, artist_id: UUID, release_id: UUID, status: TrackStatus
+    ) -> Release:
         await self._member(user_id, artist_id, PUBLISH_ROLES)
         release = await self.session.get(Release, release_id)
         if release is None or release.artist_id != artist_id:
             raise NotFoundError("Release not found")
 
         if status == TrackStatus.PUBLISHED:
-            tracks = list((await self.session.scalars(
-                select(Track).where(Track.release_id == release_id)
-            )).all())
+            tracks = list(
+                (
+                    await self.session.scalars(select(Track).where(Track.release_id == release_id))
+                ).all()
+            )
             if not tracks:
                 raise ValidationError("Release must contain at least one track")
             if any(t.status != TrackStatus.PUBLISHED for t in tracks):
-                raise ValidationError("All release tracks must be published before publishing the release")
+                raise ValidationError(
+                    "All release tracks must be published before publishing the release"
+                )
             release.status = TrackStatus.PUBLISHED
         elif status in (TrackStatus.HIDDEN, TrackStatus.TAKEDOWN):
             release.status = status
@@ -170,27 +208,50 @@ class ReleaseTrackService:
         if publish_at:
             await scheduler.enqueue(
                 JobType.PUBLICATION_SCHEDULE,
-                {"release_id": str(release.id), "action": "publish", "scheduled_at": publish_at.isoformat()},
+                {
+                    "release_id": str(release.id),
+                    "action": "publish",
+                    "scheduled_at": publish_at.isoformat(),
+                },
                 run_at=publish_at,
                 idempotency_key=f"release:{release.id}:publish:{publish_at.isoformat()}",
             )
         if unpublish_at:
             await scheduler.enqueue(
                 JobType.PUBLICATION_SCHEDULE,
-                {"release_id": str(release.id), "action": "unpublish", "scheduled_at": unpublish_at.isoformat()},
+                {
+                    "release_id": str(release.id),
+                    "action": "unpublish",
+                    "scheduled_at": unpublish_at.isoformat(),
+                },
                 run_at=unpublish_at,
                 idempotency_key=f"release:{release.id}:unpublish:{unpublish_at.isoformat()}",
             )
         await self.session.flush()
         return release
 
-    async def update_track(self, *, user_id: UUID, artist_id: UUID, track_id: UUID, title: str, isrc: str | None, explicit: bool, language: str | None, release_date, artwork_url: str | None, release_id: UUID | None) -> Track:
+    async def update_track(
+        self,
+        *,
+        user_id: UUID,
+        artist_id: UUID,
+        track_id: UUID,
+        title: str,
+        isrc: str | None,
+        explicit: bool,
+        language: str | None,
+        release_date,
+        artwork_url: str | None,
+        release_id: UUID | None,
+    ) -> Track:
         await self._member(user_id, artist_id, EDIT_ROLES)
         track = await self.session.get(Track, track_id)
         if track is None:
             raise NotFoundError("Track not found")
         ownership = await self.session.scalar(
-            select(TrackArtist).where(TrackArtist.track_id == track_id, TrackArtist.artist_id == artist_id)
+            select(TrackArtist).where(
+                TrackArtist.track_id == track_id, TrackArtist.artist_id == artist_id
+            )
         )
         if ownership is None:
             raise NotFoundError("Track not found")
@@ -199,7 +260,11 @@ class ReleaseTrackService:
 
         if release_id is not None:
             release = await self.session.get(Release, release_id)
-            if release is None or release.artist_id != artist_id or release.status == TrackStatus.DELETED:
+            if (
+                release is None
+                or release.artist_id != artist_id
+                or release.status == TrackStatus.DELETED
+            ):
                 raise ValidationError("Target release is invalid")
             track.release_id = release_id
             track.album_id = release_id
@@ -218,29 +283,38 @@ class ReleaseTrackService:
         await self.session.flush()
         return track
 
-    async def set_track_status(self, *, user_id: UUID, artist_id: UUID, track_id: UUID, status: TrackStatus) -> Track:
+    async def set_track_status(
+        self, *, user_id: UUID, artist_id: UUID, track_id: UUID, status: TrackStatus
+    ) -> Track:
         await self._member(user_id, artist_id, PUBLISH_ROLES)
         track = await self.session.get(Track, track_id)
         if track is None:
             raise NotFoundError("Track not found")
         ownership = await self.session.scalar(
-            select(TrackArtist).where(TrackArtist.track_id == track_id, TrackArtist.artist_id == artist_id)
+            select(TrackArtist).where(
+                TrackArtist.track_id == track_id, TrackArtist.artist_id == artist_id
+            )
         )
         if ownership is None:
             raise NotFoundError("Track not found")
 
         if status == TrackStatus.PUBLISHED:
-            release = await self.session.get(Release, track.release_id) if track.release_id else None
+            release = (
+                await self.session.get(Release, track.release_id) if track.release_id else None
+            )
             if release is None or release.artist_id != artist_id:
                 raise RightsError("Track must belong to the publishing artist's release")
             asset = await self.session.scalar(
-                select(AudioAsset).where(
+                select(AudioAsset)
+                .where(
                     AudioAsset.track_id == track_id,
                     AudioAsset.is_active.is_(True),
                     AudioAsset.storage_key != "",
                     AudioAsset.content_hash.is_not(None),
                     AudioAsset.source_type == SourceType.ARTIST_UPLOAD,
-                ).order_by(AudioAsset.version.desc()).limit(1)
+                )
+                .order_by(AudioAsset.version.desc())
+                .limit(1)
             )
             if asset is None:
                 raise ValidationError("Validated active artist audio asset required")

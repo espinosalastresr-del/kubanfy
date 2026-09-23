@@ -115,7 +115,11 @@ async def single_flight(
         result = await single_flight(f"acquire:{track_id}:{quality}", do_acquire)
     """
     settings = get_settings()
-    ttl = ttl_seconds if ttl_seconds is not None else float(settings.cache_single_flight_timeout_seconds)
+    ttl = (
+        ttl_seconds
+        if ttl_seconds is not None
+        else float(settings.cache_single_flight_timeout_seconds)
+    )
     wait = wait_timeout if wait_timeout is not None else ttl
 
     redis = get_redis()
@@ -156,7 +160,11 @@ async def single_flight_with_result(
     Suitable for metadata / small JSON, not for audio bodies.
     """
     settings = get_settings()
-    ttl = ttl_seconds if ttl_seconds is not None else float(settings.cache_single_flight_timeout_seconds)
+    ttl = (
+        ttl_seconds
+        if ttl_seconds is not None
+        else float(settings.cache_single_flight_timeout_seconds)
+    )
     wait = wait_timeout if wait_timeout is not None else ttl
 
     redis = get_redis()

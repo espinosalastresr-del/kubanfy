@@ -16,7 +16,7 @@ from botocore.config import Config
 from app.core.config import Settings, get_settings
 from app.core.exceptions import StorageError
 from app.core.logging import get_logger
-from app.storage.base import SignedUrl, StorageBucket, StoredObject, StorageProvider
+from app.storage.base import SignedUrl, StorageBucket, StorageProvider, StoredObject
 
 logger = get_logger(__name__)
 

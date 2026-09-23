@@ -3,18 +3,27 @@
 from __future__ import annotations
 
 import tempfile
-from pathlib import Path
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import Any
 from uuid import UUID
 
+from sqlalchemy import select
+
 from app.core.logging import get_logger
 from app.models.job import Job, JobType
-from app.models.music import AudioAsset, AudioQuality, QualityConfidence, Release, SourceType, Track, TrackStatus
+from app.models.music import (
+    AudioAsset,
+    AudioQuality,
+    QualityConfidence,
+    Release,
+    SourceType,
+    Track,
+    TrackStatus,
+)
 from app.services.cache import CacheService
 from app.services.transcoding import TranscodingService
 from app.storage import StorageBucket, get_storage
-from sqlalchemy import select
 from app.workers.runner import register_handler
 
 logger = get_logger(__name__)
@@ -70,9 +79,9 @@ async def handle_publication_schedule(job: Job, session: Any) -> dict[str, Any] 
         current = current.replace(tzinfo=UTC) if current.tzinfo is None else current.astimezone(UTC)
         if current != scheduled_at:
             return {"skipped": True, "reason": "schedule_superseded"}
-        tracks = list((await session.scalars(
-            select(Track).where(Track.release_id == release.id)
-        )).all())
+        tracks = list(
+            (await session.scalars(select(Track).where(Track.release_id == release.id))).all()
+        )
         if not tracks:
             return {"skipped": True, "reason": "release_has_no_tracks"}
         if any(t.status != TrackStatus.PUBLISHED for t in tracks):
@@ -121,11 +130,13 @@ async def handle_transcode(job: Job, session: Any) -> dict[str, Any] | None:
         return {"skipped": True, "reason": "track_not_found"}
 
     master_asset = await session.scalar(
-        select(AudioAsset).where(
+        select(AudioAsset)
+        .where(
             AudioAsset.track_id == track_id,
             AudioAsset.storage_key == master_key,
             AudioAsset.source_type == SourceType.ARTIST_UPLOAD,
-        ).order_by(AudioAsset.version.desc())
+        )
+        .order_by(AudioAsset.version.desc())
     )
     if master_asset is None:
         raise ValueError("Transcode master asset not found")
@@ -148,13 +159,15 @@ async def handle_transcode(job: Job, session: Any) -> dict[str, Any] | None:
                 continue
 
             existing = await session.scalar(
-                select(AudioAsset).where(
+                select(AudioAsset)
+                .where(
                     AudioAsset.track_id == track_id,
                     AudioAsset.quality == quality,
                     AudioAsset.version == master_asset.version,
                     AudioAsset.source_type == SourceType.DERIVATIVE,
                     AudioAsset.is_active.is_(True),
-                ).limit(1)
+                )
+                .limit(1)
             )
             if existing is not None:
                 skipped.append(quality.value)

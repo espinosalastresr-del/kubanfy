@@ -14,7 +14,7 @@ from urllib.parse import quote
 
 from app.core.exceptions import StorageError
 from app.core.logging import get_logger
-from app.storage.base import SignedUrl, StorageBucket, StoredObject, StorageProvider
+from app.storage.base import SignedUrl, StorageBucket, StorageProvider, StoredObject
 
 logger = get_logger(__name__)
 
@@ -109,7 +109,6 @@ class LocalStorage(StorageProvider):
         path = self._path(key, bucket)
         if path.is_file():
             await asyncio.to_thread(path.unlink)
-
 
     async def get_range(
         self,

@@ -6,8 +6,6 @@ from uuid import UUID
 
 from fastapi import APIRouter, Query, Request
 
-from app.services.anti_abuse import AntiAbuseService
-
 from app.api.deps import CurrentUser, DbSession, OptionalUser
 from app.providers.registry import ProviderManager, create_default_registry
 from app.schemas.music import (
@@ -19,11 +17,14 @@ from app.schemas.music import (
     MusicUpdateResponse,
     TrackSearchResult,
 )
+from app.services.anti_abuse import AntiAbuseService
 from app.services.entitlement import EntitlementService
 from app.services.music_engine import MusicEngine
 from app.services.offline_license import OfflineLicenseService
 
 router = APIRouter(prefix="/music", tags=["music"])
+
+
 def _audio_media_type(result) -> str:
     key = (result.storage_key or "").lower()
     if key.endswith(".flac"):
@@ -129,7 +130,7 @@ async def music_download(
 
     size_bytes = None
     if result.storage_key:
-        from app.storage import StorageBucket, get_storage
+        from app.storage import get_storage
 
         storage = get_storage()
         size_bytes = await storage.size(
@@ -145,6 +146,7 @@ async def music_download(
         try:
             token = authorization.split(" ", 1)[1]
             from app.core.security import decode_token
+
             claims = decode_token(token)
         except (IndexError, ValueError) as exc:
             raise AuthError("Invalid authorization token") from exc
@@ -153,6 +155,7 @@ async def music_download(
             raise AuthError("Offline license device mismatch")
         if body.track_id is None:
             from app.core.exceptions import ValidationError
+
             raise ValidationError("Device-bound offline licenses require a first-party track_id")
         license_row, offline_license = await OfflineLicenseService(session).issue(
             user_id=user.id,
@@ -164,9 +167,7 @@ async def music_download(
 
     return MusicDownloadResponse(
         url=result.signed_url.url if result.signed_url else None,
-        expires_in_seconds=(
-            result.signed_url.expires_in_seconds if result.signed_url else None
-        ),
+        expires_in_seconds=(result.signed_url.expires_in_seconds if result.signed_url else None),
         quality=result.quality,
         from_cache=result.from_cache,
         track_id=result.track_id,
@@ -213,9 +214,9 @@ async def music_content_stream(
     """Stream audio with HTTP Range (resume). Uses cache object when available."""
     from fastapi.responses import Response, StreamingResponse
 
-    from app.services.http_range import parse_bytes_range
-    from app.storage import StorageBucket, get_storage
     from app.core.exceptions import NotFoundError, ValidationError
+    from app.services.http_range import parse_bytes_range
+    from app.storage import get_storage
 
     async def storage_range_stream(storage, key, start, end, bucket):
         yield await storage.get_range(

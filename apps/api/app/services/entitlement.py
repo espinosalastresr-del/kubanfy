@@ -22,8 +22,7 @@ from app.models.entitlement import (
     Plan,
     PlanCode,
 )
-from app.models.music import SourceType, Track
-from app.models.music import AudioAsset
+from app.models.music import AudioAsset, SourceType
 
 logger = get_logger(__name__)
 
@@ -137,10 +136,7 @@ class EntitlementService:
         # Specific track entitlement
         if user_id:
             for ent in await self.list_active(user_id):
-                if (
-                    ent.scope_type == EntitlementScope.TRACK
-                    and ent.scope_id == track_id
-                ):
+                if ent.scope_type == EntitlementScope.TRACK and ent.scope_id == track_id:
                     return True
                 if ent.scope_type == EntitlementScope.USER_PREMIUM:
                     return True
@@ -167,7 +163,11 @@ class EntitlementService:
         defaults = [
             (PlanCode.FREE.value, "Free", {"downloads": False, "quality_max": "medium"}),
             (PlanCode.PREMIUM.value, "Premium", {"downloads": True, "quality_max": "lossless"}),
-            (PlanCode.FAMILY.value, "Family", {"downloads": True, "quality_max": "lossless", "seats": 6}),
+            (
+                PlanCode.FAMILY.value,
+                "Family",
+                {"downloads": True, "quality_max": "lossless", "seats": 6},
+            ),
             (PlanCode.STUDENT.value, "Student", {"downloads": True, "quality_max": "lossless"}),
         ]
         for code, name, features in defaults:

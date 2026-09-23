@@ -33,13 +33,13 @@ class ModerationStatus(str, enum.Enum):
 class ModerationReport(Base):
     __tablename__ = "moderation_reports"
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
-    )
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     reporter_user_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True
     )
-    target_type: Mapped[str] = mapped_column(String(32), nullable=False)  # track|artist|user|release
+    target_type: Mapped[str] = mapped_column(
+        String(32), nullable=False
+    )  # track|artist|user|release
     target_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False, index=True)
     report_type: Mapped[ModerationReportType] = mapped_column(
         Enum(
@@ -78,9 +78,7 @@ class AuditLog(Base):
 
     __tablename__ = "audit_logs"
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
-    )
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     actor_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True
     )
@@ -104,9 +102,7 @@ class AuditLog(Base):
 class FeatureFlag(Base):
     __tablename__ = "feature_flags"
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
-    )
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     key: Mapped[str] = mapped_column(String(64), unique=True, nullable=False, index=True)
     enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     description: Mapped[str | None] = mapped_column(String(255), nullable=True)
@@ -121,9 +117,7 @@ class FeatureFlag(Base):
 class SystemSetting(Base):
     __tablename__ = "system_settings"
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
-    )
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     key: Mapped[str] = mapped_column(String(64), unique=True, nullable=False, index=True)
     value: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, default=dict)
     description: Mapped[str | None] = mapped_column(String(255), nullable=True)

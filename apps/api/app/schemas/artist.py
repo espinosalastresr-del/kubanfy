@@ -14,8 +14,6 @@ class ArtistCreateRequest(BaseModel):
     country: str = Field(default="CU", min_length=2, max_length=2)
 
 
-
-
 class ArtistUpdateRequest(BaseModel):
     name: str = Field(min_length=1, max_length=255)
     bio: str | None = None

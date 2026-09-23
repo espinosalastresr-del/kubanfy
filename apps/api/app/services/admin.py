@@ -9,7 +9,7 @@ from uuid import UUID
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.exceptions import NotFoundError, ValidationError
+from app.core.exceptions import NotFoundError
 from app.core.logging import get_logger
 from app.models.admin import (
     AuditLog,
@@ -146,7 +146,9 @@ class AdminService:
 
     # --- Users ---
 
-    async def suspend_user(self, user_id: UUID, admin_id: UUID, *, reason: str | None = None) -> User:
+    async def suspend_user(
+        self, user_id: UUID, admin_id: UUID, *, reason: str | None = None
+    ) -> User:
         user = await self.session.get(User, user_id)
         if user is None:
             raise NotFoundError("User not found")
@@ -183,22 +185,16 @@ class AdminService:
 
     async def ensure_default_flags(self) -> None:
         for key, enabled in DEFAULT_FLAGS.items():
-            existing = await self.session.scalar(
-                select(FeatureFlag).where(FeatureFlag.key == key)
-            )
+            existing = await self.session.scalar(select(FeatureFlag).where(FeatureFlag.key == key))
             if existing is None:
-                self.session.add(
-                    FeatureFlag(key=key, enabled=enabled, description=f"Flag: {key}")
-                )
+                self.session.add(FeatureFlag(key=key, enabled=enabled, description=f"Flag: {key}"))
         await self.session.flush()
 
     async def list_flags(self) -> list[FeatureFlag]:
         result = await self.session.execute(select(FeatureFlag).order_by(FeatureFlag.key))
         return list(result.scalars().all())
 
-    async def set_flag(
-        self, key: str, enabled: bool, admin_id: UUID
-    ) -> FeatureFlag:
+    async def set_flag(self, key: str, enabled: bool, admin_id: UUID) -> FeatureFlag:
         flag = await self.session.scalar(select(FeatureFlag).where(FeatureFlag.key == key))
         if flag is None:
             flag = FeatureFlag(key=key, enabled=enabled)
@@ -219,9 +215,7 @@ class AdminService:
         return flag
 
     async def get_setting(self, key: str) -> SystemSetting | None:
-        return await self.session.scalar(
-            select(SystemSetting).where(SystemSetting.key == key)
-        )
+        return await self.session.scalar(select(SystemSetting).where(SystemSetting.key == key))
 
     async def set_setting(
         self, key: str, value: dict[str, Any], admin_id: UUID, *, description: str | None = None

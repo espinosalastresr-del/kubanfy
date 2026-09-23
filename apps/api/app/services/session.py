@@ -140,9 +140,7 @@ class SessionService:
         return sess
 
     async def get_session_by_jti(self, jti: str) -> Session | None:
-        return await self.db.scalar(
-            select(Session).where(Session.refresh_token_jti == jti)
-        )
+        return await self.db.scalar(select(Session).where(Session.refresh_token_jti == jti))
 
     async def revoke_session(self, session_id: UUID, user_id: UUID) -> None:
         sess = await self.db.get(Session, session_id)
@@ -172,9 +170,7 @@ class SessionService:
 
     async def list_devices(self, user_id: UUID) -> list[Device]:
         result = await self.db.execute(
-            select(Device)
-            .where(Device.user_id == user_id)
-            .order_by(Device.last_seen_at.desc())
+            select(Device).where(Device.user_id == user_id).order_by(Device.last_seen_at.desc())
         )
         return list(result.scalars().all())
 
@@ -220,8 +216,16 @@ class SessionService:
         if sess.status != SessionStatus.ACTIVE:
             raise AuthError("Session has been revoked")
         now = datetime.now(UTC)
-        expires_at = sess.expires_at if sess.expires_at.tzinfo is not None else sess.expires_at.replace(tzinfo=UTC)
-        last_activity_at = sess.last_activity_at if sess.last_activity_at.tzinfo is not None else sess.last_activity_at.replace(tzinfo=UTC)
+        expires_at = (
+            sess.expires_at
+            if sess.expires_at.tzinfo is not None
+            else sess.expires_at.replace(tzinfo=UTC)
+        )
+        last_activity_at = (
+            sess.last_activity_at
+            if sess.last_activity_at.tzinfo is not None
+            else sess.last_activity_at.replace(tzinfo=UTC)
+        )
         if expires_at <= now:
             sess.status = SessionStatus.EXPIRED
             await self.db.flush()

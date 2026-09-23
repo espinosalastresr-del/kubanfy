@@ -11,7 +11,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 from uuid import UUID
 
-from sqlalchemy import or_, select, update
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import ConflictError, NotFoundError
@@ -163,7 +163,9 @@ class JobService:
                 error=error[:200],
             )
         else:
-            job.status = JobStatus.DEAD_LETTER if job.attempts >= job.max_attempts else JobStatus.FAILED
+            job.status = (
+                JobStatus.DEAD_LETTER if job.attempts >= job.max_attempts else JobStatus.FAILED
+            )
             job.finished_at = datetime.now(UTC)
             logger.error(
                 "job_failed",

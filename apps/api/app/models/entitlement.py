@@ -17,7 +17,6 @@ from sqlalchemy import (
     Enum,
     ForeignKey,
     Integer,
-    Numeric,
     String,
     UniqueConstraint,
     func,
@@ -60,9 +59,7 @@ class PlanCode(str, enum.Enum):
 class Plan(Base):
     __tablename__ = "plans"
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
-    )
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     code: Mapped[str] = mapped_column(String(32), unique=True, nullable=False, index=True)
     name: Mapped[str] = mapped_column(String(120), nullable=False)
     description: Mapped[str | None] = mapped_column(String(500), nullable=True)
@@ -75,13 +72,9 @@ class Plan(Base):
 
 class PlanPrice(Base):
     __tablename__ = "plan_prices"
-    __table_args__ = (
-        UniqueConstraint("plan_id", "currency", "interval", name="uq_plan_price"),
-    )
+    __table_args__ = (UniqueConstraint("plan_id", "currency", "interval", name="uq_plan_price"),)
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
-    )
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     plan_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("plans.id", ondelete="CASCADE"), nullable=False, index=True
     )
@@ -94,9 +87,7 @@ class PlanPrice(Base):
 class Subscription(Base):
     __tablename__ = "subscriptions"
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
-    )
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     user_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
     )
@@ -116,9 +107,7 @@ class Subscription(Base):
 class Entitlement(Base):
     __tablename__ = "entitlements"
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
-    )
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     user_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
     )

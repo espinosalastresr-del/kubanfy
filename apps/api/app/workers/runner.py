@@ -12,8 +12,8 @@ from __future__ import annotations
 import asyncio
 import signal
 import uuid
-from contextlib import suppress
 from collections.abc import Awaitable, Callable
+from contextlib import suppress
 from typing import Any
 
 from app.core.config import get_settings
@@ -22,7 +22,6 @@ from app.core.logging import get_logger, setup_logging
 from app.core.redis import close_redis, init_redis
 from app.models.job import Job, JobType
 from app.services.job import JobService
-
 
 logger = get_logger(__name__)
 

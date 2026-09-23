@@ -27,8 +27,7 @@ class PaymentProvider(ABC):
     name: str
 
     @abstractmethod
-    async def create_order(self, order: PaymentOrder) -> PaymentOrder:
-        ...
+    async def create_order(self, order: PaymentOrder) -> PaymentOrder: ...
 
 
 class ManualTransferProvider(PaymentProvider):
@@ -134,9 +133,7 @@ class PaymentService:
         # Serialize approval for this order so concurrent admin retries cannot
         # both fulfill the same payment.
         order = await self.session.scalar(
-            select(PaymentOrder)
-            .where(PaymentOrder.id == order_id)
-            .with_for_update()
+            select(PaymentOrder).where(PaymentOrder.id == order_id).with_for_update()
         )
         if order is None:
             raise NotFoundError("Payment order not found")

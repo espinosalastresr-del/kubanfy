@@ -17,16 +17,22 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import Settings, get_settings
-from app.core.exceptions import ConflictError, ForbiddenError, NotFoundError, RightsError, ValidationError
+from app.core.exceptions import (
+    ForbiddenError,
+    NotFoundError,
+    RightsError,
+    ValidationError,
+)
 from app.core.logging import get_logger
 from app.models.artist_member import ArtistMember, ArtistMemberRole
+from app.models.job import JobType
 from app.models.music import (
     Artist,
     AudioAsset,
     AudioQuality,
+    QualityConfidence,
     Release,
     ReleaseType,
-    QualityConfidence,
     SourceType,
     Track,
     TrackArtist,
@@ -36,7 +42,6 @@ from app.models.rights import LicenseRecord, LicenseStatus
 from app.services.audio_validation import AudioValidationService
 from app.services.job import JobService
 from app.services.transcoding import TranscodingService
-from app.models.job import JobType
 from app.storage import StorageBucket, get_storage
 from app.storage.base import StorageProvider
 
@@ -300,26 +305,44 @@ class ArtistUploadService:
         written_keys: list[str] = []
         try:
             probe = await self.validator.validate_for_storage(tmp_path)
-            old_assets = list((await self.session.scalars(
-                select(AudioAsset).where(AudioAsset.track_id == track_id, AudioAsset.is_active.is_(True))
-            )).all())
+            old_assets = list(
+                (
+                    await self.session.scalars(
+                        select(AudioAsset).where(
+                            AudioAsset.track_id == track_id, AudioAsset.is_active.is_(True)
+                        )
+                    )
+                ).all()
+            )
             next_version = max((a.version for a in old_assets), default=0) + 1
             generation = f"v{next_version}"
             master_key = f"artists/{artist_id}/tracks/{track_id}/{generation}/master/{probe.content_hash[:16]}.{ext or 'bin'}"
-            await self.storage.put(master_key, file_bytes, bucket=StorageBucket.PERMANENT,
-                                    content_type=f"audio/{probe.codec or ext or 'mpeg'}")
+            await self.storage.put(
+                master_key,
+                file_bytes,
+                bucket=StorageBucket.PERMANENT,
+                content_type=f"audio/{probe.codec or ext or 'mpeg'}",
+            )
             written_keys.append(master_key)
 
             master_asset = AudioAsset(
-                track_id=track_id, storage_key=master_key, codec=probe.codec,
+                track_id=track_id,
+                storage_key=master_key,
+                codec=probe.codec,
                 bitrate=(probe.bitrate // 1000) if probe.bitrate else None,
-                bit_depth=probe.bit_depth, sample_rate=probe.sample_rate,
-                channels=probe.channels, duration=probe.duration, size=probe.size,
-                quality=AudioQuality.LOSSLESS if (probe.codec or "").lower() in
-                ("flac", "alac", "pcm_s16le", "pcm_s24le") else AudioQuality.MEDIUM,
+                bit_depth=probe.bit_depth,
+                sample_rate=probe.sample_rate,
+                channels=probe.channels,
+                duration=probe.duration,
+                size=probe.size,
+                quality=AudioQuality.LOSSLESS
+                if (probe.codec or "").lower() in ("flac", "alac", "pcm_s16le", "pcm_s24le")
+                else AudioQuality.MEDIUM,
                 quality_confidence=QualityConfidence.VERIFIED,
-                source_type=SourceType.ARTIST_UPLOAD, content_hash=probe.content_hash,
-                version=next_version, is_active=False,
+                source_type=SourceType.ARTIST_UPLOAD,
+                content_hash=probe.content_hash,
+                version=next_version,
+                is_active=False,
             )
             self.session.add(master_asset)
             await self.session.flush()
@@ -331,23 +354,34 @@ class ArtistUploadService:
             for output in derivative_outputs:
                 key = f"artists/{artist_id}/tracks/{track_id}/{generation}/{output.quality.value}/{output.probe.content_hash[:16]}.m4a"
                 data = output.path.read_bytes()
-                await self.storage.put(key, data, bucket=StorageBucket.PERMANENT,
-                                        content_type="audio/mp4")
+                await self.storage.put(
+                    key, data, bucket=StorageBucket.PERMANENT, content_type="audio/mp4"
+                )
                 written_keys.append(key)
                 asset = AudioAsset(
-                    track_id=track_id, storage_key=key, codec=output.probe.codec,
-                    bitrate=output.bitrate_kbps, sample_rate=output.probe.sample_rate,
-                    channels=output.probe.channels, duration=output.probe.duration,
-                    size=output.probe.size, quality=output.quality,
+                    track_id=track_id,
+                    storage_key=key,
+                    codec=output.probe.codec,
+                    bitrate=output.bitrate_kbps,
+                    sample_rate=output.probe.sample_rate,
+                    channels=output.probe.channels,
+                    duration=output.probe.duration,
+                    size=output.probe.size,
+                    quality=output.quality,
                     quality_confidence=QualityConfidence.VERIFIED,
-                    source_type=SourceType.DERIVATIVE, content_hash=output.probe.content_hash,
-                    version=next_version, is_active=False,
+                    source_type=SourceType.DERIVATIVE,
+                    content_hash=output.probe.content_hash,
+                    version=next_version,
+                    is_active=False,
                 )
                 self.session.add(asset)
                 derivative_assets.append(asset)
             await self.session.flush()
 
-            if len(derivative_assets) != 2 or {a.quality for a in derivative_assets} != {AudioQuality.LOW, AudioQuality.MEDIUM}:
+            if len(derivative_assets) != 2 or {a.quality for a in derivative_assets} != {
+                AudioQuality.LOW,
+                AudioQuality.MEDIUM,
+            }:
                 raise ValidationError("Replacement derivatives are incomplete")
 
             for asset in old_assets:
@@ -357,9 +391,14 @@ class ArtistUploadService:
                 asset.is_active = True
             track.duration = probe.duration
             await self.session.flush()
-            return UploadResult(track_id=track.id, status=track.status.value,
-                                master_storage_key=master_key, content_hash=probe.content_hash,
-                                duration=probe.duration, job_id=None)
+            return UploadResult(
+                track_id=track.id,
+                status=track.status.value,
+                master_storage_key=master_key,
+                content_hash=probe.content_hash,
+                duration=probe.duration,
+                job_id=None,
+            )
         except Exception:
             # DB rollback by request transaction leaves old assets active. New
             # objects are deliberately retained for asynchronous orphan cleanup.
@@ -369,7 +408,6 @@ class ArtistUploadService:
                 tmp_path.unlink(missing_ok=True)
             except OSError:
                 pass
-
 
     async def publish_track(self, *, user_id: UUID, track_id: UUID, artist_id: UUID) -> Track:
         await self.assert_can_edit(user_id, artist_id)
@@ -397,7 +435,10 @@ class ArtistUploadService:
             raise RightsError("Track artist ownership record is required to publish")
 
         asset = await self.session.scalar(
-            select(AudioAsset).where(AudioAsset.track_id == track_id, AudioAsset.is_active.is_(True)).order_by(AudioAsset.created_at.desc()).limit(1)
+            select(AudioAsset)
+            .where(AudioAsset.track_id == track_id, AudioAsset.is_active.is_(True))
+            .order_by(AudioAsset.created_at.desc())
+            .limit(1)
         )
         if asset is None or not asset.storage_key or not asset.content_hash:
             raise ValidationError(

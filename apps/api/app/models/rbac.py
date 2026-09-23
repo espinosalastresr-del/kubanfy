@@ -35,9 +35,7 @@ class SystemRole(str, enum.Enum):
 class Role(Base):
     __tablename__ = "roles"
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
-    )
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     name: Mapped[str] = mapped_column(String(64), unique=True, nullable=False, index=True)
     description: Mapped[str | None] = mapped_column(String(255), nullable=True)
     is_system: Mapped[bool] = mapped_column(default=True, nullable=False)
@@ -59,9 +57,7 @@ class Role(Base):
 class Permission(Base):
     __tablename__ = "permissions"
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
-    )
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     code: Mapped[str] = mapped_column(String(64), unique=True, nullable=False, index=True)
     description: Mapped[str | None] = mapped_column(String(255), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
@@ -82,9 +78,7 @@ class RolePermission(Base):
     __tablename__ = "role_permissions"
     __table_args__ = (UniqueConstraint("role_id", "permission_id", name="uq_role_permission"),)
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
-    )
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     role_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("roles.id", ondelete="CASCADE"), nullable=False
     )
@@ -97,9 +91,7 @@ class UserRole(Base):
     __tablename__ = "user_roles"
     __table_args__ = (UniqueConstraint("user_id", "role_id", name="uq_user_role"),)
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
-    )
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     user_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
     )
