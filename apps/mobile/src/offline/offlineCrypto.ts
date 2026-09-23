@@ -75,8 +75,11 @@ export async function encryptOfflineFile(params: {
     plaintextSize,
     contentHash,
   };
-  await RNFS.writeFile(metadataPath, JSON.stringify(envelope), 'utf8');
+  const metadataTemp = metadataPath + '.part';
+  await removeIfExists(RNFS, metadataTemp);
+  await RNFS.writeFile(metadataTemp, JSON.stringify(envelope), 'utf8');
   await RNFS.moveFile(temp, encryptedPath);
+  await RNFS.moveFile(metadataTemp, metadataPath);
   await removeIfExists(RNFS, sourcePath);
   return {path: encryptedPath, metadataPath};
 }
@@ -105,23 +108,33 @@ export async function decryptOfflineFile(params: {
   await removeIfExists(RNFS, temp);
   await removeIfExists(RNFS, outputPath);
 
-  let position = 0;
-  while (position < ciphertextSize) {
-    const length = Math.min(CHUNK_BYTES, ciphertextSize - position);
-    const input = Buffer.from(await RNFS.read(encryptedPath, length, position, 'base64'), 'base64');
-    const output = decipher.update(input);
-    if (output.length) await RNFS.appendFile(temp, output.toString('base64'), 'base64');
-    position += length;
-  }
-  const finalChunk = decipher.final();
-  if (finalChunk.length) await RNFS.appendFile(temp, finalChunk.toString('base64'), 'base64');
+  try {
+    let position = 0;
+    while (position < ciphertextSize) {
+      const length = Math.min(CHUNK_BYTES, ciphertextSize - position);
+      const input = Buffer.from(
+        await RNFS.read(encryptedPath, length, position, 'base64'),
+        'base64',
+      );
+      const output = decipher.update(input);
+      if (output.length) await RNFS.appendFile(temp, output.toString('base64'), 'base64');
+      position += length;
+    }
+    const finalChunk = decipher.final();
+    if (finalChunk.length) await RNFS.appendFile(temp, finalChunk.toString('base64'), 'base64');
 
-  const outputSize = Number((await RNFS.stat(temp)).size);
-  if (outputSize !== envelope.plaintextSize) {
+    const outputSize = Number((await RNFS.stat(temp)).size);
+    if (outputSize !== envelope.plaintextSize) {
+      throw new Error('Offline audio size verification failed');
+    }
+    await RNFS.moveFile(temp, outputPath);
+  } catch (error) {
+    // GCM authentication happens at final(). Never leave unauthenticated
+    // plaintext behind if the ciphertext or metadata was tampered with.
     await removeIfExists(RNFS, temp);
-    throw new Error('Offline audio size verification failed');
+    await removeIfExists(RNFS, outputPath);
+    throw error;
   }
-  await RNFS.moveFile(temp, outputPath);
   return outputPath;
 }
 
