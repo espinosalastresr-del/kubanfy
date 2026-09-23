@@ -33,6 +33,7 @@ export function verifyOfflineLicense(
   expected: {
     trackId: string;
     quality: string;
+    deviceId: string;
     contentHash?: string;
     publicKeyPem?: string;
     nowMs?: number;
@@ -69,7 +70,11 @@ export function verifyOfflineLicense(
   if (isFiniteNumber(claims.iat) && claims.iat * 1000 > nowMs + 60_000) {
     throw new Error('Offline license issued in the future');
   }
-  if (claims.track_id !== expected.trackId || claims.quality !== expected.quality) {
+  if (
+    claims.track_id !== expected.trackId ||
+    claims.quality !== expected.quality ||
+    claims.device_id !== expected.deviceId
+  ) {
     throw new Error('Offline license track binding mismatch');
   }
   if (expected.contentHash && claims.content_hash !== expected.contentHash) {
