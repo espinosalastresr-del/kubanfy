@@ -246,9 +246,9 @@ async def replace_rights_splits(
 
 @router.get("/{artist_id}/rights/splits", response_model=list[CollaboratorSplitResponse])
 async def get_rights_splits(
-    artist_id: UUID, scope_type: str, scope_id: UUID, session: DbSession
+    artist_id: UUID, scope_type: str, scope_id: UUID, user: CurrentUser, session: DbSession
 ) -> list[CollaboratorSplitResponse]:
-    rows = await RightsRoyaltyService(session).get_splits(scope_type=scope_type, scope_id=scope_id)
+    rows = await RightsRoyaltyService(session).get_splits(user_id=user.id, artist_id=artist_id, scope_type=scope_type, scope_id=scope_id)
     return [CollaboratorSplitResponse.model_validate(x) for x in rows]
 
 
@@ -257,7 +257,7 @@ async def append_royalty_ledger(
     artist_id: UUID, body: RoyaltyLedgerRequest, user: CurrentUser, session: DbSession
 ) -> RoyaltyLedgerResponse:
     row = await RightsRoyaltyService(session).append_ledger(
-        artist_id=artist_id, amount_cents=body.amount_cents, source_type=body.source_type,
+        user_id=user.id, artist_id=artist_id, amount_cents=body.amount_cents, source_type=body.source_type,
         idempotency_key=body.idempotency_key, direction=body.direction,
         source_id=body.source_id, currency=body.currency, metadata=body.metadata,
     )
