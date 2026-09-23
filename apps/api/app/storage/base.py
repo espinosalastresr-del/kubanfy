@@ -69,6 +69,26 @@ class StorageProvider(ABC):
         """Stream object in chunks."""
 
     @abstractmethod
+    async def size(
+        self,
+        key: str,
+        *,
+        bucket: StorageBucket = StorageBucket.CACHE,
+    ) -> int:
+        """Return object size without downloading the body."""
+
+    @abstractmethod
+    async def get_range(
+        self,
+        key: str,
+        start: int,
+        end: int,
+        *,
+        bucket: StorageBucket = StorageBucket.CACHE,
+    ) -> bytes:
+        """Read an inclusive byte range."""
+
+    @abstractmethod
     async def delete(
         self,
         key: str,
