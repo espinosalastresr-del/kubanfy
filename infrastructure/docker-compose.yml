@@ -1,5 +1,8 @@
-# KubanFy local development stack
-# Usage: docker compose -f infrastructure/docker-compose.yml up -d
+# KubanFy local / staging stack
+# Usage:
+#   docker compose -f infrastructure/docker-compose.yml up -d
+#   docker compose -f infrastructure/docker-compose.yml --profile full up -d
+#   docker compose -f infrastructure/docker-compose.yml --profile staging up -d --build
 
 services:
   postgres:
@@ -35,7 +38,6 @@ services:
       retries: 10
     restart: unless-stopped
 
-  # Optional S3-compatible storage for local R2 simulation
   minio:
     image: minio/minio:latest
     container_name: kubanfy-minio
@@ -48,50 +50,78 @@ services:
     volumes:
       - kubanfy_minio:/data
     command: server /data --console-address ":9001"
-    healthcheck:
-      test: ["CMD", "mc", "ready", "local"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-      start_period: 10s
     restart: unless-stopped
     profiles:
       - full
+      - staging
 
-  # Mailpit for local email capture
   mailpit:
     image: axllent/mailpit:latest
     container_name: kubanfy-mailpit
     ports:
-      - "1025:1025"   # SMTP
-      - "8025:8025"   # Web UI
+      - "1025:1025"
+      - "8025:8025"
     restart: unless-stopped
     profiles:
       - full
 
-volumes:
-  kubanfy_pgdata:
-  kubanfy_redis:
-  kubanfy_minio:
-
-  # --- Staging-oriented API (profile: staging) ---
-  # Usage: docker compose -f infrastructure/docker-compose.yml --profile staging up -d
   api:
     profiles: ["staging"]
     build:
       context: ../apps/api
       dockerfile: Dockerfile
-    container_name: kubanfy-api-staging
+    container_name: kubanfy-api
     environment:
       ENVIRONMENT: staging
       DATABASE_URL: postgresql+asyncpg://kubanfy:kubanfy@postgres:5432/kubanfy
       REDIS_URL: redis://redis:6379/0
       JWT_SECRET: change-me-staging-must-be-long-enough-32chars
+      STORAGE_BACKEND: local
+      LOCAL_STORAGE_PATH: /data/storage
     ports:
       - "8000:8000"
+    volumes:
+      - kubanfy_storage:/data/storage
     depends_on:
       postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8000/health/live"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 25s
     restart: unless-stopped
+
+  worker:
+    profiles: ["staging"]
+    build:
+      context: ../apps/api
+      dockerfile: Dockerfile
+    container_name: kubanfy-worker
+    command: ["python", "-m", "app.workers.runner"]
+    environment:
+      ENVIRONMENT: staging
+      DATABASE_URL: postgresql+asyncpg://kubanfy:kubanfy@postgres:5432/kubanfy
+      REDIS_URL: redis://redis:6379/0
+      JWT_SECRET: change-me-staging-must-be-long-enough-32chars
+      STORAGE_BACKEND: local
+      LOCAL_STORAGE_PATH: /data/storage
+    volumes:
+      - kubanfy_storage:/data/storage
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      api:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  kubanfy_pgdata:
+  kubanfy_redis:
+  kubanfy_minio:
+  kubanfy_storage:
