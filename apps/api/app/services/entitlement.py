@@ -160,8 +160,12 @@ class EntitlementService:
 
     async def require_download_access(self, user_id: UUID) -> None:
         """Persistent/download delivery is a premium entitlement, not free streaming."""
-        if not await self.has_premium(user_id):
-            raise EntitlementRequiredError("Premium entitlement required for downloads")
+        for ent in await self.list_active(user_id):
+            if ent.scope_type == EntitlementScope.USER_PREMIUM:
+                features = ent.metadata_json or {}
+                if bool(features.get("downloads", False)):
+                    return
+        raise EntitlementRequiredError("Premium entitlement required for downloads")
 
     async def require_quality_access(self, user_id: UUID, quality: str) -> None:
         """Enforce the maximum quality explicitly granted by the active entitlement."""
