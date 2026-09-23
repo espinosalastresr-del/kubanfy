@@ -128,8 +128,31 @@ class OfflineLicenseService:
         ):
             raise AuthError("Offline license device mismatch")
 
-        if payload.get("device_id") != device_id or payload.get("track_id") != str(row.track_id):
+        if (
+            payload.get("device_id") != device_id
+            or payload.get("track_id") != str(row.track_id)
+            or payload.get("license_id") != str(row.id)
+            or payload.get("quality") != row.quality
+            or payload.get("asset_version") != row.asset_version
+            or payload.get("content_hash") != row.content_hash
+        ):
             raise AuthError("Offline license binding mismatch")
+
+        # A license is bound to an exact asset generation. Replacements must
+        # not silently make an older offline authorization valid for the new
+        # bytes, and deleted/revoked assets must stop validating as well.
+        asset = await self.session.scalar(
+            select(AudioAsset).where(
+                AudioAsset.track_id == row.track_id,
+                AudioAsset.quality == row.quality,
+                AudioAsset.version == row.asset_version,
+                AudioAsset.is_active.is_(True),
+                AudioAsset.content_hash == row.content_hash,
+                AudioAsset.storage_key.is_not(None),
+            )
+        )
+        if asset is None:
+            raise AuthError("Offline license asset is no longer available")
 
         row.last_validated_at = datetime.now(UTC)
         row.validation_count += 1
