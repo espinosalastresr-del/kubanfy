@@ -158,6 +158,33 @@ class EntitlementService:
         if not await self.can_access_track(user_id, track_id):
             raise EntitlementRequiredError("Entitlement required for this track")
 
+    async def require_download_access(self, user_id: UUID) -> None:
+        """Persistent/download delivery is a premium entitlement, not free streaming."""
+        if not await self.has_premium(user_id):
+            raise EntitlementRequiredError("Premium entitlement required for downloads")
+
+    async def require_quality_access(self, user_id: UUID, quality: str) -> None:
+        """Enforce the plan's maximum streaming/download quality."""
+        order = {"low": 0, "medium": 1, "lossless": 2}
+        requested = quality.lower()
+        if requested not in order:
+            raise EntitlementRequiredError("Unsupported audio quality")
+
+        max_quality = "low"
+        for ent in await self.list_active(user_id):
+            if ent.scope_type != EntitlementScope.USER_PREMIUM:
+                continue
+            plan_code = (ent.metadata_json or {}).get("plan_code")
+            if plan_code in {PlanCode.PREMIUM.value, PlanCode.FAMILY.value, PlanCode.STUDENT.value}:
+                max_quality = "lossless"
+                break
+            max_quality = "medium"
+
+        if order[requested] > order[max_quality]:
+            raise EntitlementRequiredError(
+                f"Audio quality {requested} requires a higher entitlement"
+            )
+
     async def ensure_default_plans(self) -> None:
         """Idempotent seed of FREE/PREMIUM/FAMILY/STUDENT plans (no prices hardcoded as product truth)."""
         defaults = [
