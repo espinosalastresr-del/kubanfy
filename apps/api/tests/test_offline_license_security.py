@@ -86,3 +86,42 @@ def test_production_requires_offline_license_keypair() -> None:
             jwt_secret_key="production-secret-key-with-at-least-32-characters",
             super_admin_password="strong-production-password",
         )
+
+
+def test_offline_license_rejects_reserved_claim_override(license_settings: Settings) -> None:
+    with pytest.raises(ValueError, match="reserved claims"):
+        create_offline_license_token(
+            "user-1",
+            extra_claims={"sub": "attacker"},
+            expires_delta=timedelta(hours=1),
+            settings=license_settings,
+        )
+
+
+def test_offline_license_rejects_missing_required_binding_claims(license_settings: Settings) -> None:
+    token = create_offline_license_token(
+        "user-1",
+        extra_claims={"track_id": "track-1"},
+        expires_delta=timedelta(hours=1),
+        settings=license_settings,
+    )
+    with pytest.raises(ValueError, match="Invalid offline license claims"):
+        decode_offline_license_token(token, license_settings)
+
+
+def test_offline_license_rejects_invalid_asset_version(license_settings: Settings) -> None:
+    token = create_offline_license_token(
+        "user-1",
+        extra_claims={
+            "license_id": "license-1",
+            "device_id": "device-1",
+            "track_id": "track-1",
+            "asset_version": 0,
+            "quality": "medium",
+            "content_hash": "sha256:abc",
+        },
+        expires_delta=timedelta(hours=1),
+        settings=license_settings,
+    )
+    with pytest.raises(ValueError, match="Invalid offline license asset version"):
+        decode_offline_license_token(token, license_settings)
