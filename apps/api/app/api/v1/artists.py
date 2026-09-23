@@ -318,7 +318,7 @@ async def approve_royalty_settlement(
     user: Annotated[User, Depends(require_permissions("royalties.write"))],
     session: DbSession,
 ) -> RoyaltySettlementResponse:
-    row = await RightsRoyaltyService(session).approve_settlement(user_id=user.id, settlement_id=settlement_id)
+    row = await RightsRoyaltyService(session).approve_settlement(user_id=user.id, artist_id=artist_id, settlement_id=settlement_id)
     account = await session.get(RoyaltyAccount, row.account_id)
     if account is None or account.artist_id != artist_id:
         raise NotFoundError("Settlement not found")
@@ -332,7 +332,7 @@ async def pay_royalty_settlement(
     user: Annotated[User, Depends(require_permissions("royalties.write"))],
     session: DbSession,
 ) -> RoyaltySettlementResponse:
-    row = await RightsRoyaltyService(session).mark_settlement_paid(user_id=user.id, settlement_id=settlement_id)
+    row = await RightsRoyaltyService(session).mark_settlement_paid(user_id=user.id, artist_id=artist_id, settlement_id=settlement_id)
     account = await session.get(__import__("app.models.rights", fromlist=["RoyaltyAccount"]).RoyaltyAccount, row.account_id)
     if account is None or account.artist_id != artist_id:
         raise NotFoundError("Settlement not found")
@@ -346,7 +346,7 @@ async def reject_royalty_settlement(
     user: Annotated[User, Depends(require_permissions("royalties.write"))],
     session: DbSession,
 ) -> RoyaltySettlementResponse:
-    row = await RightsRoyaltyService(session).reject_settlement(user_id=user.id, settlement_id=settlement_id)
+    row = await RightsRoyaltyService(session).reject_settlement(user_id=user.id, artist_id=artist_id, settlement_id=settlement_id)
     account = await session.get(__import__("app.models.rights", fromlist=["RoyaltyAccount"]).RoyaltyAccount, row.account_id)
     if account is None or account.artist_id != artist_id:
         raise NotFoundError("Settlement not found")
