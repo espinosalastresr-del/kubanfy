@@ -67,10 +67,7 @@ async def handle_publication_schedule(job: Job, session: Any) -> dict[str, Any] 
         current = release.scheduled_publish_at
         if current is None:
             return {"skipped": True, "reason": "schedule_superseded"}
-        if current.tzinfo is None:
-            current = current.replace(tzinfo=UTC)
-        else:
-            current = current.astimezone(UTC)
+        current = current.replace(tzinfo=UTC) if current.tzinfo is None else current.astimezone(UTC)
         if current != scheduled_at:
             return {"skipped": True, "reason": "schedule_superseded"}
         tracks = list((await session.scalars(
@@ -89,10 +86,7 @@ async def handle_publication_schedule(job: Job, session: Any) -> dict[str, Any] 
         current = release.scheduled_unpublish_at
         if current is None:
             return {"skipped": True, "reason": "schedule_superseded"}
-        if current.tzinfo is None:
-            current = current.replace(tzinfo=UTC)
-        else:
-            current = current.astimezone(UTC)
+        current = current.replace(tzinfo=UTC) if current.tzinfo is None else current.astimezone(UTC)
         if current != scheduled_at:
             return {"skipped": True, "reason": "schedule_superseded"}
         release.status = TrackStatus.HIDDEN
