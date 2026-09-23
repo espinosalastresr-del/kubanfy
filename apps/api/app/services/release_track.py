@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import re
 import unicodedata
+from datetime import UTC, datetime
 from uuid import UUID
 
 from sqlalchemy import select
@@ -13,6 +14,8 @@ from app.core.exceptions import ConflictError, NotFoundError, RightsError, Valid
 from app.models.artist_member import ArtistMember, ArtistMemberRole
 from app.models.music import Artist, AudioAsset, Release, Track, TrackArtist, TrackStatus
 from app.models.rights import LicenseRecord, LicenseStatus
+from app.models.job import JobType
+from app.services.job import JobService
 
 
 EDIT_ROLES = {
@@ -128,6 +131,56 @@ class ReleaseTrackService:
         else:
             raise ValidationError(f"Unsupported release status: {status.value}")
 
+        await self.session.flush()
+        return release
+
+    async def schedule_release(
+        self,
+        *,
+        user_id: UUID,
+        artist_id: UUID,
+        release_id: UUID,
+        publish_at: datetime | None,
+        unpublish_at: datetime | None,
+    ) -> Release:
+        await self._member(user_id, artist_id, PUBLISH_ROLES)
+        release = await self.session.get(Release, release_id)
+        if release is None or release.artist_id != artist_id:
+            raise NotFoundError("Release not found")
+        if release.status == TrackStatus.DELETED:
+            raise ValidationError("Deleted release cannot be scheduled")
+
+        now = datetime.now(UTC)
+        if publish_at is not None:
+            if publish_at.tzinfo is None:
+                publish_at = publish_at.replace(tzinfo=UTC)
+            if publish_at <= now:
+                raise ValidationError("publish_at must be in the future")
+        if unpublish_at is not None:
+            if unpublish_at.tzinfo is None:
+                unpublish_at = unpublish_at.replace(tzinfo=UTC)
+            if unpublish_at <= now:
+                raise ValidationError("unpublish_at must be in the future")
+        if publish_at and unpublish_at and unpublish_at <= publish_at:
+            raise ValidationError("unpublish_at must be after publish_at")
+
+        release.scheduled_publish_at = publish_at
+        release.scheduled_unpublish_at = unpublish_at
+        scheduler = JobService(self.session)
+        if publish_at:
+            await scheduler.enqueue(
+                JobType.PUBLICATION_SCHEDULE,
+                {"release_id": str(release.id), "action": "publish", "scheduled_at": publish_at.isoformat()},
+                run_at=publish_at,
+                idempotency_key=f"release:{release.id}:publish:{publish_at.isoformat()}",
+            )
+        if unpublish_at:
+            await scheduler.enqueue(
+                JobType.PUBLICATION_SCHEDULE,
+                {"release_id": str(release.id), "action": "unpublish", "scheduled_at": unpublish_at.isoformat()},
+                run_at=unpublish_at,
+                idempotency_key=f"release:{release.id}:unpublish:{unpublish_at.isoformat()}",
+            )
         await self.session.flush()
         return release
 
