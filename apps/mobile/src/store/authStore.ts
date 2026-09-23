@@ -1,6 +1,12 @@
 import {create} from 'zustand';
 
-import {apiRequest, clearTokens, setTokens} from '../api/client';
+import {
+  apiRequest,
+  clearOfflineUserId,
+  clearTokens,
+  setOfflineUserId,
+  setTokens,
+} from '../api/client';
 import {
   AppMode,
   LoginResponse,
@@ -60,6 +66,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         body: JSON.stringify({email, password}),
       });
       await setTokens(data.access_token, data.refresh_token);
+      await setOfflineUserId(data.user.id);
       const modes = deriveModes(data.user.roles || []);
       set({
         user: data.user,
@@ -102,6 +109,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       // ignore
     }
     await clearTokens();
+    await clearOfflineUserId();
     set({user: null, modes: ['listener'], activeMode: 'listener', error: null});
   },
 
