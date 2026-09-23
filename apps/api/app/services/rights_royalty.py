@@ -31,12 +31,12 @@ class RightsRoyaltyService:
         scope_type=scope_type.lower()
         if scope_type not in ("track","release"): raise ValidationError("scope_type must be track or release")
         if scope_type=="track":
-            obj=await self.session.get(Track,scope_id)
+            obj=await self.session.scalar(select(Track).where(Track.id == scope_id).with_for_update())
             if obj is None or obj.release_id is None: raise NotFoundError("Track not found")
             release=await self.session.get(Release,obj.release_id)
             if release is None or release.artist_id!=artist_id: raise NotFoundError("Track not found")
         else:
-            obj=await self.session.get(Release,scope_id)
+            obj=await self.session.scalar(select(Release).where(Release.id == scope_id).with_for_update())
             if obj is None or obj.artist_id!=artist_id: raise NotFoundError("Release not found")
         if not splits: raise ValidationError("At least one collaborator split is required")
         total=sum(int(x.get("share_bps",0)) for x in splits)
@@ -84,9 +84,19 @@ class RightsRoyaltyService:
 
     async def ensure_account(self, artist_id:UUID, currency:str="CUP")->RoyaltyAccount:
         account=await self.session.scalar(select(RoyaltyAccount).where(RoyaltyAccount.artist_id==artist_id))
-        if account is None:
-            account=RoyaltyAccount(artist_id=artist_id,currency=currency.upper(),status="active")
-            self.session.add(account); await self.session.flush()
+        if account is not None:
+            if account.currency != currency.upper():
+                raise ConflictError("Currency mismatch for royalty account")
+            return account
+        account=RoyaltyAccount(artist_id=artist_id,currency=currency.upper(),status="active")
+        self.session.add(account)
+        try:
+            async with self.session.begin_nested():
+                await self.session.flush()
+        except Exception:
+            account=await self.session.scalar(select(RoyaltyAccount).where(RoyaltyAccount.artist_id==artist_id))
+            if account is None:
+                raise
         return account
 
     async def append_ledger(self, *, user_id:UUID, artist_id:UUID, amount_cents:int, source_type:str, idempotency_key:str, direction:str="credit", source_id:UUID|None=None, currency:str="CUP", metadata:dict|None=None)->RoyaltyLedgerEntry:
@@ -99,7 +109,15 @@ class RightsRoyaltyService:
         account=await self.ensure_account(artist_id,currency)
         if account.currency!=currency.upper(): raise ConflictError("Currency mismatch for royalty account")
         entry=RoyaltyLedgerEntry(account_id=account.id,amount_cents=amount_cents,currency=currency.upper(),direction=direction,source_type=source_type,source_id=source_id,idempotency_key=idempotency_key,entry_metadata=metadata or {})
-        self.session.add(entry); await self.session.flush()
+        self.session.add(entry)
+        try:
+            async with self.session.begin_nested():
+                await self.session.flush()
+        except Exception:
+            existing=await self.session.scalar(select(RoyaltyLedgerEntry).where(RoyaltyLedgerEntry.idempotency_key==idempotency_key))
+            if existing is None:
+                raise
+            return existing
         return entry
 
     async def create_settlement(self, *, artist_id:UUID, period_start:datetime, period_end:datetime, gross_cents:int, net_cents:int, idempotency_key:str, currency:str="CUP")->RoyaltySettlement:
@@ -108,5 +126,13 @@ class RightsRoyaltyService:
         if existing is not None: return existing
         account=await self.ensure_account(artist_id,currency)
         settlement=RoyaltySettlement(account_id=account.id,period_start=period_start,period_end=period_end,gross_cents=gross_cents,net_cents=net_cents,currency=currency.upper(),status="pending",idempotency_key=idempotency_key)
-        self.session.add(settlement); await self.session.flush()
+        self.session.add(settlement)
+        try:
+            async with self.session.begin_nested():
+                await self.session.flush()
+        except Exception:
+            existing=await self.session.scalar(select(RoyaltySettlement).where(RoyaltySettlement.idempotency_key==idempotency_key))
+            if existing is None:
+                raise
+            return existing
         return settlement
