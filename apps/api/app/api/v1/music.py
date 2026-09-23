@@ -98,9 +98,12 @@ async def music_preview(
 async def music_download(
     body: MusicDownloadRequest,
     session: DbSession,
+    request: Request,
     user: CurrentUser,
 ) -> MusicDownloadResponse:
     """Requires authentication. Entitlement checks enforced via engine/API layer."""
+    ip = request.client.host if request.client else None
+    await AntiAbuseService().check_download(str(user.id), ip)
     engine = MusicEngine(session, provider_manager=_manager)
     if body.track_id is not None:
         result = await engine.download_by_track_id(
@@ -167,6 +170,8 @@ async def music_content_stream(
     from app.storage import StorageBucket, get_storage
     from app.core.exceptions import NotFoundError, ValidationError
 
+    ip = request.client.host if request.client else None
+    await AntiAbuseService().check_download(str(user.id), ip)
     engine = MusicEngine(session, provider_manager=_manager)
     try:
         result = await engine.download_by_track_id(track_id=track_id, quality=quality)
