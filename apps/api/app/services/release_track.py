@@ -133,6 +133,8 @@ class ReleaseTrackService:
         release = await self.session.get(Release, release_id)
         if release is None or release.artist_id != artist_id:
             raise NotFoundError("Release not found")
+        if release.status == TrackStatus.DELETED:
+            raise ValidationError("Deleted release cannot change status")
 
         if status == TrackStatus.PUBLISHED:
             tracks = list(
@@ -303,6 +305,8 @@ class ReleaseTrackService:
         )
         if ownership is None:
             raise NotFoundError("Track not found")
+        if track.status == TrackStatus.DELETED:
+            raise ValidationError("Deleted track cannot change status")
 
         if status == TrackStatus.PUBLISHED:
             release = (
