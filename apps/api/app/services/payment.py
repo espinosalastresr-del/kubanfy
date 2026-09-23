@@ -148,6 +148,7 @@ class PaymentService:
             await self.session.flush()
             raise ConflictError("Payment order has expired")
 
+        plan_features: dict = {}
         if grant_premium and order.plan_code:
             if self.settings.feature_monetization:
                 price = await self._validate_plan_price(
@@ -155,9 +156,11 @@ class PaymentService:
                     currency=order.currency,
                     amount_cents=order.amount_cents,
                 )
+                plan_features = price.plan.features or {}
                 expires_at = self._plan_expiration(price.interval)
             else:
                 expires_at = datetime.now(UTC) + timedelta(days=30)
+                plan_features = {"downloads": True, "quality_max": "lossless"}
         else:
             expires_at = None
 
@@ -174,7 +177,11 @@ class PaymentService:
                 scope_type=EntitlementScope.USER_PREMIUM,
                 source=EntitlementSource.MANUAL,
                 expires_at=expires_at,
-                metadata={"plan_code": order.plan_code},
+                metadata={
+                    "plan_code": order.plan_code,
+                    "downloads": bool(plan_features.get("downloads", False)),
+                    "quality_max": str(plan_features.get("quality_max", "low")).lower(),
+                },
             )
 
         logger.info("payment_approved", order_id=str(order_id), by=str(admin_user_id))
