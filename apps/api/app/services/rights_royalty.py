@@ -58,7 +58,27 @@ class RightsRoyaltyService:
 
     async def get_splits(self, *, user_id:UUID, artist_id:UUID, scope_type:str, scope_id:UUID)->list[CollaboratorSplit]:
         await self._authorized(user_id, artist_id)
-        result=await self.session.scalars(select(CollaboratorSplit).where(CollaboratorSplit.scope_type==scope_type.lower(),CollaboratorSplit.scope_id==scope_id,CollaboratorSplit.active.is_(True)).order_by(CollaboratorSplit.created_at))
+        scope_type = scope_type.lower()
+        if scope_type not in ("track", "release"):
+            raise ValidationError("scope_type must be track or release")
+        if scope_type == "track":
+            obj = await self.session.get(Track, scope_id)
+            if obj is None or obj.release_id is None:
+                raise NotFoundError("Track not found")
+            release = await self.session.get(Release, obj.release_id)
+            if release is None or release.artist_id != artist_id:
+                raise NotFoundError("Track not found")
+        else:
+            obj = await self.session.get(Release, scope_id)
+            if obj is None or obj.artist_id != artist_id:
+                raise NotFoundError("Release not found")
+        result = await self.session.scalars(
+            select(CollaboratorSplit).where(
+                CollaboratorSplit.scope_type == scope_type,
+                CollaboratorSplit.scope_id == scope_id,
+                CollaboratorSplit.active.is_(True),
+            ).order_by(CollaboratorSplit.created_at)
+        )
         return list(result.all())
 
     async def ensure_account(self, artist_id:UUID, currency:str="CUP")->RoyaltyAccount:
