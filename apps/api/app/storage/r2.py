@@ -139,6 +139,50 @@ class R2Storage(StorageProvider):
                     break
                 yield chunk
 
+    async def size(
+        self,
+        key: str,
+        *,
+        bucket: StorageBucket = StorageBucket.CACHE,
+    ) -> int:
+        try:
+            async with self._client() as client:
+                resp = await client.head_object(
+                    Bucket=self._bucket_name(bucket),
+                    Key=key,
+                )
+            return int(resp["ContentLength"])
+        except Exception as exc:
+            if "404" in str(exc) or "NoSuchKey" in type(exc).__name__:
+                raise StorageError("Object not found", status_code=404) from exc
+            raise StorageError(f"Failed to stat object: {type(exc).__name__}") from exc
+
+    async def get_range(
+        self,
+        key: str,
+        start: int,
+        end: int,
+        *,
+        bucket: StorageBucket = StorageBucket.CACHE,
+    ) -> bytes:
+        if start < 0 or end < start:
+            raise StorageError("Invalid range", status_code=416)
+        try:
+            async with self._client() as client:
+                resp = await client.get_object(
+                    Bucket=self._bucket_name(bucket),
+                    Key=key,
+                    Range=f"bytes={start}-{end}",
+                )
+                async with resp["Body"] as stream:
+                    return await stream.read()
+        except Exception as exc:
+            if "404" in str(exc) or "NoSuchKey" in type(exc).__name__:
+                raise StorageError("Object not found", status_code=404) from exc
+            if "416" in str(exc):
+                raise StorageError("Invalid range", status_code=416) from exc
+            raise StorageError(f"Failed to read range: {type(exc).__name__}") from exc
+
     async def delete(
         self,
         key: str,

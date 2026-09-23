@@ -32,8 +32,6 @@ def upgrade() -> None:
     mod_status = sa.Enum(
         "open", "reviewing", "resolved", "rejected", name="moderation_status"
     )
-    report_type.create(op.get_bind(), checkfirst=True)
-    mod_status.create(op.get_bind(), checkfirst=True)
 
     op.create_table(
         "moderation_reports",

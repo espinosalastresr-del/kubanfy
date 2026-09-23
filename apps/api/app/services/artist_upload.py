@@ -24,6 +24,8 @@ from app.models.music import (
     Artist,
     AudioAsset,
     AudioQuality,
+    Release,
+    ReleaseType,
     QualityConfidence,
     SourceType,
     Track,
@@ -137,10 +139,23 @@ class ArtistUploadService:
         try:
             probe = await self.validator.validate_for_storage(tmp_path)
 
+            # Every first-party upload starts inside an explicit release.
+            # This establishes Artist -> Release -> Track before publication.
+            release = Release(
+                artist_id=artist_id,
+                title=title.strip(),
+                type=ReleaseType.SINGLE,
+                status=TrackStatus.DRAFT,
+            )
+            self.session.add(release)
+            await self.session.flush()
+
             track = Track(
                 title=title.strip(),
                 slug=_slugify(f"{title}-{artist.slug}"),
                 duration=probe.duration,
+                release_id=release.id,
+                album_id=release.id,
                 status=TrackStatus.PROCESSING,
                 explicit=explicit,
                 language=language,
@@ -160,6 +175,7 @@ class ArtistUploadService:
             # Rights record
             license_rec = LicenseRecord(
                 track_id=track.id,
+                release_id=release.id,
                 artist_id=artist_id,
                 accepted_by_user_id=user_id,
                 storage_allowed=True,
@@ -251,10 +267,54 @@ class ArtistUploadService:
                 return track
             raise ValidationError(f"Cannot publish track in status {track.status.value}")
 
-        # Require active license
+        # Validate the complete first-party ownership chain:
+        # Artist -> Release -> Track -> AudioAsset -> LicenseRecord.
+        release = await self.session.get(Release, track.release_id) if track.release_id else None
+        if release is None or release.artist_id != artist_id:
+            raise RightsError("Track must belong to a release owned by the publishing artist")
+
+        artist_link = await self.session.scalar(
+            select(TrackArtist).where(
+                TrackArtist.track_id == track_id,
+                TrackArtist.artist_id == artist_id,
+            )
+        )
+        if artist_link is None:
+            raise RightsError("Track artist ownership record is required to publish")
+
+        asset = await self.session.scalar(
+            select(AudioAsset).where(AudioAsset.track_id == track_id).limit(1)
+        )
+        if asset is None or not asset.storage_key or not asset.content_hash:
+            raise ValidationError(
+                "A validated audio asset with storage key and content hash is required to publish"
+            )
+        if asset.source_type != SourceType.ARTIST_UPLOAD:
+            raise RightsError(
+                "Published artist catalog tracks require an artist-uploaded audio asset"
+            )
+
+        # Publication is allowed only after the offline-friendly playback
+        # derivatives are actually present and verified.
+        derivative_qualities = await self.session.scalars(
+            select(AudioAsset.quality).where(
+                AudioAsset.track_id == track_id,
+                AudioAsset.source_type == SourceType.DERIVATIVE,
+                AudioAsset.quality.in_([AudioQuality.LOW, AudioQuality.MEDIUM]),
+                AudioAsset.content_hash.is_not(None),
+                AudioAsset.storage_key != "",
+            )
+        )
+        if set(derivative_qualities.all()) != {AudioQuality.LOW, AudioQuality.MEDIUM}:
+            raise ValidationError(
+                "LOW and MEDIUM verified derivatives are required before publication"
+            )
+
         license_rec = await self.session.scalar(
             select(LicenseRecord).where(
                 LicenseRecord.track_id == track_id,
+                LicenseRecord.release_id == release.id,
+                LicenseRecord.artist_id == artist_id,
                 LicenseRecord.status == LicenseStatus.ACTIVE,
             )
         )
@@ -262,6 +322,7 @@ class ArtistUploadService:
             raise RightsError("Active streaming license required to publish")
 
         track.status = TrackStatus.PUBLISHED
+        release.status = TrackStatus.PUBLISHED
         await self.session.flush()
         logger.info("track_published", track_id=str(track_id), user_id=str(user_id))
         return track
