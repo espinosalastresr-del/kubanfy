@@ -111,6 +111,8 @@ class Release(Base):
         default=TrackStatus.DRAFT,
     )
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    scheduled_publish_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
+    scheduled_unpublish_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
