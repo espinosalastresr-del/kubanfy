@@ -47,6 +47,7 @@ Artist → Release → Track → AudioAsset → LicenseRecord → permanent stor
 - Offline authorization is bound to the authenticated device claim, asset version and content hash; device revocation invalidates its offline licenses.
 - Release publication scheduling is server-side and superseded schedules are ignored.
 - Royalty split updates lock the owned scope row; ledger/account/settlement idempotency uses nested transactions so concurrent retries do not roll back unrelated work.
+- Royalty settlements now have an explicit pending → approved → paid/rejected lifecycle; payout marking appends an idempotent debit ledger entry and is bound to the target artist.
 - Audio assets enforce one generation/quality/source tuple at the database level, preventing duplicate derivative rows under concurrent workers.
 - HTTP Range resume and download anti-abuse remain enforced by the existing MusicEngine/API path.
 
