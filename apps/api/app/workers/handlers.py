@@ -4,15 +4,17 @@ from __future__ import annotations
 
 import tempfile
 from pathlib import Path
+from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID
 
 from app.core.logging import get_logger
 from app.models.job import Job, JobType
-from app.models.music import AudioAsset, AudioQuality, QualityConfidence, SourceType, Track, TrackStatus
+from app.models.music import AudioAsset, AudioQuality, QualityConfidence, Release, SourceType, Track, TrackStatus
 from app.services.cache import CacheService
 from app.services.transcoding import TranscodingService
 from app.storage import StorageBucket, get_storage
+from sqlalchemy import select
 from app.workers.runner import register_handler
 
 logger = get_logger(__name__)
@@ -45,6 +47,49 @@ async def handle_cache_cleanup(job: Job, session: Any) -> dict[str, Any] | None:
         purged += 1
     logger.info("cache_cleanup_done", expired=expired, purged=purged)
     return {"expired": expired, "purged": purged}
+
+
+@register_handler(JobType.PUBLICATION_SCHEDULE)
+async def handle_publication_schedule(job: Job, session: Any) -> dict[str, Any] | None:
+    payload = job.payload
+    release = await session.get(Release, UUID(payload["release_id"]))
+    if release is None or release.status == TrackStatus.DELETED:
+        return {"skipped": True, "reason": "release_not_found_or_deleted"}
+
+    scheduled_at = datetime.fromisoformat(payload["scheduled_at"])
+    if scheduled_at.tzinfo is None:
+        scheduled_at = scheduled_at.replace(tzinfo=UTC)
+
+    action = payload.get("action")
+    if action == "publish":
+        if release.scheduled_publish_at is None or release.scheduled_publish_at != scheduled_at:
+            return {"skipped": True, "reason": "schedule_superseded"}
+        tracks = list((await session.scalars(
+            select(Track).where(Track.release_id == release.id)
+        )).all())
+        if not tracks:
+            return {"skipped": True, "reason": "release_has_no_tracks"}
+        if any(t.status != TrackStatus.PUBLISHED for t in tracks):
+            return {"skipped": True, "reason": "tracks_not_published"}
+        release.status = TrackStatus.PUBLISHED
+        release.scheduled_publish_at = None
+        await session.flush()
+        return {"published": True, "release_id": str(release.id)}
+
+    if action == "unpublish":
+        if release.scheduled_unpublish_at is None or release.scheduled_unpublish_at != scheduled_at:
+            return {"skipped": True, "reason": "schedule_superseded"}
+        release.status = TrackStatus.HIDDEN
+        release.scheduled_unpublish_at = None
+        await session.execute(
+            Track.__table__.update()
+            .where(Track.release_id == release.id, Track.status == TrackStatus.PUBLISHED)
+            .values(status=TrackStatus.HIDDEN)
+        )
+        await session.flush()
+        return {"unpublished": True, "release_id": str(release.id)}
+
+    return {"skipped": True, "reason": "invalid_action"}
 
 
 @register_handler(JobType.TRANSCODE)
