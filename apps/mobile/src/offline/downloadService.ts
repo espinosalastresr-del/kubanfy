@@ -114,8 +114,6 @@ async function downloadWithResume(
   const part = job.tempPath || `${dir}/${job.trackId}_${job.quality}.audio.part`;
   const final = job.finalPath || `${dir}/${job.trackId}_${job.quality}.myapp`;
   const metadata = `${final}.meta`;
-  await updateJob(job.id, {finalPath: final});
-
   await updateJob(job.id, {tempPath: part, finalPath: final});
 
   if (await RNFS.exists(final)) {
@@ -123,8 +121,17 @@ async function downloadWithResume(
     const size = Number(stat.size);
     if (job.totalBytes && size !== job.totalBytes) {
       await RNFS.unlink(final).catch(() => {});
-    } else if (job.contentHash) {
-      return {path: final, contentHash: job.contentHash, sizeBytes: size};
+    } else if (job.contentHash && job.offlineLicense) {
+      return {
+        path: final,
+        contentHash: job.contentHash,
+        sizeBytes: size,
+        offlineLicense: job.offlineLicense,
+        offlineLicenseExpiresAt: job.offlineLicenseExpiresAt,
+      };
+    } else {
+      await RNFS.unlink(final).catch(() => {});
+      await RNFS.unlink(metadata).catch(() => {});
     }
   }
 
@@ -144,6 +151,9 @@ async function downloadWithResume(
 
       const total = res.size_bytes;
       const expectedHash = res.content_hash;
+      if (!expectedHash || !res.offline_license) {
+        throw new Error('Offline download requires content hash and license');
+      }
       let offset = 0;
       if (await RNFS.exists(part)) {
         offset = Number((await RNFS.stat(part)).size);
@@ -163,7 +173,6 @@ async function downloadWithResume(
         progress: total ? offset / total : 0.05,
         offlineLicense: res.offline_license,
         offlineLicenseExpiresAt: res.offline_license_expires_at,
-      });
       });
 
       const chunk = `${part}.download`;
