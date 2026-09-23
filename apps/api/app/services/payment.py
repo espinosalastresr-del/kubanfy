@@ -132,6 +132,10 @@ class PaymentService:
         order = await self.session.get(PaymentOrder, order_id)
         if order is None:
             raise NotFoundError("Payment order not found")
+        # Approval is idempotent: a retried admin request must not grant
+        # another premium entitlement.
+        if order.status == PaymentStatus.APPROVED:
+            return order
         if order.status not in (PaymentStatus.UNDER_REVIEW, PaymentStatus.PENDING):
             raise ConflictError(f"Cannot approve order in status {order.status.value}")
 
