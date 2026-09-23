@@ -15,6 +15,7 @@ from app.core.exceptions import ConflictError, NotFoundError, ValidationError
 from app.models.artist_member import ArtistMember, ArtistMemberRole
 from app.models.user import User
 from app.models.music import Artist, AudioAsset, Release, Track, TrackArtist, TrackStatus
+from app.models.rights import RoyaltyAccount
 from app.schemas.artist import (
     ArtistCreateRequest,
     ArtistUpdateRequest,
@@ -318,7 +319,7 @@ async def approve_royalty_settlement(
     session: DbSession,
 ) -> RoyaltySettlementResponse:
     row = await RightsRoyaltyService(session).approve_settlement(user_id=user.id, settlement_id=settlement_id)
-    account = await session.get(__import__("app.models.rights", fromlist=["RoyaltyAccount"]).RoyaltyAccount, row.account_id)
+    account = await session.get(RoyaltyAccount, row.account_id)
     if account is None or account.artist_id != artist_id:
         raise NotFoundError("Settlement not found")
     return RoyaltySettlementResponse.model_validate(row)
