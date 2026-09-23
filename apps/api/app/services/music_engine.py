@@ -53,7 +53,7 @@ class TrackUpdateResult:
     provider_track_id: str
     quality_capabilities: list[str] = field(default_factory=list)
     preview_available: bool = False
-    resolution_ref: str | None = None  # internal ref e.g. "mock:mock-1"
+    resolution_ref: str | None = None
 
 
 @dataclass
@@ -105,7 +105,7 @@ class MusicEngine:
         provider_track_id: str | None = None,
         query: str | None = None,
     ) -> TrackUpdateResult:
-        """Resolve internal representation of content without mandatory full download."""
+        """Resolve external metadata without promoting it into the owned catalog."""
         meta: TrackMetadata | None = None
         provider_name = provider
 
@@ -124,11 +124,11 @@ class MusicEngine:
         if meta is None or provider_name is None or provider_track_id is None:
             raise NotFoundError("Track metadata not found")
 
-        # Ensure provider row exists
         db_provider = await self._ensure_provider(provider_name)
 
-        # Link or create internal track
-        track = await self._upsert_track_from_metadata(db_provider, meta)
+        # ProviderTrack is only a durable external reference. A Track is created
+        # exclusively by the artist catalog/upload workflow.
+        track = await self._ensure_provider_track(db_provider, meta)
 
         caps = []
         p = self.providers.registry.get(provider_name)
@@ -143,10 +143,6 @@ class MusicEngine:
             if c.hi_res:
                 caps.append("hi_res")
 
-        preview_available = False
-        if p and p.capabilities.preview:
-            preview_available = True
-
         return TrackUpdateResult(
             title=meta.title,
             artists=list(meta.artists),
@@ -159,7 +155,7 @@ class MusicEngine:
             provider=provider_name,
             provider_track_id=provider_track_id,
             quality_capabilities=caps,
-            preview_available=preview_available,
+            preview_available=bool(p and p.capabilities.preview),
             resolution_ref=f"{provider_name}:{provider_track_id}",
         )
 
@@ -172,10 +168,7 @@ class MusicEngine:
         """Prefer official provider preview; do not generate illegal samples."""
         source = await self.providers.preview(provider, provider_track_id)
         if source is None:
-            # Fallback: short resolve is not automatic sample generation —
-            # only return if provider itself offers preview.
             return PreviewResult(source=None)
-
         return PreviewResult(source=source, from_cache=False)
 
     async def download(
@@ -186,10 +179,7 @@ class MusicEngine:
         quality: str = "medium",
         user_id: UUID | None = None,
     ) -> DownloadResult:
-        """
-        Authorization/entitlement should be checked by the API layer before calling.
-        Flow: cache lookup → HIT signed URL | MISS → resolve → store (single-flight).
-        """
+        """Resolve, acquire, cache and return only our signed storage URL."""
         try:
             aq = AudioQuality(quality.lower())
         except ValueError:
@@ -235,7 +225,6 @@ class MusicEngine:
                 expires_at=entry.expires_at,
             )
 
-        # URL-based source: acquire internally, then deliver only our signed storage URL.
         from app.services.transfer import TransferManager
 
         transfer = TransferManager()
@@ -263,11 +252,6 @@ class MusicEngine:
             expires_at=entry.expires_at,
         )
 
-
-    # ------------------------------------------------------------------
-    # Internals
-    # ------------------------------------------------------------------
-
     async def _ensure_provider(self, name: str) -> Provider:
         existing = await self.session.scalar(select(Provider).where(Provider.name == name))
         if existing:
@@ -277,63 +261,47 @@ class MusicEngine:
         await self.session.flush()
         return p
 
-    async def _upsert_track_from_metadata(
+    async def _ensure_provider_track(
         self, db_provider: Provider, meta: TrackMetadata
-    ) -> Track:
+    ) -> Track | None:
+        """Persist provider metadata without creating a first-party Track.
+
+        A ProviderTrack may point at a first-party Track later, after an artist
+        uploads/claims the corresponding content and the rights workflow accepts it.
+        """
         pt = await self.session.scalar(
             select(ProviderTrack).where(
                 ProviderTrack.provider_id == db_provider.id,
                 ProviderTrack.provider_track_id == meta.provider_track_id,
             )
         )
-        if pt and pt.track_id:
-            track = await self.session.get(Track, pt.track_id)
-            if track:
-                pt.metadata_snapshot = {
-                    "title": meta.title,
-                    "artists": meta.artists,
-                    "album": meta.album,
-                    "isrc": meta.isrc,
-                    "duration": meta.duration_seconds,
-                }
-                pt.last_resolved_at = datetime.now(UTC)
-                await self.session.flush()
-                return track
-
-        # Create track
-        slug_base = _slugify(meta.title)
-        track = Track(
-            title=meta.title,
-            slug=f"{slug_base}-{meta.provider_track_id}"[:255],
-            duration=meta.duration_seconds,
-            isrc=meta.isrc,
-            status=TrackStatus.PUBLISHED,
-            artwork_url=meta.artwork_url,
-        )
-        self.session.add(track)
-        await self.session.flush()
+        snapshot: dict[str, Any] = {
+            "title": meta.title,
+            "artists": meta.artists,
+            "album": meta.album,
+            "isrc": meta.isrc,
+            "duration": meta.duration_seconds,
+            "artwork_url": meta.artwork_url,
+            "release_date": meta.release_date,
+        }
 
         if pt is None:
             pt = ProviderTrack(
                 provider_id=db_provider.id,
                 provider_track_id=meta.provider_track_id,
-                track_id=track.id,
-                metadata_snapshot={
-                    "title": meta.title,
-                    "artists": meta.artists,
-                    "album": meta.album,
-                    "isrc": meta.isrc,
-                    "duration": meta.duration_seconds,
-                },
+                metadata_snapshot=snapshot,
                 last_resolved_at=datetime.now(UTC),
             )
             self.session.add(pt)
         else:
-            pt.track_id = track.id
+            pt.metadata_snapshot = snapshot
             pt.last_resolved_at = datetime.now(UTC)
 
         await self.session.flush()
-        return track
+
+        if pt.track_id is None:
+            return None
+        return await self.session.get(Track, pt.track_id)
 
     async def _find_cache(
         self, provider: str, provider_track_id: str, quality: AudioQuality
@@ -411,7 +379,7 @@ class MusicEngine:
         quality: str = "medium",
         user_id: UUID | None = None,
     ) -> DownloadResult:
-        """Catalog track download — prefers permanent artist assets / cache by track_id."""
+        """Catalog track download — only for first-party published tracks."""
         try:
             aq = AudioQuality(quality.lower())
         except ValueError:
@@ -438,7 +406,6 @@ class MusicEngine:
                 expires_at=hit.expires_at,
             )
 
-        # Fallback: provider mapping
         pt = await self.session.scalar(
             select(ProviderTrack).where(ProviderTrack.track_id == track_id).limit(1)
         )
@@ -453,7 +420,6 @@ class MusicEngine:
                 )
 
         raise NotFoundError("No playable source for track")
-
 
 
 async def _async_const(value: bytes) -> bytes:
