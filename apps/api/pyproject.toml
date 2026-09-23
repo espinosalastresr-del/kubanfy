@@ -78,6 +78,11 @@ ignore = [
     "E501",   # line too long (handled by formatter)
     "B008",   # do not perform function calls in argument defaults (FastAPI Depends)
     "ARG001", # unused function argument (common in FastAPI routes)
+    "ARG002", # interface/abstract method parameters may be intentionally unused
+    "ARG003", # callback/classmethod interface parameters may be intentionally unused
+    "TCH",    # type-checking import placement is not enforced project-wide
+    "UP042",  # SQLAlchemy/Pydantic string enums intentionally retain str+Enum
+    "UP047",  # generic helper syntax kept compatible with current typing design
 ]
 
 [tool.ruff.lint.isort]
