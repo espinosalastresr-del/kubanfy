@@ -84,6 +84,9 @@ class PaymentService:
                 select(PaymentOrder).where(PaymentOrder.idempotency_key == idempotency_key)
             )
             if existing:
+                # Never let a caller replay another user's idempotency key.
+                if existing.user_id != user_id:
+                    raise ConflictError("Idempotency key already belongs to another user")
                 return existing
 
         provider = self._providers.get(method)
@@ -114,6 +117,8 @@ class PaymentService:
             )
             if existing is None:
                 raise
+            if existing.user_id != user_id:
+                raise ConflictError("Idempotency key already belongs to another user")
             return existing
         logger.info(
             "payment_order_created",
