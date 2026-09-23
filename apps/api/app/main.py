@@ -212,7 +212,7 @@ def create_app() -> FastAPI:
         }
 
     @app.get("/metrics", tags=["ops"], include_in_schema=False)
-    async def metrics() -> Response:
+    async def metrics() -> StarletteResponse:
         from starlette.responses import Response as StarletteResponse
 
         from app.core.metrics import metrics_payload
