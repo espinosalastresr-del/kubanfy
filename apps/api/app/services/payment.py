@@ -69,35 +69,15 @@ class PaymentService:
         reference: str | None = None,
         idempotency_key: str | None = None,
     ) -> PaymentOrder:
-        if not self.settings.feature_monetization:
-            # Still allow creating orders in pending state for ops testing,
-            # but document that monetization flag gates fulfillment.
-            pass
-
         if amount_cents <= 0:
             raise ValidationError("amount_cents must be positive")
 
         if self.settings.feature_monetization:
-            if not plan_code:
-                raise ValidationError("plan_code is required when monetization is enabled")
-            plan = await self.session.scalar(
-                select(Plan).where(
-                    Plan.code == plan_code,
-                    Plan.is_active.is_(True),
-                )
+            await self._validate_plan_price(
+                plan_code=plan_code,
+                currency=currency,
+                amount_cents=amount_cents,
             )
-            if plan is None:
-                raise ValidationError("Unknown or inactive plan")
-            price = await self.session.scalar(
-                select(PlanPrice).where(
-                    PlanPrice.plan_id == plan.id,
-                    PlanPrice.currency == currency.upper(),
-                    PlanPrice.amount_cents == amount_cents,
-                    PlanPrice.is_active.is_(True),
-                )
-            )
-            if price is None:
-                raise ValidationError("Payment amount does not match an active plan price")
 
         if idempotency_key:
             existing = await self.session.scalar(
@@ -166,6 +146,20 @@ class PaymentService:
             return order
         if order.status not in (PaymentStatus.UNDER_REVIEW, PaymentStatus.PENDING):
             raise ConflictError(f"Cannot approve order in status {order.status.value}")
+        if order.expires_at and order.expires_at.replace(tzinfo=UTC) <= datetime.now(UTC):
+            order.status = PaymentStatus.EXPIRED
+            await self.session.flush()
+            raise ConflictError("Payment order has expired")
+
+        if grant_premium and order.plan_code:
+            price = await self._validate_plan_price(
+                plan_code=order.plan_code,
+                currency=order.currency,
+                amount_cents=order.amount_cents,
+            )
+            expires_at = self._plan_expiration(price.interval)
+        else:
+            expires_at = None
 
         order.status = PaymentStatus.APPROVED
         order.verified_by = admin_user_id
@@ -179,7 +173,7 @@ class PaymentService:
                 payment_order_id=order.id,
                 scope_type=EntitlementScope.USER_PREMIUM,
                 source=EntitlementSource.MANUAL,
-                expires_at=datetime.now(UTC) + timedelta(days=30),
+                expires_at=expires_at,
                 metadata={"plan_code": order.plan_code},
             )
 
@@ -189,9 +183,13 @@ class PaymentService:
     async def reject(
         self, order_id: UUID, admin_user_id: UUID, *, reason: str | None = None
     ) -> PaymentOrder:
-        order = await self.session.scalar(select(PaymentOrder).where(PaymentOrder.id == order_id).with_for_update())
+        order = await self.session.scalar(
+            select(PaymentOrder).where(PaymentOrder.id == order_id).with_for_update()
+        )
         if order is None:
             raise NotFoundError("Payment order not found")
+        if order.status not in (PaymentStatus.UNDER_REVIEW, PaymentStatus.PENDING):
+            raise ConflictError(f"Cannot reject order in status {order.status.value}")
         order.status = PaymentStatus.REJECTED
         order.verified_by = admin_user_id
         order.verified_at = datetime.now(UTC)
@@ -216,6 +214,41 @@ class PaymentService:
             .limit(limit)
         )
         return list(result.scalars().all())
+
+    async def _validate_plan_price(
+        self,
+        *,
+        plan_code: str | None,
+        currency: str,
+        amount_cents: int,
+    ) -> PlanPrice:
+        if not plan_code:
+            raise ValidationError("plan_code is required when monetization is enabled")
+        plan = await self.session.scalar(
+            select(Plan).where(Plan.code == plan_code, Plan.is_active.is_(True))
+        )
+        if plan is None:
+            raise ValidationError("Unknown or inactive plan")
+        price = await self.session.scalar(
+            select(PlanPrice).where(
+                PlanPrice.plan_id == plan.id,
+                PlanPrice.currency == currency.upper(),
+                PlanPrice.amount_cents == amount_cents,
+                PlanPrice.is_active.is_(True),
+            )
+        )
+        if price is None:
+            raise ValidationError("Payment amount does not match an active plan price")
+        return price
+
+    @staticmethod
+    def _plan_expiration(interval: str) -> datetime:
+        now = datetime.now(UTC)
+        if interval == "month":
+            return now + timedelta(days=30)
+        if interval == "year":
+            return now + timedelta(days=365)
+        raise ValidationError(f"Unsupported plan interval: {interval}")
 
     async def _get_owned(self, order_id: UUID, user_id: UUID) -> PaymentOrder:
         order = await self.session.get(PaymentOrder, order_id)
