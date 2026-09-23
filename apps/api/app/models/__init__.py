@@ -7,6 +7,7 @@ from app.models.admin import AuditLog, FeatureFlag, ModerationReport, SystemSett
 from app.models.analytics import AnalyticsDaily, AnalyticsEvent, RankingSnapshot
 from app.models.artist_member import ArtistMember
 from app.models.device import Device, Session
+from app.models.engagement import DownloadReceipt, PlaybackSession, ShareLink, ShareOpen
 from app.models.entitlement import Entitlement, Plan, PlanPrice, Subscription
 from app.models.job import Job
 from app.models.music import (
@@ -42,6 +43,7 @@ __all__ = [
     "CacheEntry",
     "CollaboratorSplit",
     "Device",
+    "DownloadReceipt",
     "Entitlement",
     "Favorite",
     "FeatureFlag",
@@ -53,6 +55,7 @@ __all__ = [
     "Permission",
     "Plan",
     "PlanPrice",
+    "PlaybackSession",
     "Playlist",
     "PlaylistTrack",
     "Provider",
@@ -65,6 +68,8 @@ __all__ = [
     "RoyaltyLedgerEntry",
     "RoyaltySettlement",
     "Session",
+    "ShareLink",
+    "ShareOpen",
     "Subscription",
     "SystemSetting",
     "Track",
