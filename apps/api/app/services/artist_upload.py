@@ -11,6 +11,7 @@ import tempfile
 import unicodedata
 from dataclasses import dataclass
 from pathlib import Path
+from contextlib import suppress
 from uuid import UUID
 
 from sqlalchemy import select
@@ -257,10 +258,8 @@ class ArtistUploadService:
                 job_id=job_id,
             )
         finally:
-            try:
+            with suppress(OSError):
                 tmp_path.unlink(missing_ok=True)
-            except OSError:
-                pass
 
     async def replace_track_audio(
         self,
