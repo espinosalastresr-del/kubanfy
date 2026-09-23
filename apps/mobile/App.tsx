@@ -6,6 +6,7 @@ import {StatusBar, StyleSheet} from 'react-native';
 
 import {RootNavigator} from './src/navigation/RootNavigator';
 import {startAnalyticsSync} from './src/offline/analytics';
+import {usePlayerStore} from './src/store/playerStore';
 import {colors} from './src/theme/tokens';
 
 const queryClient = new QueryClient({
@@ -20,6 +21,7 @@ const queryClient = new QueryClient({
 function App(): React.JSX.Element {
   useEffect(() => {
     const stop = startAnalyticsSync();
+    usePlayerStore.getState().initEngine().catch(() => {});
     return stop;
   }, []);
 

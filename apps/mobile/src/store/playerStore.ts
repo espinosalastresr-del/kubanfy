@@ -4,6 +4,15 @@ import {apiRequest} from '../api/client';
 import {getOfflineTrack} from '../offline/storage';
 import {PlayerTrack} from '../offline/types';
 import {trackEvent} from '../offline/analytics';
+import {
+  enginePause,
+  enginePlay,
+  engineResume,
+  engineSeek,
+  engineStop,
+  setupPlayerEngine,
+  subscribeEngine,
+} from '../player/trackPlayerService';
 
 type PlayerState = {
   current: PlayerTrack | null;
@@ -13,7 +22,9 @@ type PlayerState = {
   durationSec: number;
   isBuffering: boolean;
   error: string | null;
+  engineNative: boolean | null;
 
+  initEngine: () => Promise<void>;
   playTrack: (track: {
     trackId: string;
     title: string;
@@ -25,13 +36,11 @@ type PlayerState = {
   resume: () => void;
   stop: () => void;
   setPosition: (sec: number) => void;
-  setDuration: (sec: number) => void;
+  seek: (sec: number) => void;
 };
 
-/**
- * Player state machine. Actual audio engine (react-native-track-player)
- * hooks into these flags once native modules are linked.
- */
+let engineSubscribed = false;
+
 export const usePlayerStore = create<PlayerState>((set, get) => ({
   current: null,
   queue: [],
@@ -40,11 +49,29 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   durationSec: 0,
   isBuffering: false,
   error: null,
+  engineNative: null,
+
+  initEngine: async () => {
+    const {native} = await setupPlayerEngine();
+    set({engineNative: native});
+    if (!engineSubscribed) {
+      engineSubscribed = true;
+      subscribeEngine((status, positionSec, durationSec) => {
+        set(s => ({
+          isPlaying: status === 'playing',
+          isBuffering: status === 'loading',
+          positionSec: positionSec ?? s.positionSec,
+          durationSec: durationSec ?? s.durationSec,
+        }));
+      });
+    }
+  },
 
   playTrack: async ({trackId, title, artistName, quality = 'medium'}) => {
     set({isBuffering: true, error: null});
     try {
-      // Prefer offline copy
+      await get().initEngine();
+
       const offline = await getOfflineTrack(trackId, quality);
       if (offline?.localUri) {
         const track: PlayerTrack = {
@@ -63,6 +90,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
           positionSec: 0,
           durationSec: offline.duration || 0,
         });
+        await enginePlay(track);
         await trackEvent('play_start', {
           track_id: trackId,
           offline: true,
@@ -71,30 +99,31 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
         return;
       }
 
-      // Online: request signed URL / stream endpoint
       let uri: string | undefined;
       try {
         const preview = await apiRequest<{url?: string; available?: boolean}>(
           '/v1/music/preview',
           {
             method: 'POST',
-            body: JSON.stringify({track_id: trackId}),
+            body: JSON.stringify({track_id: trackId, quality}),
           },
         );
         uri = preview.url;
       } catch {
-        const dl = await apiRequest<{url?: string}>(
+        // fallback download endpoint
+      }
+      if (!uri) {
+        const dl = await apiRequest<{url?: string; signed_url?: string}>(
           '/v1/music/download',
           {
             method: 'POST',
             body: JSON.stringify({track_id: trackId, quality}),
           },
         );
-        uri = dl.url;
+        uri = dl.url || dl.signed_url;
       }
-
       if (!uri) {
-        throw new Error('No hay URL de reproducción disponible');
+        throw new Error('No se pudo obtener URL de reproducción');
       }
 
       const track: PlayerTrack = {
@@ -111,14 +140,18 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
         isBuffering: false,
         positionSec: 0,
       });
+      await enginePlay(track);
       await trackEvent('play_start', {
         track_id: trackId,
         offline: false,
         quality,
       });
     } catch (e) {
-      const message = e instanceof Error ? e.message : 'Error de reproducción';
-      set({isBuffering: false, isPlaying: false, error: message});
+      set({
+        isBuffering: false,
+        isPlaying: false,
+        error: e instanceof Error ? e.message : 'Error de reproducción',
+      });
     }
   },
 
@@ -127,22 +160,40 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
     if (!current) {
       return;
     }
-    set({isPlaying: !isPlaying});
-  },
-
-  pause: () => set({isPlaying: false}),
-  resume: () => {
-    if (get().current) {
-      set({isPlaying: true});
+    if (isPlaying) {
+      get().pause();
+    } else {
+      get().resume();
     }
   },
-  stop: () =>
+
+  pause: () => {
+    set({isPlaying: false});
+    enginePause().catch(() => {});
+  },
+
+  resume: () => {
+    if (!get().current) {
+      return;
+    }
+    set({isPlaying: true});
+    engineResume().catch(() => {});
+  },
+
+  stop: () => {
     set({
       isPlaying: false,
       current: null,
       positionSec: 0,
       durationSec: 0,
-    }),
-  setPosition: sec => set({positionSec: sec}),
-  setDuration: sec => set({durationSec: sec}),
+    });
+    engineStop().catch(() => {});
+  },
+
+  setPosition: (sec: number) => set({positionSec: sec}),
+
+  seek: (sec: number) => {
+    set({positionSec: sec});
+    engineSeek(sec).catch(() => {});
+  },
 }));
