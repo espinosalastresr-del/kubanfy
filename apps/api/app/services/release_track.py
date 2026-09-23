@@ -12,7 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import ConflictError, NotFoundError, RightsError, ValidationError
 from app.models.artist_member import ArtistMember, ArtistMemberRole
-from app.models.music import Artist, AudioAsset, Release, Track, TrackArtist, TrackStatus
+from app.models.music import Artist, AudioAsset, AudioQuality, QualityConfidence, Release, SourceType, Track, TrackArtist, TrackStatus
 from app.models.rights import LicenseRecord, LicenseStatus
 from app.models.job import JobType
 from app.services.job import JobService
@@ -233,9 +233,31 @@ class ReleaseTrackService:
             release = await self.session.get(Release, track.release_id) if track.release_id else None
             if release is None or release.artist_id != artist_id:
                 raise RightsError("Track must belong to the publishing artist's release")
-            asset = await self.session.scalar(select(AudioAsset).where(AudioAsset.track_id == track_id).limit(1))
-            if asset is None or not asset.storage_key or not asset.content_hash:
-                raise ValidationError("Validated audio asset required")
+            asset = await self.session.scalar(
+                select(AudioAsset).where(
+                    AudioAsset.track_id == track_id,
+                    AudioAsset.is_active.is_(True),
+                    AudioAsset.storage_key != "",
+                    AudioAsset.content_hash.is_not(None),
+                    AudioAsset.source_type == SourceType.ARTIST_UPLOAD,
+                ).order_by(AudioAsset.version.desc()).limit(1)
+            )
+            if asset is None:
+                raise ValidationError("Validated active artist audio asset required")
+            derivative_qualities = await self.session.scalars(
+                select(AudioAsset.quality).where(
+                    AudioAsset.track_id == track_id,
+                    AudioAsset.is_active.is_(True),
+                    AudioAsset.source_type == SourceType.DERIVATIVE,
+                    AudioAsset.version == asset.version,
+                    AudioAsset.quality.in_([AudioQuality.LOW, AudioQuality.MEDIUM]),
+                    AudioAsset.storage_key != "",
+                    AudioAsset.content_hash.is_not(None),
+                    AudioAsset.quality_confidence == QualityConfidence.VERIFIED,
+                )
+            )
+            if set(derivative_qualities.all()) != {AudioQuality.LOW, AudioQuality.MEDIUM}:
+                raise ValidationError("LOW and MEDIUM verified derivatives are required")
             license_rec = await self.session.scalar(
                 select(LicenseRecord).where(
                     LicenseRecord.track_id == track_id,
