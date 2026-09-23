@@ -13,6 +13,7 @@ from app.core.exceptions import ConflictError, NotFoundError, ValidationError
 from app.models.artist_member import ArtistMember, ArtistMemberRole
 from app.models.music import Artist, Release, Track
 from app.models.rights import CollaboratorSplit, RoyaltyAccount, RoyaltyLedgerEntry, RoyaltySettlement
+from app.services.rbac import RbacService
 
 EDIT_ROLES={ArtistMemberRole.OWNER,ArtistMemberRole.MANAGER}
 
@@ -89,7 +90,8 @@ class RightsRoyaltyService:
         return account
 
     async def append_ledger(self, *, user_id:UUID, artist_id:UUID, amount_cents:int, source_type:str, idempotency_key:str, direction:str="credit", source_id:UUID|None=None, currency:str="CUP", metadata:dict|None=None)->RoyaltyLedgerEntry:
-        await self._authorized(user_id, artist_id)
+        if not await RbacService(self.session).user_has_permission(user_id, "royalties.write"):
+            await self._authorized(user_id, artist_id)
         if direction not in ("credit", "debit"): raise ValidationError("Invalid ledger direction")
         if amount_cents<0: raise ValidationError("Ledger amount cannot be negative")
         existing=await self.session.scalar(select(RoyaltyLedgerEntry).where(RoyaltyLedgerEntry.idempotency_key==idempotency_key))
