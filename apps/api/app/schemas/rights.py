@@ -42,3 +42,26 @@ class RoyaltyLedgerResponse(BaseModel):
     idempotency_key: str
     created_at: datetime
     model_config={"from_attributes":True}
+
+
+class RoyaltySettlementRequest(BaseModel):
+    period_start: datetime
+    period_end: datetime
+    gross_cents: int = Field(ge=0)
+    net_cents: int = Field(ge=0)
+    idempotency_key: str = Field(min_length=1, max_length=160)
+    currency: str = "CUP"
+
+
+class RoyaltySettlementResponse(BaseModel):
+    id: UUID
+    account_id: UUID
+    period_start: datetime
+    period_end: datetime
+    gross_cents: int
+    net_cents: int
+    currency: str
+    status: str
+    idempotency_key: str
+    created_at: datetime
+    model_config = {"from_attributes": True}
