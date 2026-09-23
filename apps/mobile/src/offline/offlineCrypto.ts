@@ -4,7 +4,7 @@ import crypto, {Buffer} from 'react-native-quick-crypto';
 
 const KEY_SERVICE = 'com.kubanfy.offline-key';
 const CHUNK_BYTES = 1024 * 1024;
-const FORMAT = 'kubanfy-aes256gcm-v1';
+const FORMAT = 'kubanfy-kfy-aes256gcm-v1';
 
 type Envelope = {
   format: typeof FORMAT;
