@@ -27,6 +27,8 @@ from app.models.music import (
     ProviderTrack,
     Track,
     TrackStatus,
+    AudioAsset,
+    SourceType,
 )
 from app.providers.base import ResolvedSource, TrackMetadata
 from app.providers.registry import ProviderManager, create_default_registry
@@ -72,6 +74,7 @@ class DownloadResult:
     track_id: UUID | None = None
     content_hash: str | None = None
     expires_at: datetime | None = None
+    storage_bucket: StorageBucket = StorageBucket.CACHE
 
 
 def _slugify(text: str) -> str:
@@ -406,20 +409,37 @@ class MusicEngine:
                 expires_at=hit.expires_at,
             )
 
-        pt = await self.session.scalar(
-            select(ProviderTrack).where(ProviderTrack.track_id == track_id).limit(1)
+        # First-party catalog playback must use its owned permanent asset.
+        # ProviderTrack is metadata/reference only and must never replace it.
+        asset = await self.session.scalar(
+            select(AudioAsset)
+            .where(
+                AudioAsset.track_id == track_id,
+                AudioAsset.quality == aq,
+            )
+            .order_by(AudioAsset.created_at.desc())
+            .limit(1)
         )
-        if pt is not None:
-            provider = await self.session.get(Provider, pt.provider_id)
-            if provider:
-                return await self.download(
-                    provider=provider.name,
-                    provider_track_id=pt.provider_track_id,
-                    quality=quality,
-                    user_id=user_id,
-                )
+        if asset is None:
+            raise NotFoundError(f"No published {aq.value} audio asset available for track")
+        if asset.source_type not in (SourceType.ARTIST_UPLOAD, SourceType.DERIVATIVE):
+            raise NotFoundError("Track has no first-party playable asset")
+        if not asset.content_hash or not asset.storage_key:
+            raise NotFoundError("Track asset is incomplete")
 
-        raise NotFoundError("No playable source for track")
+        signed = await self.storage.signed_url(
+            asset.storage_key,
+            bucket=StorageBucket.PERMANENT,
+        )
+        return DownloadResult(
+            signed_url=signed,
+            storage_key=asset.storage_key,
+            quality=quality,
+            from_cache=False,
+            track_id=track_id,
+            content_hash=asset.content_hash,
+            storage_bucket=StorageBucket.PERMANENT,
+        )
 
 
 async def _async_const(value: bytes) -> bytes:
