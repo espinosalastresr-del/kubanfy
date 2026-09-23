@@ -42,3 +42,12 @@ def test_refresh_token_roundtrip() -> None:
 def test_invalid_token_raises() -> None:
     with pytest.raises(ValueError, match="Invalid or expired"):
         decode_token("not.a.valid.token")
+
+
+def test_access_token_can_bind_device() -> None:
+    token = create_access_token(
+        "user-789",
+        extra_claims={"device_id": "rn-device-1"},
+    )
+    payload = decode_token(token)
+    assert payload["device_id"] == "rn-device-1"
