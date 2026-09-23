@@ -191,7 +191,7 @@ class EntitlementService:
     async def ensure_default_plans(self) -> None:
         """Idempotent seed of FREE/PREMIUM/FAMILY/STUDENT plans (no prices hardcoded as product truth)."""
         defaults = [
-            (PlanCode.FREE.value, "Free", {"downloads": False, "quality_max": "medium"}),
+            (PlanCode.FREE.value, "Free", {"downloads": False, "quality_max": "low"}),
             (PlanCode.PREMIUM.value, "Premium", {"downloads": True, "quality_max": "lossless"}),
             (
                 PlanCode.FAMILY.value,
