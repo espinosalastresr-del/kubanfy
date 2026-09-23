@@ -5,6 +5,8 @@ import crypto, {Buffer} from 'react-native-quick-crypto';
 const KEY_SERVICE = 'com.kubanfy.offline-key';
 const CHUNK_BYTES = 1024 * 1024;
 const FORMAT = 'kubanfy-kfy-aes256gcm-v1';
+const KFY_MAGIC = Buffer.from([0x4b, 0x46, 0x59, 0x01, 0x00, 0x00, 0x00, 0x01]);
+const KFY_HEADER_BYTES = KFY_MAGIC.length;
 
 type Envelope = {
   format: typeof FORMAT;
@@ -50,11 +52,13 @@ export async function encryptOfflineFile(params: {
   const key = await getOrCreateKey(keyService(trackId, quality, contentHash));
   const iv = crypto.randomBytes(12);
   const cipher = crypto.createCipheriv('aes-256-gcm', key, iv);
+  cipher.setAAD(KFY_MAGIC);
   const plaintextSize = Number((await RNFS.stat(sourcePath)).size);
   const temp = encryptedPath + '.part';
 
   await removeIfExists(RNFS, temp);
   await removeIfExists(RNFS, encryptedPath);
+  await RNFS.writeFile(temp, KFY_MAGIC.toString('base64'), 'base64');
   await removeIfExists(RNFS, metadataPath);
 
   let position = 0;
@@ -104,12 +108,16 @@ export async function decryptOfflineFile(params: {
   decipher.setAuthTag(Buffer.from(envelope.authTag, 'base64'));
 
   const ciphertextSize = Number((await RNFS.stat(encryptedPath)).size);
+  if (ciphertextSize <= KFY_HEADER_BYTES) throw new Error('Invalid KFY container');
+  const magic = Buffer.from(await RNFS.read(encryptedPath, KFY_HEADER_BYTES, 0, 'base64'), 'base64');
+  if (!magic.equals(KFY_MAGIC)) throw new Error('Invalid KFY container header');
+  decipher.setAAD(KFY_MAGIC);
   const temp = outputPath + '.part';
   await removeIfExists(RNFS, temp);
   await removeIfExists(RNFS, outputPath);
 
   try {
-    let position = 0;
+    let position = KFY_HEADER_BYTES;
     while (position < ciphertextSize) {
       const length = Math.min(CHUNK_BYTES, ciphertextSize - position);
       const input = Buffer.from(
