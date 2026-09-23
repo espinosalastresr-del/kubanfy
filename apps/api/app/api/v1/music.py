@@ -139,13 +139,14 @@ async def music_download(
 
     offline_license = None
     offline_license_expires_at = None
-    if body.device_id is not None:
+    device_id = body.device_id or request.headers.get("X-Device-ID")
+    if device_id is not None:
         if body.track_id is None:
             from app.core.exceptions import ValidationError
             raise ValidationError("Device-bound offline licenses require a first-party track_id")
         license_row, offline_license = await OfflineLicenseService(session).issue(
             user_id=user.id,
-            device_id=body.device_id,
+            device_id=device_id,
             track_id=body.track_id,
             quality=body.quality,
         )
