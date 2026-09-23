@@ -106,9 +106,12 @@ async def music_download(
     request: Request,
     user: CurrentUser,
 ) -> MusicDownloadResponse:
-    """Requires authentication and an entitlement for catalog downloads."""
+    """Requires authentication and premium entitlement for persistent downloads."""
     ip = request.client.host if request.client else None
     await AntiAbuseService().check_download(str(user.id), ip)
+    entitlement = EntitlementService(session)
+    await entitlement.require_download_access(user.id)
+    await entitlement.require_quality_access(user.id, body.quality)
     engine = MusicEngine(session, provider_manager=_manager)
     if body.track_id is not None:
         await EntitlementService(session).require_track_access(user.id, body.track_id)
@@ -229,8 +232,10 @@ async def music_content_stream(
 
     ip = request.client.host if request.client else None
     await AntiAbuseService().check_download(str(user.id), ip)
+    entitlement = EntitlementService(session)
+    await entitlement.require_track_access(user.id, track_id)
+    await entitlement.require_quality_access(user.id, quality)
     engine = MusicEngine(session, provider_manager=_manager)
-    await EntitlementService(session).require_track_access(user.id, track_id)
     try:
         result = await engine.download_by_track_id(track_id=track_id, quality=quality)
     except Exception as exc:
