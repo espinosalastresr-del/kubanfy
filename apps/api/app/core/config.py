@@ -97,6 +97,7 @@ class Settings(BaseSettings):
     max_devices_per_user: int = 5
     max_concurrent_sessions: int = 3
     session_idle_timeout_minutes: int = 60
+    offline_license_expire_hours: int = 72
 
     # -------------------------------------------------------------------------
     # Cache / TTL (hours)
