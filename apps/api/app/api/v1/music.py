@@ -19,6 +19,7 @@ from app.schemas.music import (
     TrackSearchResult,
 )
 from app.services.anti_abuse import AntiAbuseService
+from app.services.engagement import EngagementService
 from app.services.entitlement import EntitlementService
 from app.services.music_engine import MusicEngine
 from app.services.offline_license import OfflineLicenseService
@@ -114,7 +115,7 @@ async def music_download(
     await entitlement.require_quality_access(user.id, body.quality)
     engine = MusicEngine(session, provider_manager=_manager)
     if body.track_id is not None:
-        await EntitlementService(session).require_track_access(user.id, body.track_id)
+        await entitlement.require_track_access(user.id, body.track_id)
         result = await engine.download_by_track_id(
             track_id=body.track_id,
             quality=body.quality,
@@ -140,6 +141,16 @@ async def music_download(
         size_bytes = await storage.size(
             result.storage_key,
             bucket=result.storage_bucket,
+        )
+
+    download_ticket = None
+    resolved_track_id = result.track_id or body.track_id
+    if resolved_track_id is not None:
+        _, download_ticket = await EngagementService(session).issue_download_ticket(
+            user_id=user.id,
+            device_id=body.device_id or request.headers.get("X-Device-ID"),
+            track_id=resolved_track_id,
+            quality=body.quality,
         )
 
     offline_license = None
@@ -178,6 +189,7 @@ async def music_download(
         storage_key=result.storage_key,
         content_hash=result.content_hash,
         size_bytes=size_bytes,
+        download_ticket=download_ticket,
         offline_license=offline_license,
         offline_license_expires_at=offline_license_expires_at,
     )
