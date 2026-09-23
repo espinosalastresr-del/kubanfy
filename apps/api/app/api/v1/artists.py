@@ -31,6 +31,8 @@ from app.schemas.catalog import (
 )
 from app.services.artist_upload import ArtistUploadService
 from app.services.release_track import ReleaseTrackService
+from app.services.rights_royalty import RightsRoyaltyService
+from app.schemas.rights import CollaboratorSplitsRequest, CollaboratorSplitResponse, RoyaltyLedgerRequest, RoyaltyLedgerResponse
 
 router = APIRouter(prefix="/artist", tags=["artist"])
 
@@ -227,6 +229,39 @@ async def delete_track(artist_id: UUID, track_id: UUID, user: CurrentUser, sessi
         user_id=user.id, artist_id=artist_id, track_id=track_id, status=TrackStatus.DELETED,
     )
     return TrackStatusResponse(track_id=track.id, status=track.status)
+
+
+@router.put("/{artist_id}/rights/splits", response_model=list[CollaboratorSplitResponse])
+async def replace_rights_splits(
+    artist_id: UUID, body: CollaboratorSplitsRequest, user: CurrentUser, session: DbSession
+) -> list[CollaboratorSplitResponse]:
+    if body.scope_type.lower() not in ("track", "release"):
+        raise ValidationError("scope_type must be track or release")
+    rows = await RightsRoyaltyService(session).set_splits(
+        user_id=user.id, artist_id=artist_id, scope_type=body.scope_type,
+        scope_id=body.scope_id, splits=[x.model_dump() for x in body.splits],
+    )
+    return [CollaboratorSplitResponse.model_validate(x) for x in rows]
+
+
+@router.get("/{artist_id}/rights/splits", response_model=list[CollaboratorSplitResponse])
+async def get_rights_splits(
+    artist_id: UUID, scope_type: str, scope_id: UUID, session: DbSession
+) -> list[CollaboratorSplitResponse]:
+    rows = await RightsRoyaltyService(session).get_splits(scope_type=scope_type, scope_id=scope_id)
+    return [CollaboratorSplitResponse.model_validate(x) for x in rows]
+
+
+@router.post("/{artist_id}/royalties/ledger", response_model=RoyaltyLedgerResponse, status_code=201)
+async def append_royalty_ledger(
+    artist_id: UUID, body: RoyaltyLedgerRequest, user: CurrentUser, session: DbSession
+) -> RoyaltyLedgerResponse:
+    row = await RightsRoyaltyService(session).append_ledger(
+        artist_id=artist_id, amount_cents=body.amount_cents, source_type=body.source_type,
+        idempotency_key=body.idempotency_key, direction=body.direction,
+        source_id=body.source_id, currency=body.currency, metadata=body.metadata,
+    )
+    return RoyaltyLedgerResponse.model_validate(row)
 
 
 @router.get("/{artist_id}", response_model=ArtistResponse)
