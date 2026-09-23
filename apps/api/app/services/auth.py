@@ -112,6 +112,11 @@ class AuthService:
             raise AuthError("Invalid refresh token")
 
         sess = await self.sessions.validate_refresh_session(jti)
+        token_device_id = payload.get("device_id")
+        if token_device_id and sess.device is not None and sess.device.device_id != token_device_id:
+            raise AuthError("Refresh token device mismatch")
+        if device_id and token_device_id and device_id != token_device_id:
+            raise AuthError("Refresh device mismatch")
         user = await self.session.get(User, sess.user_id)
         if user is None or user.status in (UserStatus.SUSPENDED, UserStatus.DELETED):
             raise AuthError("Account not available")
@@ -120,7 +125,10 @@ class AuthService:
         sess.status = SessionStatus.REVOKED
         sess.revoked_at = datetime.now(UTC)
 
-        tokens, new_jti = self._issue_tokens(user, device_id=device_id or payload.get("device_id"))
+        bound_device_id = token_device_id or (sess.device.device_id if sess.device else None)
+        if device_id and sess.device is not None and device_id != sess.device.device_id:
+            raise AuthError("Refresh device mismatch")
+        tokens, new_jti = self._issue_tokens(user, device_id=bound_device_id)
         await self.sessions.create_session(
             user.id,
             new_jti,
