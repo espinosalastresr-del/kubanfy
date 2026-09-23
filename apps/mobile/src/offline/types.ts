@@ -34,6 +34,12 @@ export type DownloadJob = {
   quality: AudioQuality;
   status: DownloadJobStatus;
   progress: number; // 0..1
+  /** Durable state for process/network interruption. */
+  bytesDownloaded?: number;
+  totalBytes?: number;
+  tempPath?: string;
+  finalPath?: string;
+  contentHash?: string;
   error?: string;
   createdAt: number;
   updatedAt: number;
