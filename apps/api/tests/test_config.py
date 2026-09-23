@@ -5,14 +5,21 @@ from __future__ import annotations
 from app.core.config import Environment, Settings, get_settings
 
 
-def test_default_settings() -> None:
-    # Clear cache so we get a fresh instance with defaults
+def test_default_settings(monkeypatch) -> None:
+    """Settings defaults remain independent from the CI process environment."""
+    monkeypatch.delenv("ENVIRONMENT", raising=False)
     get_settings.cache_clear()
     s = get_settings()
     assert s.environment == Environment.DEVELOPMENT
     assert s.default_country == "CU"
     assert s.api_prefix == "/v1"
     assert len(s.jwt_secret_key) >= 32
+
+
+def test_explicit_test_environment(monkeypatch) -> None:
+    monkeypatch.setenv("ENVIRONMENT", "test")
+    s = Settings()
+    assert s.environment == Environment.TEST
 
 
 def test_allowed_audio_extensions() -> None:
