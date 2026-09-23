@@ -12,6 +12,7 @@ from app.core.config import Settings, get_settings
 from app.core.exceptions import AuthError, ForbiddenError, NotFoundError
 from app.core.logging import get_logger
 from app.models.device import Device, DeviceStatus, Session, SessionStatus
+from app.models.offline import OfflineLicense
 
 logger = get_logger(__name__)
 
@@ -191,7 +192,7 @@ class SessionService:
             raise NotFoundError("Device not found")
         device.status = DeviceStatus.REVOKED
         device.revoked_at = datetime.now(UTC)
-        # Revoke all sessions on this device
+        # Revoke all sessions and offline licenses bound to this device.
         await self.db.execute(
             update(Session)
             .where(
@@ -199,6 +200,14 @@ class SessionService:
                 Session.status == SessionStatus.ACTIVE,
             )
             .values(status=SessionStatus.REVOKED, revoked_at=datetime.now(UTC))
+        )
+        await self.db.execute(
+            update(OfflineLicense)
+            .where(
+                OfflineLicense.device_id == device.id,
+                OfflineLicense.revoked.is_(False),
+            )
+            .values(revoked=True, revoked_at=datetime.now(UTC))
         )
         await self.db.flush()
         logger.info("device_revoked", device_id=str(device_db_id), user_id=str(user_id))
