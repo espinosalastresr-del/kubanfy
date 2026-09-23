@@ -11,6 +11,7 @@ from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import Settings, get_settings
@@ -101,7 +102,19 @@ class PaymentService:
         )
         order = await provider.create_order(order)
         self.session.add(order)
-        await self.session.flush()
+        try:
+            async with self.session.begin_nested():
+                await self.session.flush()
+        except IntegrityError:
+            # A concurrent request may have won the unique idempotency key race.
+            if not idempotency_key:
+                raise
+            existing = await self.session.scalar(
+                select(PaymentOrder).where(PaymentOrder.idempotency_key == idempotency_key)
+            )
+            if existing is None:
+                raise
+            return existing
         logger.info(
             "payment_order_created",
             order_id=str(order.id),
