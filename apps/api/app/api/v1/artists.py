@@ -161,9 +161,10 @@ async def update_track(artist_id: UUID, track_id: UUID, body: TrackUpdateRequest
         explicit=body.explicit, language=body.language, release_date=body.release_date,
         artwork_url=body.artwork_url, release_id=body.release_id,
     )
-    asset = await session.scalar(select(__import__("app.models.music", fromlist=["AudioAsset"]).AudioAsset).where(
-        __import__("app.models.music", fromlist=["AudioAsset"]).AudioAsset.track_id == track.id
-    ))
+    asset = await session.scalar(select(AudioAsset).where(
+        AudioAsset.track_id == track.id,
+        AudioAsset.is_active.is_(True),
+    ).order_by(AudioAsset.created_at.desc()).limit(1))
     return TrackUploadResponse(
         track_id=track.id, status=track.status.value,
         master_storage_key=asset.storage_key if asset else "",
