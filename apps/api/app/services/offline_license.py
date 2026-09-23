@@ -67,21 +67,6 @@ class OfflineLicenseService:
 
         now = datetime.now(UTC)
         expires_at = now + timedelta(hours=self.settings.offline_license_expire_hours)
-        token = create_access_token(
-            str(user_id),
-            extra_claims={
-                "type": "offline_license",
-                "license_id": str(UUID(int=0)),
-                "device_id": device.device_id,
-                "track_id": str(track_id),
-                "asset_version": asset.version,
-                "quality": quality,
-                "content_hash": asset.content_hash,
-            },
-            expires_delta=expires_at - now,
-            settings=self.settings,
-        )
-        token_hash = hashlib.sha256(token.encode("utf-8")).hexdigest()
         license_row = OfflineLicense(
             user_id=user_id,
             device_id=device.id,
@@ -89,13 +74,12 @@ class OfflineLicenseService:
             asset_version=asset.version,
             content_hash=asset.content_hash,
             quality=quality,
-            token_hash=token_hash,
+            token_hash="pending",
             expires_at=expires_at,
         )
         self.session.add(license_row)
         await self.session.flush()
 
-        # Re-issue a token containing the durable license UUID.
         token = create_access_token(
             str(user_id),
             extra_claims={
