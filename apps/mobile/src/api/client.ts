@@ -25,7 +25,7 @@ function getBaseUrl(): string {
   );
 }
 
-async function getDeviceId(): Promise<string> {
+export async function getDeviceId(): Promise<string> {
   const credentials = await Keychain.getGenericPassword({service: DEVICE_KEYCHAIN_SERVICE});
   if (credentials) {
     return credentials.username;
