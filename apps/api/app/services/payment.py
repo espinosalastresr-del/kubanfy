@@ -152,12 +152,15 @@ class PaymentService:
             raise ConflictError("Payment order has expired")
 
         if grant_premium and order.plan_code:
-            price = await self._validate_plan_price(
-                plan_code=order.plan_code,
-                currency=order.currency,
-                amount_cents=order.amount_cents,
-            )
-            expires_at = self._plan_expiration(price.interval)
+            if self.settings.feature_monetization:
+                price = await self._validate_plan_price(
+                    plan_code=order.plan_code,
+                    currency=order.currency,
+                    amount_cents=order.amount_cents,
+                )
+                expires_at = self._plan_expiration(price.interval)
+            else:
+                expires_at = datetime.now(UTC) + timedelta(days=30)
         else:
             expires_at = None
 
