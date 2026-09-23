@@ -356,7 +356,6 @@ class ArtistUploadService:
             for asset in derivative_assets:
                 asset.is_active = True
             track.duration = probe.duration
-            track.status = TrackStatus.PROCESSING if track.status != TrackStatus.DRAFT else track.status
             await self.session.flush()
             return UploadResult(track_id=track.id, status=track.status.value,
                                 master_storage_key=master_key, content_hash=probe.content_hash,
