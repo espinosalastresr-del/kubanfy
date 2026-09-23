@@ -1,6 +1,6 @@
 /**
  * Offline-first types — aligned with plan §45–47.
- * Cache ≠ permanent download. Encrypted container is a later hardening step.
+ * Persistent offline audio is stored as an AES-256-GCM encrypted container.
  */
 
 export type AudioQuality = 'low' | 'medium' | 'lossless';
@@ -18,6 +18,10 @@ export type OfflineTrackMeta = {
   downloadedAt: number;
   lastPlayedAt?: number;
   sizeBytes?: number;
+  encrypted?: boolean;
+  offlineLicense?: string;
+  offlineLicenseExpiresAt?: string;
+  licenseValidatedAt?: number;
 };
 
 export type DownloadJobStatus =
@@ -40,6 +44,8 @@ export type DownloadJob = {
   tempPath?: string;
   finalPath?: string;
   contentHash?: string;
+  offlineLicense?: string;
+  offlineLicenseExpiresAt?: string;
   error?: string;
   createdAt: number;
   updatedAt: number;
