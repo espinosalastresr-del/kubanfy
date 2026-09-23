@@ -6,7 +6,8 @@
  * remains testable without android/ios folders.
  */
 
-import type {PlayerTrack} from '../offline/types';
+import type {OfflineTrackMeta, PlayerTrack} from '../offline/types';
+import {decryptOfflineFile} from '../offline/offlineCrypto';
 
 export type EngineStatus = 'idle' | 'loading' | 'playing' | 'paused' | 'stopped' | 'error';
 
@@ -17,6 +18,7 @@ let currentUri: string | null = null;
 let status: EngineStatus = 'idle';
 let useNative = false;
 let nativeReady = false;
+let ephemeralPlaybackPath: string | null = null;
 
 function emit(s: EngineStatus, positionSec?: number, durationSec?: number) {
   status = s;
@@ -129,6 +131,17 @@ export async function engineResume(): Promise<void> {
   emit('playing');
 }
 
+async function cleanupEphemeralPlayback(): Promise<void> {
+  if (!ephemeralPlaybackPath) return;
+  try {
+    const RNFS = require('react-native-fs');
+    if (await RNFS.exists(ephemeralPlaybackPath)) await RNFS.unlink(ephemeralPlaybackPath);
+  } catch {
+    // Best-effort cleanup; startup cleanup should remove stale files.
+  }
+  ephemeralPlaybackPath = null;
+}
+
 export async function engineStop(): Promise<void> {
   if (useNative) {
     // eslint-disable-next-line @typescript-eslint/no-var-requires
@@ -137,6 +150,7 @@ export async function engineStop(): Promise<void> {
     await TrackPlayer.reset();
   }
   currentUri = null;
+  await cleanupEphemeralPlayback();
   emit('stopped', 0);
 }
 
@@ -167,4 +181,36 @@ export async function registerPlaybackService(): Promise<void> {
   } catch {
     // not linked
   }
+}
+
+
+/**
+ * Materializes one encrypted offline asset into an ephemeral playback file.
+ * The plaintext is kept only for the active playback session and is removed
+ * when engineStop() is called (and should also be cleaned at app startup).
+ */
+export async function enginePlayOffline(track: OfflineTrackMeta): Promise<void> {
+  const RNFS = await (async () => require('react-native-fs'))();
+  await cleanupEphemeralPlayback();
+  const encryptedPath = track.localUri.replace(/^file:\/\//, '');
+  const outputPath = encryptedPath + '.playback';
+  await decryptOfflineFile({
+    RNFS,
+    encryptedPath,
+    metadataPath: encryptedPath + '.meta',
+    outputPath,
+    trackId: track.trackId,
+    quality: track.quality,
+    contentHash: track.contentHash,
+  });
+  ephemeralPlaybackPath = outputPath;
+  await enginePlay({
+    trackId: track.trackId,
+    title: track.title,
+    artistName: track.artistName,
+    uri: outputPath.startsWith('file://') ? outputPath : 'file://' + outputPath,
+    duration: track.duration,
+    isLocal: true,
+    quality: track.quality,
+  });
 }
