@@ -47,9 +47,8 @@ class PlaylistService:
         pl = await self.session.get(Playlist, playlist_id)
         if pl is None:
             raise NotFoundError("Playlist not found")
-        if pl.visibility == PlaylistVisibility.PRIVATE:
-            if user_id is None or pl.user_id != user_id:
-                raise ForbiddenError("Playlist is private")
+        if pl.visibility == PlaylistVisibility.PRIVATE and (user_id is None or pl.user_id != user_id):
+            raise ForbiddenError("Playlist is private")
         return pl
 
     async def list_for_user(self, user_id: UUID) -> list[Playlist]:
