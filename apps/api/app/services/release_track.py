@@ -201,6 +201,12 @@ class ReleaseTrackService:
                 raise ValidationError("unpublish_at must be in the future")
         if publish_at and unpublish_at and unpublish_at <= publish_at:
             raise ValidationError("unpublish_at must be after publish_at")
+        if publish_at is not None:
+            track_count = await self.session.scalar(
+                select(Track.id).where(Track.release_id == release_id).limit(1)
+            )
+            if track_count is None:
+                raise ValidationError("Release must contain at least one track before scheduling")
 
         release.scheduled_publish_at = publish_at
         release.scheduled_unpublish_at = unpublish_at
