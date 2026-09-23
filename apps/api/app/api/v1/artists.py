@@ -170,6 +170,27 @@ async def update_track(artist_id: UUID, track_id: UUID, body: TrackUpdateRequest
     )
 
 
+@router.post("/{artist_id}/tracks/{track_id}/replace-audio", response_model=TrackUploadResponse)
+async def replace_track_audio(
+    artist_id: UUID, track_id: UUID, user: CurrentUser, session: DbSession,
+    file: UploadFile = File(...), accept_license: bool = Form(True),
+) -> TrackUploadResponse:
+    if not file.filename:
+        raise ValidationError("Filename required")
+    data = await file.read()
+    if not data:
+        raise ValidationError("Empty file")
+    result = await ArtistUploadService(session).replace_track_audio(
+        user_id=user.id, artist_id=artist_id, track_id=track_id,
+        file_bytes=data, filename=file.filename, accept_license=accept_license,
+    )
+    return TrackUploadResponse(
+        track_id=result.track_id, status=result.status,
+        master_storage_key=result.master_storage_key,
+        content_hash=result.content_hash, duration=result.duration, job_id=result.job_id,
+    )
+
+
 @router.post("/{artist_id}/tracks/{track_id}/publish", response_model=TrackStatusResponse)
 async def publish_track(artist_id: UUID, track_id: UUID, user: CurrentUser, session: DbSession) -> TrackStatusResponse:
     track = await ArtistUploadService(session).publish_track(user_id=user.id, track_id=track_id, artist_id=artist_id)
