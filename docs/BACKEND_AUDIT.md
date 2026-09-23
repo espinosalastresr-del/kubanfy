@@ -46,6 +46,8 @@ Artist → Release → Track → AudioAsset → LicenseRecord → permanent stor
 - Ranking signals are bounded and unpublished tracks are excluded from ranked output.
 - Offline authorization is bound to the authenticated device claim, asset version and content hash; device revocation invalidates its offline licenses.
 - Release publication scheduling is server-side and superseded schedules are ignored.
+- Royalty split updates lock the owned scope row; ledger/account/settlement idempotency uses nested transactions so concurrent retries do not roll back unrelated work.
+- Audio assets enforce one generation/quality/source tuple at the database level, preventing duplicate derivative rows under concurrent workers.
 - HTTP Range resume and download anti-abuse remain enforced by the existing MusicEngine/API path.
 
 ## Remaining mobile security work before backend/mobile gate
@@ -58,5 +60,6 @@ The backend now issues and validates device-bound offline licenses, but the mobi
 - Real staging host/infrastructure.
 - TLS/reverse proxy and WAF/pentest.
 - Google Play Billing, which remains the final monetization integration.
+- CI lint is now blocking; Alembic migrations are exercised to head before the API image build.
 
 Those are deployment/integration tasks, not missing backend domain implementation.
