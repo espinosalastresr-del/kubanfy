@@ -9,6 +9,7 @@
  */
 
 import {apiRequest} from '../api/client';
+import {encryptOfflineFile} from './offlineCrypto';
 import {
   listDownloadJobs,
   saveDownloadJobs,
@@ -23,6 +24,8 @@ type DownloadResponse = {
   quality?: string;
   content_hash?: string;
   size_bytes?: number;
+  offline_license?: string;
+  offline_license_expires_at?: string;
 };
 
 const MAX_ATTEMPTS = 4;
@@ -101,13 +104,17 @@ async function downloadWithResume(
   path: string;
   contentHash?: string;
   sizeBytes: number;
+  offlineLicense?: string;
+  offlineLicenseExpiresAt?: string;
 }> {
   const RNFS = await loadRNFS();
   const dir = `${RNFS.DocumentDirectoryPath}/kubanfy/offline`;
   await ensureDir(RNFS, dir);
 
   const part = job.tempPath || `${dir}/${job.trackId}_${job.quality}.audio.part`;
-  const final = job.finalPath || `${dir}/${job.trackId}_${job.quality}.audio`;
+  const final = job.finalPath || `${dir}/${job.trackId}_${job.quality}.myapp`;
+  const metadata = `${final}.meta`;
+  await updateJob(job.id, {finalPath: final});
 
   await updateJob(job.id, {tempPath: part, finalPath: final});
 
@@ -116,7 +123,7 @@ async function downloadWithResume(
     const size = Number(stat.size);
     if (job.totalBytes && size !== job.totalBytes) {
       await RNFS.unlink(final).catch(() => {});
-    } else if (!job.contentHash || (await sha256(RNFS, final)) === job.contentHash) {
+    } else if (job.contentHash) {
       return {path: final, contentHash: job.contentHash, sizeBytes: size};
     }
   }
@@ -154,6 +161,9 @@ async function downloadWithResume(
         tempPath: part,
         finalPath: final,
         progress: total ? offset / total : 0.05,
+        offlineLicense: res.offline_license,
+        offlineLicenseExpiresAt: res.offline_license_expires_at,
+      });
       });
 
       const chunk = `${part}.download`;
@@ -229,12 +239,21 @@ async function downloadWithResume(
         throw new Error('checksum mismatch');
       }
 
-      await RNFS.unlink(final).catch(() => {});
-      await RNFS.moveFile(part, final);
+      const encrypted = await encryptOfflineFile({
+        RNFS,
+        sourcePath: part,
+        encryptedPath: final,
+        metadataPath: metadata,
+        trackId: job.trackId,
+        quality: job.quality,
+        contentHash: expectedHash || actualHash || undefined,
+      });
       return {
-        path: final,
+        path: encrypted.path,
         contentHash: expectedHash || actualHash || undefined,
         sizeBytes: finalSize,
+        offlineLicense: res.offline_license,
+        offlineLicenseExpiresAt: res.offline_license_expires_at,
       };
     } catch (error) {
       if (attempt === MAX_ATTEMPTS - 1) {
@@ -316,6 +335,10 @@ export async function processQueue(): Promise<void> {
           downloadedAt: Date.now(),
           contentHash: result.contentHash,
           sizeBytes: result.sizeBytes,
+          encrypted: true,
+          offlineLicense: result.offlineLicense,
+          offlineLicenseExpiresAt: result.offlineLicenseExpiresAt,
+          licenseValidatedAt: Date.now(),
         };
         await upsertOfflineTrack(meta);
         await updateJob(next.id, {
