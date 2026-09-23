@@ -56,7 +56,8 @@ class RightsRoyaltyService:
         await self.session.flush()
         return created
 
-    async def get_splits(self, *, scope_type:str, scope_id:UUID)->list[CollaboratorSplit]:
+    async def get_splits(self, *, user_id:UUID, artist_id:UUID, scope_type:str, scope_id:UUID)->list[CollaboratorSplit]:
+        await self._authorized(user_id, artist_id)
         result=await self.session.scalars(select(CollaboratorSplit).where(CollaboratorSplit.scope_type==scope_type.lower(),CollaboratorSplit.scope_id==scope_id,CollaboratorSplit.active.is_(True)).order_by(CollaboratorSplit.created_at))
         return list(result.all())
 
@@ -67,7 +68,9 @@ class RightsRoyaltyService:
             self.session.add(account); await self.session.flush()
         return account
 
-    async def append_ledger(self, *, artist_id:UUID, amount_cents:int, source_type:str, idempotency_key:str, direction:str="credit", source_id:UUID|None=None, currency:str="CUP", metadata:dict|None=None)->RoyaltyLedgerEntry:
+    async def append_ledger(self, *, user_id:UUID, artist_id:UUID, amount_cents:int, source_type:str, idempotency_key:str, direction:str="credit", source_id:UUID|None=None, currency:str="CUP", metadata:dict|None=None)->RoyaltyLedgerEntry:
+        await self._authorized(user_id, artist_id)
+        if direction not in ("credit", "debit"): raise ValidationError("Invalid ledger direction")
         if amount_cents<0: raise ValidationError("Ledger amount cannot be negative")
         existing=await self.session.scalar(select(RoyaltyLedgerEntry).where(RoyaltyLedgerEntry.idempotency_key==idempotency_key))
         if existing is not None: return existing
