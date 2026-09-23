@@ -16,6 +16,10 @@ The backend is considered code-complete when the following are implemented and c
 - First-party Artist → Release → Track → AudioAsset → LicenseRecord ownership
 - Public artist catalog
 - Release/track lifecycle management
+- Safe versioned audio replacement with atomic active-generation switch
+- Collaborator split generations and append-only royalty ledger
+- Device-bound offline licenses with short-lived signed authorization, validation, and device revocation
+- Server-side publication scheduling via durable jobs
 - Entitlements and manual payments with idempotent fulfillment
 - Geo, analytics, rankings and discovery
 - Anti-abuse, maintenance mode and security headers
@@ -40,7 +44,13 @@ Artist → Release → Track → AudioAsset → LicenseRecord → permanent stor
 - Payment entitlement fulfillment is idempotent by payment_order_id.
 - Entitlement expiration is evaluated at the exact expiration instant.
 - Ranking signals are bounded and unpublished tracks are excluded from ranked output.
+- Offline authorization is bound to the authenticated device claim, asset version and content hash; device revocation invalidates its offline licenses.
+- Release publication scheduling is server-side and superseded schedules are ignored.
 - HTTP Range resume and download anti-abuse remain enforced by the existing MusicEngine/API path.
+
+## Remaining mobile security work before backend/mobile gate
+
+The backend now issues and validates device-bound offline licenses, but the mobile client still needs the final secure-storage/encrypted-container integration. Raw audio files must not be treated as the completed anti-piracy boundary until that layer is implemented and tested.
 
 ## Intentionally external / deployment-time work
 
