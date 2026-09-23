@@ -61,6 +61,22 @@ async def music_preview(
     user: OptionalUser,
 ) -> MusicPreviewResponse:
     engine = MusicEngine(session, provider_manager=_manager)
+    if body.track_id is not None:
+        # Catalog track: try download path for a playable URL (preview-grade)
+        try:
+            result = await engine.download_by_track_id(
+                track_id=body.track_id, quality="low"
+            )
+            if result.signed_url:
+                return MusicPreviewResponse(
+                    available=True,
+                    url=result.signed_url.url,
+                    expires_in_seconds=result.signed_url.expires_in_seconds,
+                )
+        except Exception:
+            return MusicPreviewResponse(available=False)
+    if not body.provider or not body.provider_track_id:
+        return MusicPreviewResponse(available=False)
     result = await engine.preview(
         provider=body.provider,
         provider_track_id=body.provider_track_id,
@@ -82,14 +98,24 @@ async def music_download(
     session: DbSession,
     user: CurrentUser,
 ) -> MusicDownloadResponse:
-    """Requires authentication. Entitlement checks will be enforced here later."""
+    """Requires authentication. Entitlement checks enforced via engine/API layer."""
     engine = MusicEngine(session, provider_manager=_manager)
-    result = await engine.download(
-        provider=body.provider,
-        provider_track_id=body.provider_track_id,
-        quality=body.quality,
-        user_id=user.id,
-    )
+    if body.track_id is not None:
+        result = await engine.download_by_track_id(
+            track_id=body.track_id,
+            quality=body.quality,
+            user_id=user.id,
+        )
+    elif body.provider and body.provider_track_id:
+        result = await engine.download(
+            provider=body.provider,
+            provider_track_id=body.provider_track_id,
+            quality=body.quality,
+            user_id=user.id,
+        )
+    else:
+        from app.core.exceptions import ValidationError
+        raise ValidationError("Provide track_id or provider + provider_track_id")
     return MusicDownloadResponse(
         url=result.signed_url.url if result.signed_url else None,
         expires_in_seconds=result.signed_url.expires_in_seconds if result.signed_url else None,

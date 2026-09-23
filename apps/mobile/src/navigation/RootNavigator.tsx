@@ -2,15 +2,19 @@ import React, {useEffect} from 'react';
 import {ActivityIndicator, StyleSheet, View} from 'react-native';
 import {NavigationContainer, DarkTheme} from '@react-navigation/native';
 import {createNativeStackNavigator} from '@react-navigation/native-stack';
+import {createBottomTabNavigator} from '@react-navigation/bottom-tabs';
 
 import {useAuthStore} from '../store/authStore';
 import {colors} from '../theme/tokens';
 import {LoginScreen} from '../screens/auth/LoginScreen';
 import {ListenerHomeScreen} from '../screens/listener/HomeScreen';
+import {LibraryScreen} from '../screens/listener/LibraryScreen';
 import {ArtistHubScreen} from '../screens/artist/ArtistHubScreen';
 import {AdminHubScreen} from '../screens/admin/AdminHubScreen';
+import {MiniPlayer} from '../components/MiniPlayer';
 
 const Stack = createNativeStackNavigator();
+const Tab = createBottomTabNavigator();
 
 const navTheme = {
   ...DarkTheme,
@@ -23,6 +27,37 @@ const navTheme = {
     primary: colors.primary,
   },
 };
+
+function ListenerTabs() {
+  return (
+    <View style={{flex: 1}}>
+      <Tab.Navigator
+        screenOptions={{
+          headerShown: false,
+          tabBarStyle: {
+            backgroundColor: colors.bgElevated,
+            borderTopColor: colors.border,
+            height: 56,
+            paddingBottom: 6,
+          },
+          tabBarActiveTintColor: colors.primary,
+          tabBarInactiveTintColor: colors.textMuted,
+        }}>
+        <Tab.Screen
+          name="Discover"
+          component={ListenerHomeScreen}
+          options={{title: 'Inicio', tabBarLabel: 'Inicio'}}
+        />
+        <Tab.Screen
+          name="Library"
+          component={LibraryScreen}
+          options={{title: 'Offline', tabBarLabel: 'Offline'}}
+        />
+      </Tab.Navigator>
+      <MiniPlayer />
+    </View>
+  );
+}
 
 export function RootNavigator() {
   const isHydrated = useAuthStore(s => s.isHydrated);
@@ -52,7 +87,7 @@ export function RootNavigator() {
         ) : activeMode === 'admin' ? (
           <Stack.Screen name="Admin" component={AdminHubScreen} />
         ) : (
-          <Stack.Screen name="Home" component={ListenerHomeScreen} />
+          <Stack.Screen name="Listener" component={ListenerTabs} />
         )}
       </Stack.Navigator>
     </NavigationContainer>

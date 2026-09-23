@@ -266,3 +266,16 @@ class CacheService:
                 body=bytes(body),
             )
             return entry, False
+
+    async def lookup_by_track(
+        self, *, track_id: UUID, quality: AudioQuality
+    ) -> CacheEntry | None:
+        result = await self.session.execute(
+            select(CacheEntry).where(
+                CacheEntry.track_id == track_id,
+                CacheEntry.quality == quality,
+                CacheEntry.status == CacheEntryStatus.READY,
+            ).limit(1)
+        )
+        return result.scalar_one_or_none()
+

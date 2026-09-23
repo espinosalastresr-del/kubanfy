@@ -406,3 +406,58 @@ async def _async_const(value: bytes) -> bytes:
             content_hash=content_hash,
             expires_at=expires_at,
         )
+
+    async def download_by_track_id(
+        self,
+        *,
+        track_id: UUID,
+        quality: str = "medium",
+        user_id: UUID | None = None,
+    ) -> DownloadResult:
+        """Catalog track download — prefers permanent artist assets / cache by track_id."""
+        try:
+            aq = AudioQuality(quality.lower())
+        except ValueError:
+            aq = AudioQuality.MEDIUM
+            quality = aq.value
+
+        track = await self.session.get(Track, track_id)
+        if track is None or track.status not in (
+            TrackStatus.PUBLISHED,
+            TrackStatus.PROCESSING,
+            TrackStatus.DRAFT,
+        ):
+            # Still allow published primarily
+            if track is None:
+                raise NotFoundError("Track not found")
+
+        cache_svc = CacheService(self.session, storage=self.storage, settings=self.settings)
+        hit = await cache_svc.lookup_by_track(track_id=track_id, quality=aq)
+        if hit is not None:
+            signed = await cache_svc.signed_delivery(hit)
+            return DownloadResult(
+                signed_url=signed,
+                storage_key=hit.storage_key,
+                quality=quality,
+                from_cache=True,
+                track_id=track_id,
+                content_hash=hit.content_hash,
+                expires_at=hit.expires_at,
+            )
+
+        # Fallback: provider mapping
+        pt = await self.session.scalar(
+            select(ProviderTrack).where(ProviderTrack.track_id == track_id).limit(1)
+        )
+        if pt is not None:
+            provider = await self.session.get(Provider, pt.provider_id)
+            if provider:
+                return await self.download(
+                    provider=provider.name,
+                    provider_track_id=pt.provider_track_id,
+                    quality=quality,
+                    user_id=user_id,
+                )
+
+        raise NotFoundError("No playable source for track")
+

@@ -6,6 +6,8 @@ import {useAuthStore} from '../../store/authStore';
 import {colors, radius, spacing, typography} from '../../theme/tokens';
 import {Screen} from '../../ui/Screen';
 import {ModeSwitcher} from '../../components/ModeSwitcher';
+import {usePlayerStore} from '../../store/playerStore';
+import {queueDownload} from '../../offline/downloadService';
 
 type HomePayload = {
   country?: string;
@@ -17,6 +19,7 @@ type HomePayload = {
 export function ListenerHomeScreen() {
   const user = useAuthStore(s => s.user);
   const logout = useAuthStore(s => s.logout);
+  const playTrack = usePlayerStore(s => s.playTrack);
   const [home, setHome] = useState<HomePayload | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -74,10 +77,25 @@ export function ListenerHomeScreen() {
 
       <Section title="Top del momento">
         {(home?.top_50_country || []).slice(0, 8).map(t => (
-          <View key={String(t.track_id)} style={styles.row}>
+          <Pressable
+            key={String(t.track_id)}
+            style={styles.row}
+            onPress={() =>
+              playTrack({
+                trackId: String(t.track_id),
+                title: t.title || 'Track',
+              })
+            }
+            onLongPress={() =>
+              queueDownload({
+                trackId: String(t.track_id),
+                title: t.title || 'Track',
+                quality: 'medium',
+              })
+            }>
             <Text style={styles.rank}>{t.rank}</Text>
             <Text style={styles.rowTitle}>{t.title || 'Track'}</Text>
-          </View>
+          </Pressable>
         ))}
       </Section>
 

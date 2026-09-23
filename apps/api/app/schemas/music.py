@@ -30,8 +30,9 @@ class MusicUpdateResponse(BaseModel):
 
 
 class MusicPreviewRequest(BaseModel):
-    provider: str = Field(max_length=64)
-    provider_track_id: str = Field(max_length=255)
+    provider: str | None = Field(default=None, max_length=64)
+    provider_track_id: str | None = Field(default=None, max_length=255)
+    track_id: UUID | None = None
 
 
 class MusicPreviewResponse(BaseModel):
@@ -43,8 +44,9 @@ class MusicPreviewResponse(BaseModel):
 
 
 class MusicDownloadRequest(BaseModel):
-    provider: str = Field(max_length=64)
-    provider_track_id: str = Field(max_length=255)
+    provider: str | None = Field(default=None, max_length=64)
+    provider_track_id: str | None = Field(default=None, max_length=255)
+    track_id: UUID | None = None
     quality: str = Field(default="medium", pattern="^(low|medium|lossless)$")
 
 
