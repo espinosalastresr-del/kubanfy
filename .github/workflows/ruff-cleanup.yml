@@ -20,8 +20,9 @@ jobs:
       - name: Fix lint and format
         working-directory: apps/api
         run: |
-          ruff check app tests --fix
+          ruff check app tests --fix || true
           ruff format app tests
+          ruff check app tests
       - name: Commit cleanup
         run: |
           if git diff --quiet; then exit 0; fi
