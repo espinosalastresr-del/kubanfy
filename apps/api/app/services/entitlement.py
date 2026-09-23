@@ -92,21 +92,6 @@ class EntitlementService:
             metadata=payload,
         )
 
-    async def grant_payment_entitlement(self, order, *, scope: EntitlementScope, expires_at: datetime) -> Entitlement:
-        payment_order_id = str(order.id)
-        existing = await self.session.scalar(
-            select(Entitlement).where(
-                Entitlement.metadata_json["payment_order_id"].as_string() == payment_order_id
-            )
-        )
-        if existing is not None:
-            return existing
-        return await self.grant(
-            order.user_id, scope, source=EntitlementSource.MANUAL,
-            expires_at=expires_at,
-            metadata={"payment_order_id": payment_order_id, "plan_code": order.plan_code},
-        )
-
     async def revoke(self, entitlement_id: UUID) -> Entitlement:
         ent = await self.session.get(Entitlement, entitlement_id)
         if ent is None:
