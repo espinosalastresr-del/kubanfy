@@ -151,7 +151,13 @@ class PaymentService:
         *,
         grant_premium: bool = True,
     ) -> PaymentOrder:
-        order = await self.session.get(PaymentOrder, order_id)
+        # Serialize approval for this order so concurrent admin retries cannot
+        # both fulfill the same payment.
+        order = await self.session.scalar(
+            select(PaymentOrder)
+            .where(PaymentOrder.id == order_id)
+            .with_for_update()
+        )
         if order is None:
             raise NotFoundError("Payment order not found")
         # Approval is idempotent: a retried admin request must not grant
@@ -168,12 +174,13 @@ class PaymentService:
 
         if grant_premium and order.plan_code in ("premium", "family", "student"):
             ent_svc = EntitlementService(self.session)
-            await ent_svc.grant(
-                order.user_id,
-                EntitlementScope.USER_PREMIUM,
+            await ent_svc.grant_payment_entitlement(
+                user_id=order.user_id,
+                payment_order_id=order.id,
+                scope_type=EntitlementScope.USER_PREMIUM,
                 source=EntitlementSource.MANUAL,
                 expires_at=datetime.now(UTC) + timedelta(days=30),
-                metadata={"payment_order_id": str(order.id), "plan_code": order.plan_code},
+                metadata={"plan_code": order.plan_code},
             )
 
         logger.info("payment_approved", order_id=str(order_id), by=str(admin_user_id))
