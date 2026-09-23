@@ -31,7 +31,8 @@ class MusicUpdateResponse(BaseModel):
 
 class MusicPreviewRequest(BaseModel):
     provider: str | None = Field(default=None, max_length=64)
-    provider_track_id: UUID | None = None
+    provider_track_id: str | None = Field(default=None, max_length=255)
+    track_id: UUID | None = None
 
 
 class MusicPreviewResponse(BaseModel):
