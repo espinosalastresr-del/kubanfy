@@ -74,7 +74,6 @@ jobs:
 
       - name: Ruff lint
         run: ruff check app tests
-        continue-on-error: true
 
       - name: Unit tests
         run: pytest tests/ -q --tb=short
