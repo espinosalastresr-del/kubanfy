@@ -12,6 +12,7 @@ from __future__ import annotations
 import asyncio
 import signal
 import uuid
+from contextlib import suppress
 from collections.abc import Awaitable, Callable
 from typing import Any
 
@@ -106,10 +107,8 @@ async def run_worker(
 
     loop = asyncio.get_running_loop()
     for sig in (signal.SIGINT, signal.SIGTERM):
-        try:
+        with suppress(NotImplementedError):
             loop.add_signal_handler(sig, _signal_handler)
-        except NotImplementedError:
-            pass
 
     try:
         while not stop.is_set():
