@@ -90,16 +90,15 @@ class LocalStorage(StorageProvider):
         if not path.is_file():
             raise StorageError("Object not found", status_code=404)
 
-        def _read_chunks():
-            with path.open("rb") as f:
-                while True:
-                    chunk = f.read(chunk_size)
-                    if not chunk:
-                        break
-                    yield chunk
-
-        for chunk in await asyncio.to_thread(lambda: list(_read_chunks())):
-            yield chunk
+        f = await asyncio.to_thread(path.open, "rb")
+        try:
+            while True:
+                chunk = await asyncio.to_thread(f.read, chunk_size)
+                if not chunk:
+                    break
+                yield chunk
+        finally:
+            await asyncio.to_thread(f.close)
 
     async def delete(
         self,
