@@ -123,7 +123,7 @@ async def music_download(
             user_id=user.id,
         )
     else:
-        from app.core.exceptions import ValidationError
+        from app.core.exceptions import AuthError, ValidationError
 
         raise ValidationError("Provide track_id or provider + provider_track_id")
 
@@ -141,6 +141,16 @@ async def music_download(
     offline_license_expires_at = None
     device_id = body.device_id or request.headers.get("X-Device-ID")
     if device_id is not None:
+        authorization = request.headers.get("Authorization", "")
+        try:
+            token = authorization.split(" ", 1)[1]
+            from app.core.security import decode_token
+            claims = decode_token(token)
+        except (IndexError, ValueError) as exc:
+            raise AuthError("Invalid authorization token") from exc
+        token_device_id = claims.get("device_id")
+        if token_device_id != device_id:
+            raise AuthError("Offline license device mismatch")
         if body.track_id is None:
             from app.core.exceptions import ValidationError
             raise ValidationError("Device-bound offline licenses require a first-party track_id")
