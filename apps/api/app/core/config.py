@@ -86,6 +86,11 @@ class Settings(BaseSettings):
         min_length=32,
     )
     jwt_algorithm: str = "HS256"
+    # Offline licenses use a separate asymmetric keypair. The private key is
+    # server-only; the public key may be embedded in the mobile client.
+    offline_license_algorithm: str = "RS256"
+    offline_license_private_key: str = ""
+    offline_license_public_key: str = ""
     access_token_expire_minutes: int = 30
     refresh_token_expire_days: int = 30
     password_reset_token_expire_minutes: int = 60
@@ -198,6 +203,12 @@ class Settings(BaseSettings):
                 raise ValueError("JWT_SECRET_KEY must be changed for production")
             if "change-me" in self.super_admin_password.lower():
                 raise ValueError("SUPER_ADMIN_PASSWORD must be changed for production")
+            if self.offline_license_algorithm != "RS256":
+                raise ValueError("OFFLINE_LICENSE_ALGORITHM must be RS256")
+            if not self.offline_license_private_key or not self.offline_license_public_key:
+                raise ValueError(
+                    "OFFLINE_LICENSE_PRIVATE_KEY and OFFLINE_LICENSE_PUBLIC_KEY are required"
+                )
         return self
 
     # -------------------------------------------------------------------------
