@@ -32,6 +32,60 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
         return False
 
 
+def create_offline_license_token(
+    subject: str,
+    *,
+    extra_claims: dict[str, Any] | None = None,
+    expires_delta: timedelta,
+    settings: Settings | None = None,
+) -> str:
+    """Create an offline license with an asymmetric signature.
+
+    The private key must remain server-side. Mobile clients only receive the
+    corresponding public key, so compromise of the app cannot mint licenses.
+    """
+    settings = settings or get_settings()
+    if not settings.offline_license_private_key:
+        raise ValueError("OFFLINE_LICENSE_PRIVATE_KEY is not configured")
+
+    now = datetime.now(UTC)
+    payload: dict[str, Any] = {
+        "sub": subject,
+        "iat": now,
+        "exp": now + expires_delta,
+        "jti": str(uuid4()),
+        "type": "offline_license",
+    }
+    if extra_claims:
+        payload.update(extra_claims)
+    return jwt.encode(
+        payload,
+        settings.offline_license_private_key,
+        algorithm=settings.offline_license_algorithm,
+    )
+
+
+def decode_offline_license_token(
+    token: str,
+    settings: Settings | None = None,
+) -> dict[str, Any]:
+    """Verify an offline license using only the server-side public key."""
+    settings = settings or get_settings()
+    if not settings.offline_license_public_key:
+        raise ValueError("OFFLINE_LICENSE_PUBLIC_KEY is not configured")
+    try:
+        payload = jwt.decode(
+            token,
+            settings.offline_license_public_key,
+            algorithms=[settings.offline_license_algorithm],
+        )
+    except JWTError as exc:
+        raise ValueError("Invalid or expired offline license") from exc
+    if payload.get("type") != "offline_license":
+        raise ValueError("Invalid offline license type")
+    return payload
+
+
 def create_access_token(
     subject: str,
     *,
