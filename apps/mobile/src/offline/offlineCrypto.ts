@@ -30,6 +30,14 @@ async function getOrCreateKey(service: string): Promise<Buffer> {
   return key;
 }
 
+async function getExistingKey(service: string): Promise<Buffer> {
+  const existing = await Keychain.getGenericPassword({service});
+  if (!existing) throw new Error('Offline audio key is unavailable');
+  const key = Buffer.from(existing.password, 'hex');
+  if (key.length !== 32) throw new Error('Invalid offline audio key');
+  return key;
+}
+
 async function removeIfExists(RNFS: any, path: string): Promise<void> {
   if (await RNFS.exists(path)) await RNFS.unlink(path).catch(() => undefined);
 }
@@ -86,7 +94,7 @@ export async function decryptOfflineFile(params: {
     throw new Error('Offline audio content identity mismatch');
   }
 
-  const key = await getOrCreateKey(keyService(trackId, quality, envelope.contentHash || contentHash));
+  const key = await getExistingKey(keyService(trackId, quality, envelope.contentHash || contentHash));
   const decipher = crypto.createDecipheriv(
     'aes-256-gcm', key, Buffer.from(envelope.iv, 'base64'),
   );
