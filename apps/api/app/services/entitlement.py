@@ -41,6 +41,7 @@ class EntitlementService:
         source: EntitlementSource = EntitlementSource.MANUAL,
         expires_at: datetime | None = None,
         metadata: dict | None = None,
+        payment_order_id: UUID | None = None,
     ) -> Entitlement:
         ent = Entitlement(
             user_id=user_id,
@@ -77,7 +78,7 @@ class EntitlementService:
             select(Entitlement).where(
                 Entitlement.user_id == user_id,
                 Entitlement.scope_type == scope_type,
-                Entitlement.metadata_json["payment_order_id"].as_string() == payment_ref,
+                Entitlement.payment_order_id == payment_order_id,
             )
         )
         if existing is not None:
@@ -90,6 +91,7 @@ class EntitlementService:
             source=source,
             expires_at=expires_at,
             metadata=payload,
+            payment_order_id=payment_order_id,
         )
 
     async def revoke(self, entitlement_id: UUID) -> Entitlement:
