@@ -264,9 +264,6 @@ class MusicEngine:
         )
 
 
-async def _async_const(value: bytes) -> bytes:
-    return value
-
     # ------------------------------------------------------------------
     # Internals
     # ------------------------------------------------------------------
@@ -461,3 +458,7 @@ async def _async_const(value: bytes) -> bytes:
 
         raise NotFoundError("No playable source for track")
 
+
+
+async def _async_const(value: bytes) -> bytes:
+    return value
