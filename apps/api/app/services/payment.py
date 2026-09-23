@@ -16,7 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import Settings, get_settings
 from app.core.exceptions import ConflictError, ForbiddenError, NotFoundError, ValidationError
 from app.core.logging import get_logger
-from app.models.entitlement import EntitlementScope, EntitlementSource
+from app.models.entitlement import EntitlementScope, EntitlementSource, Plan, PlanPrice
 from app.models.payment import PaymentMethod, PaymentOrder, PaymentStatus
 from app.services.entitlement import EntitlementService
 
@@ -77,6 +77,28 @@ class PaymentService:
         if amount_cents <= 0:
             raise ValidationError("amount_cents must be positive")
 
+        if self.settings.feature_monetization:
+            if not plan_code:
+                raise ValidationError("plan_code is required when monetization is enabled")
+            plan = await self.session.scalar(
+                select(Plan).where(
+                    Plan.code == plan_code,
+                    Plan.is_active.is_(True),
+                )
+            )
+            if plan is None:
+                raise ValidationError("Unknown or inactive plan")
+            price = await self.session.scalar(
+                select(PlanPrice).where(
+                    PlanPrice.plan_id == plan.id,
+                    PlanPrice.currency == currency.upper(),
+                    PlanPrice.amount_cents == amount_cents,
+                    PlanPrice.is_active.is_(True),
+                )
+            )
+            if price is None:
+                raise ValidationError("Payment amount does not match an active plan price")
+
         if idempotency_key:
             existing = await self.session.scalar(
                 select(PaymentOrder).where(PaymentOrder.idempotency_key == idempotency_key)
@@ -129,9 +151,19 @@ class PaymentService:
         *,
         grant_premium: bool = True,
     ) -> PaymentOrder:
-        order = await self.session.get(PaymentOrder, order_id)
+        # Serialize approval for this order so concurrent admin retries cannot
+        # both fulfill the same payment.
+        order = await self.session.scalar(
+            select(PaymentOrder)
+            .where(PaymentOrder.id == order_id)
+            .with_for_update()
+        )
         if order is None:
             raise NotFoundError("Payment order not found")
+        # Approval is idempotent: a retried admin request must not grant
+        # another premium entitlement.
+        if order.status == PaymentStatus.APPROVED:
+            return order
         if order.status not in (PaymentStatus.UNDER_REVIEW, PaymentStatus.PENDING):
             raise ConflictError(f"Cannot approve order in status {order.status.value}")
 
@@ -142,12 +174,13 @@ class PaymentService:
 
         if grant_premium and order.plan_code in ("premium", "family", "student"):
             ent_svc = EntitlementService(self.session)
-            await ent_svc.grant(
-                order.user_id,
-                EntitlementScope.USER_PREMIUM,
+            await ent_svc.grant_payment_entitlement(
+                user_id=order.user_id,
+                payment_order_id=order.id,
+                scope_type=EntitlementScope.USER_PREMIUM,
                 source=EntitlementSource.MANUAL,
                 expires_at=datetime.now(UTC) + timedelta(days=30),
-                metadata={"payment_order_id": str(order.id), "plan_code": order.plan_code},
+                metadata={"plan_code": order.plan_code},
             )
 
         logger.info("payment_approved", order_id=str(order_id), by=str(admin_user_id))

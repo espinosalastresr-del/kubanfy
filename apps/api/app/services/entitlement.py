@@ -61,6 +61,37 @@ class EntitlementService:
         )
         return ent
 
+    async def grant_payment_entitlement(
+        self,
+        *,
+        user_id: UUID,
+        payment_order_id: UUID,
+        scope_type: EntitlementScope,
+        source: EntitlementSource,
+        expires_at: datetime | None = None,
+        metadata: dict | None = None,
+    ) -> Entitlement:
+        """Grant an entitlement once for a payment order."""
+        payment_ref = str(payment_order_id)
+        existing = await self.session.scalar(
+            select(Entitlement).where(
+                Entitlement.user_id == user_id,
+                Entitlement.scope_type == scope_type,
+                Entitlement.metadata_json["payment_order_id"].as_string() == payment_ref,
+            )
+        )
+        if existing is not None:
+            return existing
+        payload = dict(metadata or {})
+        payload["payment_order_id"] = payment_ref
+        return await self.grant(
+            user_id,
+            scope_type,
+            source=source,
+            expires_at=expires_at,
+            metadata=payload,
+        )
+
     async def revoke(self, entitlement_id: UUID) -> Entitlement:
         ent = await self.session.get(Entitlement, entitlement_id)
         if ent is None:
@@ -80,7 +111,7 @@ class EntitlementService:
         )
         active: list[Entitlement] = []
         for ent in result.scalars().all():
-            if ent.expires_at and ent.expires_at.replace(tzinfo=UTC) < now:
+            if ent.expires_at and ent.expires_at.replace(tzinfo=UTC) <= now:
                 ent.status = EntitlementStatus.EXPIRED
                 continue
             active.append(ent)

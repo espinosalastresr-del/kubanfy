@@ -1,6 +1,11 @@
 /**
- * Download queue: API signed URL → local file (plan §46 / §91).
- * Uses react-native-fs when linked; otherwise keeps remote URI + job state.
+ * Durable offline download queue.
+ *
+ * Network failures never discard the completed prefix:
+ *   final audio ← atomic rename ← .part
+ *
+ * A fresh signed URL is requested for every retry because delivery URLs
+ * are intentionally short-lived. Resume uses HTTP Range against that URL.
  */
 
 import {apiRequest} from '../api/client';
@@ -16,39 +21,230 @@ type DownloadResponse = {
   signed_url?: string;
   track_id?: string;
   quality?: string;
+  content_hash?: string;
+  size_bytes?: number;
 };
+
+const MAX_ATTEMPTS = 4;
+const RETRY_DELAYS_MS = [1500, 4000, 10000, 20000];
+const COPY_CHUNK_BYTES = 1024 * 1024;
+
+let queueRunning = false;
 
 function jobId(trackId: string, quality: AudioQuality): string {
   return `${trackId}:${quality}`;
 }
 
-async function tryNativeDownload(
-  url: string,
-  trackId: string,
-  quality: AudioQuality,
-): Promise<string | null> {
+function sleep(ms: number): Promise<void> {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+function fileUri(path: string): string {
+  return path.startsWith('file://') ? path : `file://${path}`;
+}
+
+async function loadRNFS(): Promise<any> {
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  return require('react-native-fs');
+}
+
+async function ensureDir(RNFS: any, dir: string): Promise<void> {
+  if (!(await RNFS.exists(dir))) {
+    await RNFS.mkdir(dir);
+  }
+}
+
+async function appendFileInChunks(
+  RNFS: any,
+  source: string,
+  destination: string,
+): Promise<void> {
+  let position = 0;
+  const stat = await RNFS.stat(source);
+  const sourceSize = Number(stat.size);
+
+  while (position < sourceSize) {
+    const length = Math.min(COPY_CHUNK_BYTES, sourceSize - position);
+    const base64 = await RNFS.read(source, length, position, 'base64');
+    await RNFS.appendFile(destination, base64, 'base64');
+    position += length;
+  }
+}
+
+async function sha256(RNFS: any, path: string): Promise<string | null> {
   try {
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
-    const RNFS = require('react-native-fs');
-    const dir = `${RNFS.DocumentDirectoryPath}/kubanfy/offline`;
-    const exists = await RNFS.exists(dir);
-    if (!exists) {
-      await RNFS.mkdir(dir);
-    }
-    const dest = `${dir}/${trackId}_${quality}.audio`;
-    const result = await RNFS.downloadFile({
-      fromUrl: url,
-      toFile: dest,
-      background: true,
-      discretionary: true,
-    }).promise;
-    if (result.statusCode && result.statusCode >= 400) {
+    if (typeof RNFS.hash !== 'function') {
       return null;
     }
-    return `file://${dest}`;
+    return await RNFS.hash(path, 'sha256');
   } catch {
     return null;
   }
+}
+
+async function updateProgress(
+  id: string,
+  bytes: number,
+  total: number | undefined,
+): Promise<void> {
+  const progress = total && total > 0 ? Math.min(0.99, bytes / total) : 0;
+  await updateJob(id, {
+    bytesDownloaded: bytes,
+    totalBytes: total,
+    progress: progress > 0 ? progress : 0.05,
+  });
+}
+
+async function downloadWithResume(
+  job: DownloadJob,
+): Promise<{
+  path: string;
+  contentHash?: string;
+  sizeBytes: number;
+}> {
+  const RNFS = await loadRNFS();
+  const dir = `${RNFS.DocumentDirectoryPath}/kubanfy/offline`;
+  await ensureDir(RNFS, dir);
+
+  const part = job.tempPath || `${dir}/${job.trackId}_${job.quality}.audio.part`;
+  const final = job.finalPath || `${dir}/${job.trackId}_${job.quality}.audio`;
+
+  await updateJob(job.id, {tempPath: part, finalPath: final});
+
+  if (await RNFS.exists(final)) {
+    const stat = await RNFS.stat(final);
+    const size = Number(stat.size);
+    if (job.totalBytes && size !== job.totalBytes) {
+      await RNFS.unlink(final).catch(() => {});
+    } else if (!job.contentHash || (await sha256(RNFS, final)) === job.contentHash) {
+      return {path: final, contentHash: job.contentHash, sizeBytes: size};
+    }
+  }
+
+  for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt += 1) {
+    try {
+      const res = await apiRequest<DownloadResponse>('/v1/music/download', {
+        method: 'POST',
+        body: JSON.stringify({
+          track_id: job.trackId,
+          quality: job.quality,
+        }),
+      });
+      const url = res.url || res.signed_url;
+      if (!url) {
+        throw new Error('No signed URL from server');
+      }
+
+      const total = res.size_bytes;
+      const expectedHash = res.content_hash;
+      let offset = 0;
+      if (await RNFS.exists(part)) {
+        offset = Number((await RNFS.stat(part)).size);
+      }
+
+      if (total !== undefined && offset > total) {
+        await RNFS.unlink(part).catch(() => {});
+        offset = 0;
+      }
+
+      await updateJob(job.id, {
+        bytesDownloaded: offset,
+        totalBytes: total,
+        contentHash: expectedHash,
+        tempPath: part,
+        finalPath: final,
+        progress: total ? offset / total : 0.05,
+      });
+
+      const chunk = `${part}.download`;
+      await RNFS.unlink(chunk).catch(() => {});
+
+      const headers: Record<string, string> = {};
+      if (offset > 0) {
+        headers.Range = `bytes=${offset}-`;
+      }
+
+      let lastProgressAt = 0;
+      const result = await RNFS.downloadFile({
+        fromUrl: url,
+        toFile: chunk,
+        headers,
+        background: true,
+        discretionary: false,
+        progressDivider: 0,
+        begin: () => {},
+        progress: (p: {bytesWritten: number; contentLength: number}) => {
+          const now = Date.now();
+          if (now - lastProgressAt < 2000) {
+            return;
+          }
+          lastProgressAt = now;
+          const written = Number(p.bytesWritten) || 0;
+          const denominator =
+            total || (Number(p.contentLength) > 0 ? offset + Number(p.contentLength) : 0);
+          void updateProgress(job.id, offset + written, denominator || undefined);
+        },
+      }).promise;
+
+      const status = Number(result.statusCode || 0);
+      if (status >= 400) {
+        await RNFS.unlink(chunk).catch(() => {});
+        if (status === 416) {
+          await RNFS.unlink(part).catch(() => {});
+          continue;
+        }
+        throw new Error(`download HTTP ${status}`);
+      }
+
+      const chunkSize = Number((await RNFS.stat(chunk)).size);
+
+      if (offset > 0 && status === 206) {
+        if (total !== undefined && offset + chunkSize !== total) {
+          await RNFS.unlink(chunk).catch(() => {});
+          throw new Error(
+            `incomplete range: received ${offset + chunkSize} of ${total} bytes`,
+          );
+        }
+        await appendFileInChunks(RNFS, chunk, part);
+        await RNFS.unlink(chunk).catch(() => {});
+      } else if (offset > 0 && status === 200) {
+        // The server ignored Range. Never append a full response to a prefix.
+        await RNFS.unlink(part).catch(() => {});
+        await RNFS.moveFile(chunk, part);
+      } else {
+        // Initial request. A normal 200 is expected; 206 is also safe.
+        await RNFS.unlink(part).catch(() => {});
+        await RNFS.moveFile(chunk, part);
+      }
+
+      const finalStat = await RNFS.stat(part);
+      const finalSize = Number(finalStat.size);
+      if (total !== undefined && finalSize !== total) {
+        throw new Error(`incomplete download: ${finalSize} of ${total} bytes`);
+      }
+
+      const actualHash = await sha256(RNFS, part);
+      if (expectedHash && actualHash && actualHash.toLowerCase() !== expectedHash.toLowerCase()) {
+        await RNFS.unlink(part).catch(() => {});
+        throw new Error('checksum mismatch');
+      }
+
+      await RNFS.unlink(final).catch(() => {});
+      await RNFS.moveFile(part, final);
+      return {
+        path: final,
+        contentHash: expectedHash || actualHash || undefined,
+        sizeBytes: finalSize,
+      };
+    } catch (error) {
+      if (attempt === MAX_ATTEMPTS - 1) {
+        throw error;
+      }
+      await sleep(RETRY_DELAYS_MS[attempt]);
+    }
+  }
+
+  throw new Error('download retries exhausted');
 }
 
 export async function queueDownload(params: {
@@ -64,6 +260,7 @@ export async function queueDownload(params: {
     return existing;
   }
 
+  const now = Date.now();
   const job: DownloadJob = {
     id,
     trackId: params.trackId,
@@ -71,11 +268,10 @@ export async function queueDownload(params: {
     quality,
     status: 'queued',
     progress: 0,
-    createdAt: Date.now(),
-    updatedAt: Date.now(),
+    createdAt: now,
+    updatedAt: now,
   };
-  const next = jobs.filter(j => j.id !== id).concat(job);
-  await saveDownloadJobs(next);
+  await saveDownloadJobs(jobs.filter(j => j.id !== id).concat(job));
   processQueue().catch(() => {});
   return job;
 }
@@ -92,50 +288,52 @@ async function updateJob(
 }
 
 export async function processQueue(): Promise<void> {
-  const jobs = await listDownloadJobs();
-  const next = jobs.find(j => j.status === 'queued');
-  if (!next) {
+  if (queueRunning) {
     return;
   }
-  await updateJob(next.id, {status: 'running', progress: 0.05});
+  queueRunning = true;
 
   try {
-    const res = await apiRequest<DownloadResponse>('/v1/music/download', {
-      method: 'POST',
-      body: JSON.stringify({track_id: next.trackId, quality: next.quality}),
-    });
-    const url = res.url || res.signed_url;
-    if (!url) {
-      throw new Error('No signed URL from server');
+    while (true) {
+      const jobs = await listDownloadJobs();
+      // A persisted "running" job is an interrupted job after app restart.
+      const next = jobs.find(
+        j => j.status === 'queued' || j.status === 'running',
+      );
+      if (!next) {
+        return;
+      }
+
+      await updateJob(next.id, {status: 'running'});
+
+      try {
+        const result = await downloadWithResume(next);
+        const meta: OfflineTrackMeta = {
+          trackId: next.trackId,
+          title: next.title,
+          quality: next.quality,
+          localUri: fileUri(result.path),
+          downloadedAt: Date.now(),
+          contentHash: result.contentHash,
+          sizeBytes: result.sizeBytes,
+        };
+        await upsertOfflineTrack(meta);
+        await updateJob(next.id, {
+          status: 'completed',
+          progress: 1,
+          bytesDownloaded: result.sizeBytes,
+          totalBytes: result.sizeBytes,
+        });
+      } catch (e) {
+        await updateJob(next.id, {
+          status: 'failed',
+          error: e instanceof Error ? e.message : 'download failed',
+        });
+      }
     }
-
-    await updateJob(next.id, {progress: 0.35});
-
-    const nativePath = await tryNativeDownload(
-      url,
-      next.trackId,
-      next.quality,
-    );
-    const localUri = nativePath || url;
-
-    const meta: OfflineTrackMeta = {
-      trackId: next.trackId,
-      title: next.title,
-      quality: next.quality,
-      localUri,
-      downloadedAt: Date.now(),
-    };
-    await upsertOfflineTrack(meta);
-    await updateJob(next.id, {status: 'completed', progress: 1});
-  } catch (e) {
-    await updateJob(next.id, {
-      status: 'failed',
-      error: e instanceof Error ? e.message : 'download failed',
-    });
+  } finally {
+    queueRunning = false;
   }
-
-  // Continue with next job
-  processQueue().catch(() => {});
 }
 
 export async function cancelDownload(id: string): Promise<void> {

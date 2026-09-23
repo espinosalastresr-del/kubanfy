@@ -1,4 +1,4 @@
-"""Artist portal API: create artist, upload track, publish."""
+"""Artist portal API and public artist catalog."""
 
 from __future__ import annotations
 
@@ -10,12 +10,15 @@ from fastapi import APIRouter, File, Form, UploadFile
 from sqlalchemy import select
 
 from app.api.deps import CurrentUser, DbSession
-from app.core.exceptions import ConflictError, ValidationError
+from app.core.exceptions import ConflictError, NotFoundError, ValidationError
 from app.models.artist_member import ArtistMember, ArtistMemberRole
-from app.models.music import Artist
+from app.models.music import Artist, Release, Track, TrackArtist, TrackStatus
 from app.schemas.artist import (
     ArtistCreateRequest,
+    ArtistUpdateRequest,
     ArtistResponse,
+    PublicReleaseResponse,
+    PublicTrackResponse,
     PublishTrackResponse,
     TrackUploadResponse,
 )
@@ -73,6 +76,109 @@ async def my_artists(user: CurrentUser, session: DbSession) -> list[ArtistRespon
         .order_by(Artist.name)
     )
     return [ArtistResponse.model_validate(a) for a in result.scalars().all()]
+
+
+
+
+@router.patch("/{artist_id}", response_model=ArtistResponse)
+async def update_artist(
+    artist_id: UUID,
+    body: ArtistUpdateRequest,
+    user: CurrentUser,
+    session: DbSession,
+) -> ArtistResponse:
+    artist = await session.get(Artist, artist_id)
+    if artist is None:
+        raise NotFoundError("Artist not found")
+    member = await session.scalar(select(ArtistMember).where(
+        ArtistMember.artist_id == artist_id,
+        ArtistMember.user_id == user.id,
+    ))
+    if member is None or member.role not in (ArtistMemberRole.OWNER, ArtistMemberRole.MANAGER):
+        raise NotFoundError("Artist not found")
+    artist.name = body.name.strip()
+    artist.bio = body.bio
+    artist.country = body.country.upper()
+    new_slug = _slugify(artist.name)
+    if new_slug != artist.slug:
+        conflict = await session.scalar(select(Artist).where(Artist.slug == new_slug, Artist.id != artist.id))
+        if conflict:
+            raise ConflictError("Artist slug already exists")
+        artist.slug = new_slug
+    await session.flush()
+    return ArtistResponse.model_validate(artist)
+
+
+@router.get("/{artist_id}", response_model=ArtistResponse)
+async def get_artist(artist_id: UUID, session: DbSession) -> ArtistResponse:
+    artist = await session.get(Artist, artist_id)
+    if artist is None or artist.status != "active":
+        raise NotFoundError("Artist not found")
+    return ArtistResponse.model_validate(artist)
+
+
+@router.get("/{artist_id}/releases", response_model=list[PublicReleaseResponse])
+async def artist_releases(
+    artist_id: UUID,
+    session: DbSession,
+) -> list[PublicReleaseResponse]:
+    artist = await session.get(Artist, artist_id)
+    if artist is None or artist.status != "active":
+        raise NotFoundError("Artist not found")
+
+    result = await session.execute(
+        select(Release)
+        .where(
+            Release.artist_id == artist_id,
+            Release.status == TrackStatus.PUBLISHED,
+        )
+        .order_by(Release.release_date.desc().nullslast(), Release.created_at.desc())
+    )
+    return [
+        PublicReleaseResponse(
+            id=release.id,
+            title=release.title,
+            type=release.type.value,
+            artwork_asset=release.artwork_asset,
+            release_date=release.release_date,
+            status=release.status.value,
+        )
+        for release in result.scalars().all()
+    ]
+
+
+@router.get("/{artist_id}/tracks", response_model=list[PublicTrackResponse])
+async def artist_tracks(
+    artist_id: UUID,
+    session: DbSession,
+) -> list[PublicTrackResponse]:
+    artist = await session.get(Artist, artist_id)
+    if artist is None or artist.status != "active":
+        raise NotFoundError("Artist not found")
+
+    result = await session.execute(
+        select(Track, Release)
+        .join(TrackArtist, TrackArtist.track_id == Track.id)
+        .outerjoin(Release, Release.id == Track.release_id)
+        .where(
+            TrackArtist.artist_id == artist_id,
+            Track.status == TrackStatus.PUBLISHED,
+        )
+        .order_by(Track.release_date.desc().nullslast(), Track.created_at.desc())
+    )
+    return [
+        PublicTrackResponse(
+            id=track.id,
+            title=track.title,
+            slug=track.slug,
+            duration=track.duration,
+            explicit=track.explicit,
+            language=track.language,
+            release_id=release.id if release else None,
+            release_title=release.title if release else None,
+        )
+        for track, release in result.all()
+    ]
 
 
 @router.post("/{artist_id}/tracks/upload", response_model=TrackUploadResponse, status_code=201)

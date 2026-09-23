@@ -32,8 +32,6 @@ def upgrade() -> None:
         "expired",
         name="payment_status",
     )
-    payment_method.create(op.get_bind(), checkfirst=True)
-    payment_status.create(op.get_bind(), checkfirst=True)
 
     op.create_table(
         "payment_orders",

@@ -57,6 +57,8 @@ class MusicDownloadResponse(BaseModel):
     from_cache: bool
     track_id: UUID | None = None
     storage_key: str | None = None
+    content_hash: str | None = None
+    size_bytes: int | None = None
 
 
 class TrackSearchResult(BaseModel):
