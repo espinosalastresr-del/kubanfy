@@ -76,7 +76,7 @@ class RightsRoyaltyService:
         if existing is not None: return existing
         account=await self.ensure_account(artist_id,currency)
         if account.currency!=currency.upper(): raise ConflictError("Currency mismatch for royalty account")
-        entry=RoyaltyLedgerEntry(account_id=account.id,amount_cents=amount_cents,currency=currency.upper(),direction=direction,source_type=source_type,source_id=source_id,idempotency_key=idempotency_key,metadata=metadata or {})
+        entry=RoyaltyLedgerEntry(account_id=account.id,amount_cents=amount_cents,currency=currency.upper(),direction=direction,source_type=source_type,source_id=source_id,idempotency_key=idempotency_key,entry_metadata=metadata or {})
         self.session.add(entry); await self.session.flush()
         return entry
 
