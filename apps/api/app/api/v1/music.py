@@ -160,6 +160,8 @@ async def music_content_stream(
 
     from app.services.http_range import parse_bytes_range
     from app.storage import StorageBucket, get_storage
+    async def storage_range_stream(storage, key, start, end):
+        yield await storage.get_range(key, start, end, bucket=StorageBucket.CACHE)
     from app.core.exceptions import NotFoundError, ValidationError
 
     ip = request.client.host if request.client else None
@@ -187,13 +189,8 @@ async def music_content_stream(
         return Response(status_code=416, headers={"Content-Range": f"bytes */{total}"})
 
     if br is None:
-        data = await storage.get(storage_key, bucket=StorageBucket.CACHE)
-
-        async def full():
-            yield data
-
         return StreamingResponse(
-            full(),
+            storage.stream(storage_key, bucket=StorageBucket.CACHE, chunk_size=65536),
             media_type="audio/mpeg",
             headers={
                 "Accept-Ranges": "bytes",
@@ -202,15 +199,8 @@ async def music_content_stream(
             },
         )
 
-    data = await storage.get_range(
-        storage_key, br.start, br.end, bucket=StorageBucket.CACHE
-    )
-
-    async def partial():
-        yield data
-
     return StreamingResponse(
-        partial(),
+        storage_range_stream(storage, storage_key, br.start, br.end),
         status_code=206,
         media_type="audio/mpeg",
         headers={
