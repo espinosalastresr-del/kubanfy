@@ -9,9 +9,9 @@ from __future__ import annotations
 import re
 import tempfile
 import unicodedata
+from contextlib import suppress
 from dataclasses import dataclass
 from pathlib import Path
-from contextlib import suppress
 from uuid import UUID
 
 from sqlalchemy import select
@@ -403,10 +403,8 @@ class ArtistUploadService:
             # objects are deliberately retained for asynchronous orphan cleanup.
             raise
         finally:
-            try:
+            with suppress(OSError):
                 tmp_path.unlink(missing_ok=True)
-            except OSError:
-                pass
 
     async def publish_track(self, *, user_id: UUID, track_id: UUID, artist_id: UUID) -> Track:
         await self.assert_can_edit(user_id, artist_id)
