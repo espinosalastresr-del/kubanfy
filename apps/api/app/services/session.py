@@ -211,11 +211,13 @@ class SessionService:
         if sess.status != SessionStatus.ACTIVE:
             raise AuthError("Session has been revoked")
         now = datetime.now(UTC)
-        if sess.expires_at.replace(tzinfo=UTC) <= now:
+        expires_at = sess.expires_at if sess.expires_at.tzinfo is not None else sess.expires_at.replace(tzinfo=UTC)
+        last_activity_at = sess.last_activity_at if sess.last_activity_at.tzinfo is not None else sess.last_activity_at.replace(tzinfo=UTC)
+        if expires_at <= now:
             sess.status = SessionStatus.EXPIRED
             await self.db.flush()
             raise AuthError("Session expired")
-        if sess.last_activity_at.replace(tzinfo=UTC) + timedelta(minutes=self.settings.session_idle_timeout_minutes) <= now:
+        if last_activity_at + timedelta(minutes=self.settings.session_idle_timeout_minutes) <= now:
             sess.status = SessionStatus.EXPIRED
             await self.db.flush()
             raise AuthError("Session idle timeout")
