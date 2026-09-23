@@ -5,7 +5,8 @@ from __future__ import annotations
 from contextlib import asynccontextmanager
 from typing import Any
 
-from fastapi import FastAPI, Request, status
+from fastapi import FastAPI
+from starlette.responses import Response as StarletteResponse, Request, status
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, ORJSONResponse
@@ -213,8 +214,6 @@ def create_app() -> FastAPI:
 
     @app.get("/metrics", tags=["ops"], include_in_schema=False)
     async def metrics() -> StarletteResponse:
-        from starlette.responses import Response as StarletteResponse
-
         from app.core.metrics import metrics_payload
 
         body, content_type = metrics_payload()
