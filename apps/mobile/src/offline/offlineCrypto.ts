@@ -54,38 +54,50 @@ export async function encryptOfflineFile(params: {
   const cipher = crypto.createCipheriv('aes-256-gcm', key, iv);
   cipher.setAAD(KFY_MAGIC);
   const plaintextSize = Number((await RNFS.stat(sourcePath)).size);
+  if (!Number.isSafeInteger(plaintextSize) || plaintextSize < 0) {
+    throw new Error('Invalid offline audio size');
+  }
   const temp = encryptedPath + '.part';
+  const metadataTemp = metadataPath + '.part';
 
   await removeIfExists(RNFS, temp);
   await removeIfExists(RNFS, encryptedPath);
-  await RNFS.writeFile(temp, KFY_MAGIC.toString('base64'), 'base64');
   await removeIfExists(RNFS, metadataPath);
-
-  let position = 0;
-  while (position < plaintextSize) {
-    const length = Math.min(CHUNK_BYTES, plaintextSize - position);
-    const input = Buffer.from(await RNFS.read(sourcePath, length, position, 'base64'), 'base64');
-    const output = cipher.update(input);
-    if (output.length) await RNFS.appendFile(temp, output.toString('base64'), 'base64');
-    position += length;
-  }
-  const finalChunk = cipher.final();
-  if (finalChunk.length) await RNFS.appendFile(temp, finalChunk.toString('base64'), 'base64');
-
-  const envelope: Envelope = {
-    format: FORMAT,
-    iv: iv.toString('base64'),
-    authTag: cipher.getAuthTag().toString('base64'),
-    plaintextSize,
-    contentHash,
-  };
-  const metadataTemp = metadataPath + '.part';
   await removeIfExists(RNFS, metadataTemp);
-  await RNFS.writeFile(metadataTemp, JSON.stringify(envelope), 'utf8');
-  await RNFS.moveFile(temp, encryptedPath);
-  await RNFS.moveFile(metadataTemp, metadataPath);
-  await removeIfExists(RNFS, sourcePath);
-  return {path: encryptedPath, metadataPath};
+
+  try {
+    await RNFS.writeFile(temp, KFY_MAGIC.toString('base64'), 'base64');
+
+    let position = 0;
+    while (position < plaintextSize) {
+      const length = Math.min(CHUNK_BYTES, plaintextSize - position);
+      const input = Buffer.from(await RNFS.read(sourcePath, length, position, 'base64'), 'base64');
+      const output = cipher.update(input);
+      if (output.length) await RNFS.appendFile(temp, output.toString('base64'), 'base64');
+      position += length;
+    }
+    const finalChunk = cipher.final();
+    if (finalChunk.length) await RNFS.appendFile(temp, finalChunk.toString('base64'), 'base64');
+
+    const envelope: Envelope = {
+      format: FORMAT,
+      iv: iv.toString('base64'),
+      authTag: cipher.getAuthTag().toString('base64'),
+      plaintextSize,
+      contentHash,
+    };
+    await RNFS.writeFile(metadataTemp, JSON.stringify(envelope), 'utf8');
+    await RNFS.moveFile(temp, encryptedPath);
+    await RNFS.moveFile(metadataTemp, metadataPath);
+    await removeIfExists(RNFS, sourcePath);
+    return {path: encryptedPath, metadataPath};
+  } catch (error) {
+    await removeIfExists(RNFS, temp);
+    await removeIfExists(RNFS, metadataTemp);
+    await removeIfExists(RNFS, encryptedPath);
+    await removeIfExists(RNFS, metadataPath);
+    throw error;
+  }
 }
 
 export async function decryptOfflineFile(params: {
@@ -94,8 +106,19 @@ export async function decryptOfflineFile(params: {
 }): Promise<string> {
   const {RNFS, encryptedPath, metadataPath, outputPath, trackId, quality, contentHash} = params;
   const envelope = JSON.parse(await RNFS.readFile(metadataPath, 'utf8')) as Envelope;
-  if (envelope.format !== FORMAT || !envelope.iv || !envelope.authTag) {
+  if (
+    envelope.format !== FORMAT ||
+    !envelope.iv ||
+    !envelope.authTag ||
+    !Number.isSafeInteger(envelope.plaintextSize) ||
+    envelope.plaintextSize < 0
+  ) {
     throw new Error('Unsupported offline audio format');
+  }
+  const iv = Buffer.from(envelope.iv, 'base64');
+  const authTag = Buffer.from(envelope.authTag, 'base64');
+  if (iv.length !== 12 || authTag.length !== 16) {
+    throw new Error('Invalid KFY cryptographic metadata');
   }
   if (contentHash && envelope.contentHash && contentHash !== envelope.contentHash) {
     throw new Error('Offline audio content identity mismatch');
@@ -103,14 +126,16 @@ export async function decryptOfflineFile(params: {
 
   const key = await getExistingKey(keyService(trackId, quality, envelope.contentHash || contentHash));
   const decipher = crypto.createDecipheriv(
-    'aes-256-gcm', key, Buffer.from(envelope.iv, 'base64'),
+    'aes-256-gcm', key, iv,
   );
-  decipher.setAuthTag(Buffer.from(envelope.authTag, 'base64'));
+  decipher.setAuthTag(authTag);
 
   const ciphertextSize = Number((await RNFS.stat(encryptedPath)).size);
   if (ciphertextSize <= KFY_HEADER_BYTES) throw new Error('Invalid KFY container');
   const magic = Buffer.from(await RNFS.read(encryptedPath, KFY_HEADER_BYTES, 0, 'base64'), 'base64');
-  if (!magic.equals(KFY_MAGIC)) throw new Error('Invalid KFY container header');
+  if (magic.toString('hex') !== KFY_MAGIC.toString('hex')) {
+    throw new Error('Invalid KFY container header');
+  }
   decipher.setAAD(KFY_MAGIC);
   const temp = outputPath + '.part';
   await removeIfExists(RNFS, temp);
