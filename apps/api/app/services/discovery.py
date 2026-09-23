@@ -87,9 +87,10 @@ class DiscoveryService:
         for track_id, event_type, cnt in rows:
             if track_id is None:
                 continue
+            bounded = min(int(cnt), 1000)
             w = DEFAULT_WEIGHTS.get(event_type, 0.1)
-            scores[track_id] = scores.get(track_id, 0.0) + w * cnt
-            metrics.setdefault(track_id, {})[event_type] = cnt
+            scores[track_id] = scores.get(track_id, 0.0) + w * bounded
+            metrics.setdefault(track_id, {})[event_type] = bounded
 
         if not scores:
             # Fallback: newest published tracks
@@ -110,7 +111,7 @@ class DiscoveryService:
         track_map = {
             t.id: t
             for t in (
-                await self.session.execute(select(Track).where(Track.id.in_(track_ids)))
+                await self.session.execute(select(Track).where(Track.id.in_(track_ids), Track.status == TrackStatus.PUBLISHED))
             ).scalars().all()
         }
 
