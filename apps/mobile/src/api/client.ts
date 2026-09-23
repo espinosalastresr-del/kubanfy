@@ -5,10 +5,12 @@
  */
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as Keychain from 'react-native-keychain';
 
 const TOKEN_KEY = 'kubanfy.access_token';
 const REFRESH_KEY = 'kubanfy.refresh_token';
 const DEVICE_KEY = 'kubanfy.device_id';
+const KEYCHAIN_SERVICE = 'com.kubanfy.auth';
 
 export type ApiErrorBody = {
   error?: {code?: string; message?: string; details?: Record<string, unknown>};
@@ -23,27 +25,50 @@ function getBaseUrl(): string {
 }
 
 async function getDeviceId(): Promise<string> {
-  let id = await AsyncStorage.getItem(DEVICE_KEY);
-  if (!id) {
-    id = `rn-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
-    await AsyncStorage.setItem(DEVICE_KEY, id);
+  const credentials = await Keychain.getGenericPassword({service: KEYCHAIN_SERVICE});
+  if (credentials) {
+    return credentials.username;
+  }
+  const legacy = await AsyncStorage.getItem(DEVICE_KEY);
+  const id =
+    legacy || `rn-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+  await Keychain.setGenericPassword(id, 'device', {
+    service: KEYCHAIN_SERVICE,
+    accessible: Keychain.ACCESSIBLE.WHEN_UNLOCKED_THIS_DEVICE_ONLY,
+  });
+  if (legacy) {
+    await AsyncStorage.removeItem(DEVICE_KEY);
   }
   return id;
 }
 
 export async function setTokens(access: string, refresh: string): Promise<void> {
-  await AsyncStorage.multiSet([
-    [TOKEN_KEY, access],
-    [REFRESH_KEY, refresh],
-  ]);
+  await Keychain.setGenericPassword(
+    access,
+    refresh,
+    {
+      service: KEYCHAIN_SERVICE,
+      accessible: Keychain.ACCESSIBLE.WHEN_UNLOCKED_THIS_DEVICE_ONLY,
+    },
+  );
+}
+
+async function getCredentials(): Promise<Keychain.UserCredentials | null> {
+  try {
+    const credentials = await Keychain.getGenericPassword({service: KEYCHAIN_SERVICE});
+    return credentials || null;
+  } catch {
+    return null;
+  }
 }
 
 export async function clearTokens(): Promise<void> {
-  await AsyncStorage.multiRemove([TOKEN_KEY, REFRESH_KEY]);
+  await Keychain.resetGenericPassword({service: KEYCHAIN_SERVICE});
 }
 
 export async function getAccessToken(): Promise<string | null> {
-  return AsyncStorage.getItem(TOKEN_KEY);
+  const credentials = await getCredentials();
+  return credentials?.username || null;
 }
 
 export async function apiRequest<T>(
