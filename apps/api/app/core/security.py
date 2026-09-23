@@ -45,6 +45,8 @@ def create_offline_license_token(
     corresponding public key, so compromise of the app cannot mint licenses.
     """
     settings = settings or get_settings()
+    if settings.offline_license_algorithm != "RS256":
+        raise ValueError("Offline license algorithm must be RS256")
     if not settings.offline_license_private_key:
         raise ValueError("OFFLINE_LICENSE_PRIVATE_KEY is not configured")
 
@@ -74,6 +76,8 @@ def decode_offline_license_token(
 ) -> dict[str, Any]:
     """Verify an offline license using only the server-side public key."""
     settings = settings or get_settings()
+    if settings.offline_license_algorithm != "RS256":
+        raise ValueError("Offline license algorithm must be RS256")
     if not settings.offline_license_public_key:
         raise ValueError("OFFLINE_LICENSE_PUBLIC_KEY is not configured")
     try:
