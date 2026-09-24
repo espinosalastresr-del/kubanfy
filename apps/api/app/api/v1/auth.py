@@ -21,6 +21,7 @@ from app.schemas.auth import (
 from app.services.anti_abuse import AntiAbuseService
 from app.services.auth import AuthService
 from app.services.session import SessionService
+from app.services.geo import GeoService
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -31,8 +32,10 @@ async def register(
     request: Request,
     session: DbSession,
 ) -> UserResponse:
+    geo = GeoService()
     ip = request.client.host if request.client else None
-    await AntiAbuseService().check_register(ip)
+    real_ip = geo.resolve_client_ip(ip, forwarded_for=request.headers.get("x-forwarded-for"))
+    await AntiAbuseService().check_register(real_ip)
     service = AuthService(session)
     user = await service.register(body)
     return AuthService.to_response(user)
@@ -44,11 +47,13 @@ async def login(
     request: Request,
     session: DbSession,
 ) -> LoginResponse:
+    geo = GeoService()
     ip = request.client.host if request.client else None
-    await AntiAbuseService().check_login(ip, body.email)
+    real_ip = geo.resolve_client_ip(ip, forwarded_for=request.headers.get("x-forwarded-for"))
+    await AntiAbuseService().check_login(real_ip, body.email)
     service = AuthService(session)
     user_agent = request.headers.get("user-agent")
-    user, tokens = await service.login(body, user_agent=user_agent)
+    user, tokens = await service.login(body, ip_country=geo.resolve(ip=real_ip).country, user_agent=user_agent)
     return LoginResponse(user=AuthService.to_response(user), tokens=tokens)
 
 
