@@ -205,7 +205,7 @@ final class APIClient {
     func refresh() async throws {
         guard let refreshToken = keychain.load("refresh") else { throw APIError.missingSession }
         let body: [String: Any] = ["refresh_token": refreshToken, "device_id": deviceID]
-        let data = try await request(
+        let data = try await performRequest(
             path: "/auth/refresh",
             method: "POST",
             body: JSONSerialization.data(withJSONObject: body),
@@ -217,12 +217,12 @@ final class APIClient {
     }
 
     func context() async throws -> AuthContext {
-        let data = try await request(path: "/auth/context")
+        let data = try await performRequest(path: "/auth/context")
         return try decoder.decode(AuthContext.self, from: data)
     }
 
     func discoveryHome() async throws -> DiscoveryHome {
-        let data = try await request(path: "/discovery/home")
+        let data = try await performRequest(path: "/discovery/home")
         return try decoder.decode(DiscoveryHome.self, from: data)
     }
 
@@ -241,7 +241,7 @@ final class APIClient {
             URLQueryItem(name: "limit", value: String(min(max(limit, 1), 50)))
         ]
         guard let url = components?.url else { throw APIError.invalidURL }
-        let data = try await request(url: url)
+        let data = try await performRequest(url: url)
         return try decoder.decode([TrackSearchResult].self, from: data)
     }
 
