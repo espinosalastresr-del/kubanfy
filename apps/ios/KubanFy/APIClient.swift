@@ -34,6 +34,43 @@ struct TokenResponse: Codable {
     }
 }
 
+struct AuthContext: Codable {
+    let roles: [String]
+    let artistIds: [UUID]
+    let isArtist: Bool
+    let isAdmin: Bool
+
+    enum CodingKeys: String, CodingKey {
+        case roles
+        case artistIds = "artist_ids"
+        case isArtist = "is_artist"
+        case isAdmin = "is_admin"
+    }
+}
+
+struct DiscoveryHome: Codable {
+    struct Artist: Codable { let id: UUID; let name: String; let slug: String; let verified: Bool }
+    struct Track: Codable { let id: UUID; let title: String; let duration: Double? }
+    struct Ranking: Codable { let rank: Int; let trackId: UUID; let title: String?; let score: Double; let metrics: [String: Int]
+        enum CodingKeys: String, CodingKey { case rank, title, score, metrics; case trackId = "track_id" }
+    }
+    let country: String
+    let localArtists: [Artist]
+    let topCountry: [Ranking]
+    let topGlobal: [Ranking]
+    let newReleases: [Track]
+    let trending: [Ranking]
+    let viralByCountry: [Ranking]
+    enum CodingKeys: String, CodingKey {
+        case country, trending
+        case localArtists = "local_artists"
+        case topCountry = "top_50_country"
+        case topGlobal = "top_50_global"
+        case newReleases = "new_releases"
+        case viralByCountry = "viral_by_country"
+    }
+}
+
 struct LoginResponse: Codable {
     let user: UserResponse
     let tokens: TokenResponse
@@ -131,6 +168,16 @@ final class APIClient {
         try keychain.save(response.tokens.accessToken, account: "access")
         try keychain.save(response.tokens.refreshToken, account: "refresh")
         return response
+    }
+
+    func context() async throws -> AuthContext {
+        let data = try await request(path: "/auth/context")
+        return try decoder.decode(AuthContext.self, from: data)
+    }
+
+    func discoveryHome() async throws -> DiscoveryHome {
+        let data = try await request(path: "/discovery/home")
+        return try decoder.decode(DiscoveryHome.self, from: data)
     }
 
     func me() async throws -> UserResponse {
