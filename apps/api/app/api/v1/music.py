@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from fastapi import APIRouter, Query, Request
+from fastapi import APIRouter, HTTPException, Query, Request
 
 from app.api.deps import CurrentUser, DbSession, OptionalUser
 from app.core.exceptions import AuthError
@@ -271,6 +271,7 @@ async def music_content_stream(
     quality: str = Query("low"),
 ):
     """Stream audio with HTTP Range (resume). Uses cache object when available."""
+    raise HTTPException(status_code=410, detail="Raw KBY streaming is disabled; use authorized playback delivery")
     from fastapi.responses import Response, StreamingResponse
 
     from app.core.exceptions import ValidationError
