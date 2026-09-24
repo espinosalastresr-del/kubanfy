@@ -33,10 +33,13 @@ class AntiAbuseService:
         limit: int,
         window_seconds: int = 60,
     ) -> RateLimitResult:
-        """Sliding window counter via Redis. Fails open if Redis unavailable."""
+        """Sliding window counter via Redis with configurable failure semantics."""
         try:
             redis = get_redis()
-        except RuntimeError:
+        except RuntimeError as exc:
+            if not self.settings.rate_limit_fail_open:
+                logger.error("rate_limit_redis_unavailable", error=str(exc))
+                return RateLimitResult(allowed=False, remaining=0, reset_seconds=window_seconds)
             return RateLimitResult(allowed=True, remaining=limit, reset_seconds=window_seconds)
 
         redis_key = f"rl:{key}"
@@ -55,6 +58,8 @@ class AntiAbuseService:
             return RateLimitResult(allowed=True, remaining=remaining, reset_seconds=max(ttl, 1))
         except Exception as exc:
             logger.warning("rate_limit_redis_error", error=str(exc))
+            if not self.settings.rate_limit_fail_open:
+                return RateLimitResult(allowed=False, remaining=0, reset_seconds=window_seconds)
             return RateLimitResult(allowed=True, remaining=limit, reset_seconds=window_seconds)
 
     async def enforce_rate_limit(
