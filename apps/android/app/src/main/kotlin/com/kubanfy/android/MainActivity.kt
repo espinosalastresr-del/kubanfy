@@ -14,16 +14,8 @@ import androidx.core.content.ContextCompat
 
 class MainActivity : Activity() {
     private val executor = Executors.newSingleThreadExecutor()
-    private val mainHandler = Handler(Looper.getMainLooper())
     private lateinit var api: APIClient
     private lateinit var status: TextView
-    private var player: ExoPlayer? = null
-    private var currentTrackId: String? = null
-    private var currentTitle: String? = null
-    private var currentQuality = "low"
-    private var renewalGeneration = 0L
-    private var recoveryInProgress = false
-    private var recoveryAttempts = 0
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
