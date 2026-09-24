@@ -26,4 +26,4 @@ echo "[kubanfy] alembic upgrade head..."
 alembic upgrade head
 
 echo "[kubanfy] starting API..."
-exec uvicorn app.main:app --host 0.0.0.0 --port 8000 --proxy-headers
+exec uvicorn app.main:app --host 0.0.0.0 --port "${PORT:-8000}" --proxy-headers
