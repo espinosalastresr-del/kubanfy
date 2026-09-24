@@ -1,7 +1,6 @@
 import SwiftUI
 import AVFoundation
 import MediaPlayer
-import UIKit
 
 struct ContentView: View {
     @State private var email = ""
@@ -128,7 +127,6 @@ struct ContentView: View {
     }
 }
 
-
 private struct SearchView: View {
     @State private var query = ""
     @State private var results: [TrackSearchResult] = []
@@ -188,7 +186,6 @@ private struct SearchView: View {
     }
 }
 
-
 @MainActor
 private final class AudioPlayer: ObservableObject {
     @Published private(set) var currentTrackID: UUID?
@@ -210,7 +207,7 @@ private final class AudioPlayer: ObservableObject {
             name: AVAudioSession.interruptionNotification,
             object: session
         )
-        UIApplication.shared.beginReceivingRemoteControlEvents()
+
         let commands = MPRemoteCommandCenter.shared()
         commands.playCommand.addTarget { [weak self] _ in
             self?.player?.play()
@@ -280,7 +277,12 @@ private final class AudioPlayer: ObservableObject {
         NotificationCenter.default.removeObserver(self)
         MPRemoteCommandCenter.shared().playCommand.removeTarget(self)
         MPRemoteCommandCenter.shared().pauseCommand.removeTarget(self)
-        UIApplication.shared.endReceivingRemoteControlEvents()
         player?.pause()
     }
+}
+
+private func formatDuration(_ seconds: Double) -> String {
+    guard seconds.isFinite, seconds >= 0 else { return "--:--" }
+    let totalSeconds = Int(seconds.rounded())
+    return String(format: "%d:%02d", totalSeconds / 60, totalSeconds % 60)
 }
