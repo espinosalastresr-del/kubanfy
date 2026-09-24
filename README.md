@@ -10,7 +10,8 @@ Plataforma de música orientada al mercado cubano. Offline-first, optimizada par
 kubanfy/
   apps/
     api/          # FastAPI backend
-    mobile/       # React Native unificada (listener + artist + admin)
+    android/      # Android nativo (Kotlin)
+    ios/          # iOS nativo (Swift/SwiftUI)
     admin/        # (opcional) panel web futuro
     artist/       # (opcional) portal web futuro
   packages/
@@ -33,7 +34,7 @@ kubanfy/
 | Cache / colas   | Redis                               |
 | Storage         | Cloudflare R2                       |
 | Audio           | FFmpeg / FFprobe                    |
-| Mobile          | React Native CLI + TypeScript       |
+| Mobile          | Android Kotlin + iOS Swift/SwiftUI   |
 | Admin / Artist  | Next.js + TypeScript                |
 
 ## Requisitos de desarrollo
