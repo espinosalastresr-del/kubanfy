@@ -13,9 +13,7 @@ from app.services.geo import GeoService
 router = APIRouter(prefix="/discovery", tags=["discovery"])
 
 
-def _country_from_request(request: Request, override: str | None) -> str:
-    if override and len(override) == 2:
-        return override.upper()
+def _country_from_request(request: Request) -> str:
     geo = GeoService()
     ip = request.client.host if request.client else None
     fwd = request.headers.get("x-forwarded-for")
@@ -28,9 +26,8 @@ async def discovery_home(
     request: Request,
     session: DbSession,
     user: OptionalUser,
-    country: str | None = Query(default=None, min_length=2, max_length=2),
 ) -> dict[str, Any]:
-    c = _country_from_request(request, country)
+    c = _country_from_request(request)
     return await DiscoveryService(session).home(country=c)
 
 
@@ -38,10 +35,9 @@ async def discovery_home(
 async def local_artists(
     request: Request,
     session: DbSession,
-    country: str | None = Query(default=None, min_length=2, max_length=2),
     limit: int = Query(20, ge=1, le=50),
 ) -> list[dict[str, Any]]:
-    c = _country_from_request(request, country)
+    c = _country_from_request(request)
     artists = await DiscoveryService(session).local_artists(c, limit=limit)
     return [
         {"id": a.id, "name": a.name, "slug": a.slug, "country": a.country, "verified": a.verified}
@@ -53,11 +49,10 @@ async def local_artists(
 async def top50(
     request: Request,
     session: DbSession,
-    country: str | None = Query(default=None, min_length=2, max_length=2),
     global_scope: bool = Query(False, alias="global"),
     limit: int = Query(50, ge=1, le=50),
 ) -> list[dict[str, Any]]:
-    c = None if global_scope else _country_from_request(request, country)
+    c = None if global_scope else _country_from_request(request)
     return await DiscoveryService(session).top_tracks(country=c, limit=limit)
 
 
