@@ -20,7 +20,20 @@ from app.models.analytics import AnalyticsEvent
 logger = get_logger(__name__)
 
 # Allowed event types from plan §56 (subset enforced for validation)
-PROTECTED_EVENT_TYPES = frozenset({"play_qualified", "download_complete", "share"})
+PROTECTED_EVENT_TYPES = frozenset(
+    {
+        "play_qualified",
+        "download_complete",
+        "share",
+        "payment_approved",
+        "entitlement_granted",
+        "entitlement_revoked",
+        "artist_upload",
+        "artist_publish",
+        "admin_action",
+        "security_event",
+    }
+)
 
 KNOWN_EVENT_TYPES = frozenset(
     {
