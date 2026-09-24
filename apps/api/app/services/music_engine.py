@@ -33,6 +33,7 @@ from app.models.music import (
 from app.providers.base import ResolvedSource, TrackMetadata
 from app.providers.registry import ProviderManager, create_default_registry
 from app.services.cache import CacheService
+from app.services.kby import key_base64
 from app.storage import StorageBucket, get_storage
 from app.storage.base import SignedUrl, StorageProvider
 
@@ -73,6 +74,7 @@ class DownloadResult:
     from_cache: bool
     track_id: UUID | None = None
     content_hash: str | None = None
+    kby_key: str | None = None
     expires_at: datetime | None = None
     storage_bucket: StorageBucket = StorageBucket.CACHE
 
@@ -203,6 +205,7 @@ class MusicEngine:
                 from_cache=True,
                 track_id=hit.track_id,
                 content_hash=hit.content_hash,
+                kby_key=key_base64(hit.content_hash) if hit.content_hash else None,
                 expires_at=hit.expires_at,
             )
 
@@ -225,6 +228,7 @@ class MusicEngine:
                 from_cache=from_cache,
                 track_id=entry.track_id,
                 content_hash=entry.content_hash,
+                kby_key=key_base64(entry.content_hash) if entry.content_hash else None,
                 expires_at=entry.expires_at,
             )
 
@@ -252,6 +256,7 @@ class MusicEngine:
             from_cache=from_cache,
             track_id=entry.track_id,
             content_hash=entry.content_hash,
+            kby_key=key_base64(entry.content_hash) if entry.content_hash else None,
             expires_at=entry.expires_at,
         )
 
@@ -428,6 +433,7 @@ class MusicEngine:
             from_cache=False,
             track_id=track_id,
             content_hash=asset.content_hash,
+            kby_key=key_base64(asset.content_hash),
             storage_bucket=StorageBucket.PERMANENT,
         )
 
