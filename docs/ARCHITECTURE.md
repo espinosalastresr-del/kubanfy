@@ -75,9 +75,17 @@ Builds de release: GitHub Actions → APK (Android) e IPA (iOS).
 update()   → resolver metadata sin obligar descarga
 preview()  → preview oficial o muestra legal/cacheada
 download() → auth → entitlement → cache lookup
-               HIT  → R2 signed URL
+               HIT  → R2 signed URL (.kby) + authorized KBY key
                MISS → ProviderManager → acquire → validate
-                     → store master → transcode → deliver
+                     → encrypt/package .kby → store → transcode
+                     → encrypt/package derivatives → deliver
+
+### Protected audio (.kby)
+
+KubanFy storage objects containing playable audio use the `.kby` protected container. KBY v1 uses AES-256-GCM with a per-content key derived from the server-only KBY_MASTER_KEY and the plaintext SHA-256 content hash. The client never receives a permanent storage URL; after authorization it receives a short-lived signed URL plus the key needed to decrypt that exact asset. iOS verifies the authenticated KBY header and plaintext SHA-256 before handing the recovered codec/container to the native audio player.
+
+Provider bytes are therefore never directly deliverable from cache/permanent storage. Artist masters and generated derivatives are also stored as `.kby`.
+
 ```
 
 ## Entornos
