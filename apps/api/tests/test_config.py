@@ -5,8 +5,9 @@ from __future__ import annotations
 from app.core.config import Environment, Settings, get_settings
 
 
-def test_default_settings() -> None:
-    # Clear cache so we get a fresh instance with defaults
+def test_default_settings(monkeypatch) -> None:
+    # CI sets ENVIRONMENT=test; remove it so this test verifies actual defaults.
+    monkeypatch.delenv("ENVIRONMENT", raising=False)
     get_settings.cache_clear()
     s = get_settings()
     assert s.environment == Environment.DEVELOPMENT
