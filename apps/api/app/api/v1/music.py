@@ -134,6 +134,7 @@ async def music_play(
         quality=result.quality,
         track_id=track_id,
         content_hash=result.content_hash,
+        kby_key=result.kby_key or "",
     )
 
 
