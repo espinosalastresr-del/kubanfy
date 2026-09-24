@@ -23,6 +23,7 @@ from app.models.music import (
 )
 from app.services.cache import CacheService
 from app.services.transcoding import TranscodingService
+from app.services.kby import derive_key, pack, unpack
 from app.storage import StorageBucket, get_storage
 from app.workers.runner import register_handler
 
@@ -143,6 +144,13 @@ async def handle_transcode(job: Job, session: Any) -> dict[str, Any] | None:
 
     storage = get_storage()
     master_bytes = await storage.get(master_key, bucket=StorageBucket.PERMANENT)
+    if not master_asset.content_hash:
+        raise ValueError("Transcode master asset is missing content hash")
+    _, plaintext_master = unpack(
+        master_bytes,
+        key=derive_key(master_asset.content_hash),
+        expected_content_hash=master_asset.content_hash,
+    )
 
     transcoder = TranscodingService()
     produced: list[str] = []
@@ -150,7 +158,7 @@ async def handle_transcode(job: Job, session: Any) -> dict[str, Any] | None:
 
     with tempfile.TemporaryDirectory(prefix="kubanfy-tx-") as tmp:
         master_path = Path(tmp) / "master.bin"
-        master_path.write_bytes(master_bytes)
+        master_path.write_bytes(plaintext_master)
 
         for q_name in qualities:
             try:
@@ -177,13 +185,19 @@ async def handle_transcode(job: Job, session: Any) -> dict[str, Any] | None:
             body = out.path.read_bytes()
             dest_key = (
                 f"artists/{payload.get('artist_id', 'unknown')}/tracks/{track_id}/"
-                f"v{master_asset.version}/{quality.value}/{out.probe.content_hash[:16]}.m4a"
+                f"v{master_asset.version}/{quality.value}/{out.probe.content_hash[:16]}.kby"
+            )
+            kby_body = pack(
+                body,
+                content_hash=out.probe.content_hash,
+                quality=quality.value,
+                content_type="audio/mp4",
             )
             await storage.put(
                 dest_key,
-                body,
+                kby_body,
                 bucket=StorageBucket.PERMANENT,
-                content_type="audio/mp4",
+                content_type="application/vnd.kubanfy.kby",
             )
             asset = AudioAsset(
                 track_id=track_id,
@@ -194,7 +208,7 @@ async def handle_transcode(job: Job, session: Any) -> dict[str, Any] | None:
                 sample_rate=out.probe.sample_rate,
                 channels=out.probe.channels,
                 duration=out.probe.duration,
-                size=out.probe.size,
+                size=len(kby_body),
                 quality=quality,
                 quality_confidence=QualityConfidence.VERIFIED,
                 source_type=SourceType.DERIVATIVE,
