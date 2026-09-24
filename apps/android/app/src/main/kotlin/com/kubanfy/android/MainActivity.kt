@@ -2,6 +2,8 @@ package com.kubanfy.android
 
 import android.app.Activity
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.view.Gravity
 import android.widget.Button
 import android.widget.EditText
@@ -16,9 +18,16 @@ import java.util.concurrent.Executors
 
 class MainActivity : Activity() {
     private val executor = Executors.newSingleThreadExecutor()
+    private val mainHandler = Handler(Looper.getMainLooper())
     private lateinit var api: APIClient
     private lateinit var status: TextView
     private var player: ExoPlayer? = null
+    private var currentTrackId: String? = null
+    private var currentTitle: String? = null
+    private var currentQuality = "low"
+    private var renewalGeneration = 0L
+    private var recoveryInProgress = false
+    private var recoveryAttempts = 0
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -131,7 +140,7 @@ class MainActivity : Activity() {
         root.addView(Button(this).apply {
             text = "Cerrar sesión"
             isAllCaps = false
-            setOnClickListener { api.logout(); showLogin() }
+            setOnClickListener { stopPlayback(); api.logout(); showLogin() }
         })
         setContentView(root)
     }
@@ -146,18 +155,11 @@ class MainActivity : Activity() {
             setSingleLine(true)
             inputType = android.text.InputType.TYPE_CLASS_TEXT
         }
-        val search = Button(this).apply {
-            text = "Buscar"
-            isAllCaps = false
-        }
+        val search = Button(this).apply { text = "Buscar"; isAllCaps = false }
         val progress = ProgressBar(this).apply { visibility = android.view.View.GONE }
         val results = TextView(this).apply { setPadding(0, 24, 0, 0) }
         val back = Button(this).apply { text = "Volver"; isAllCaps = false }
-        root.addView(query)
-        root.addView(search)
-        root.addView(progress)
-        root.addView(results)
-        root.addView(back)
+        root.addView(query); root.addView(search); root.addView(progress); root.addView(results); root.addView(back)
         setContentView(root)
 
         back.setOnClickListener {
@@ -175,78 +177,44 @@ class MainActivity : Activity() {
 
         search.setOnClickListener {
             val text = query.text.toString().trim()
-            if (text.isEmpty()) {
-                results.text = "Escribe algo para buscar."
-                return@setOnClickListener
-            }
+            if (text.isEmpty()) { results.text = "Escribe algo para buscar."; return@setOnClickListener }
             search.isEnabled = false
             progress.visibility = android.view.View.VISIBLE
             results.text = "Buscando…"
             executor.execute {
                 try {
                     val found = api.search(text)
-                    val rendered = if (found.isEmpty()) {
-                        "No se encontraron resultados."
-                    } else {
-                        found.joinToString("\n\n") { track ->
-                            val artists = track.artists.joinToString(", ")
-                            buildString {
-                                append(track.title)
-                                if (artists.isNotBlank()) append("\n$artists")
-                                track.album?.let { append("\n$it") }
-                            }
+                    val rendered = if (found.isEmpty()) "No se encontraron resultados." else found.joinToString("\n\n") { track ->
+                        val artists = track.artists.joinToString(", ")
+                        buildString {
+                            append(track.title)
+                            if (artists.isNotBlank()) append("\n$artists")
+                            track.album?.let { append("\n$it") }
                         }
                     }
-                    runOnUiThread {
-                        results.text = rendered
-                        search.isEnabled = true
-                        progress.visibility = android.view.View.GONE
-                    }
+                    runOnUiThread { results.text = rendered; search.isEnabled = true; progress.visibility = android.view.View.GONE }
                 } catch (e: Exception) {
-                    runOnUiThread {
-                        results.text = e.message ?: "No se pudo buscar."
-                        search.isEnabled = true
-                        progress.visibility = android.view.View.GONE
-                    }
+                    runOnUiThread { results.text = e.message ?: "No se pudo buscar."; search.isEnabled = true; progress.visibility = android.view.View.GONE }
                 }
             }
         }
     }
 
     private fun playTrack(trackId: String, title: String) {
+        currentTrackId = trackId
+        currentTitle = title
+        recoveryAttempts = 0
+        recoveryInProgress = false
         executor.execute {
             try {
-                val playback = api.playback(trackId, "low")
+                val playback = api.playback(trackId, currentQuality)
                 runOnUiThread {
-                    val exo = player ?: ExoPlayer.Builder(this).build().also { created ->
-                        created.addListener(object : Player.Listener {
-                            override fun onPlayerError(error: PlaybackException) {
-                                val currentId = created.currentMediaItem?.mediaId ?: trackId
-                                val currentTitle = created.currentMediaItem?.mediaMetadata?.title?.toString() ?: title
-                                val position = created.currentPosition
-                                executor.execute {
-                                    try {
-                                        val renewed = api.playback(currentId, "low")
-                                        runOnUiThread {
-                                            created.setMediaItem(MediaItem.Builder().setUri(renewed.url).setMediaId(currentId).setMediaMetadata(androidx.media3.common.MediaMetadata.Builder().setTitle(currentTitle).build()).build(), position)
-                                            created.prepare()
-                                            created.play()
-                                            status.text = "Conexión renovada: $currentTitle"
-                                        }
-                                    } catch (renewError: Exception) {
-                                        runOnUiThread {
-                                            status.text = renewError.message ?: "No se pudo renovar la reproducción"
-                                        }
-                                    }
-                                }
-                            }
-                        })
-                        player = created
-                    }
-                    exo.setMediaItem(MediaItem.Builder().setUri(playback.url).setMediaId(trackId).setMediaMetadata(androidx.media3.common.MediaMetadata.Builder().setTitle(title).build()).build())
+                    val exo = ensurePlayer()
+                    replaceMediaItem(exo, playback.url, trackId, title, 0)
                     exo.prepare()
                     exo.play()
                     status.text = "Reproduciendo: $title"
+                    scheduleRenewal(playback.expiresInSeconds)
                 }
             } catch (e: Exception) {
                 runOnUiThread { status.text = e.message ?: "No se pudo reproducir" }
@@ -254,7 +222,104 @@ class MainActivity : Activity() {
         }
     }
 
+    private fun ensurePlayer(): ExoPlayer {
+        return player ?: ExoPlayer.Builder(this).build().also { created ->
+            created.addListener(object : Player.Listener {
+                override fun onPlayerError(error: PlaybackException) {
+                    if (recoveryInProgress || recoveryAttempts >= 3) {
+                        status.text = error.message ?: "La reproducción se detuvo"
+                        return
+                    }
+                    recoverPlayback()
+                }
+            })
+            player = created
+        }
+    }
+
+    private fun recoverPlayback() {
+        val trackId = currentTrackId ?: return
+        val title = currentTitle ?: "Pista"
+        val position = player?.currentPosition ?: 0L
+        recoveryInProgress = true
+        recoveryAttempts += 1
+        val attempt = recoveryAttempts
+        val delayMs = minOf(8_000L, 1_000L * (1L shl (attempt - 1)))
+        executor.execute {
+            try {
+                Thread.sleep(delayMs)
+                val renewed = api.playback(trackId, currentQuality)
+                runOnUiThread {
+                    recoveryInProgress = false
+                    val exo = ensurePlayer()
+                    replaceMediaItem(exo, renewed.url, trackId, title, position)
+                    exo.prepare()
+                    exo.play()
+                    status.text = "Conexión renovada: $title"
+                    scheduleRenewal(renewed.expiresInSeconds)
+                }
+            } catch (e: Exception) {
+                runOnUiThread {
+                    recoveryInProgress = false
+                    status.text = e.message ?: "No se pudo renovar la reproducción"
+                }
+            }
+        }
+    }
+
+    private fun replaceMediaItem(exo: ExoPlayer, url: String, trackId: String, title: String, positionMs: Long) {
+        val item = MediaItem.Builder()
+            .setUri(url)
+            .setMediaId(trackId)
+            .setMediaMetadata(androidx.media3.common.MediaMetadata.Builder().setTitle(title).build())
+            .build()
+        exo.setMediaItem(item, positionMs)
+    }
+
+    private fun scheduleRenewal(expiresInSeconds: Long) {
+        renewalGeneration += 1
+        val generation = renewalGeneration
+        val delay = ((expiresInSeconds - 30L).coerceAtLeast(15L)) * 1000L
+        mainHandler.postDelayed({
+            if (generation != renewalGeneration) return@postDelayed
+            val trackId = currentTrackId ?: return@postDelayed
+            val title = currentTitle ?: return@postDelayed
+            val position = player?.currentPosition ?: 0L
+            executor.execute {
+                try {
+                    val renewed = api.playback(trackId, currentQuality)
+                    runOnUiThread {
+                        if (generation != renewalGeneration || currentTrackId != trackId) return@runOnUiThread
+                        val wasPlaying = player?.isPlaying == true
+                        replaceMediaItem(ensurePlayer(), renewed.url, trackId, title, position)
+                        player?.prepare()
+                        if (wasPlaying) player?.play()
+                        scheduleRenewal(renewed.expiresInSeconds)
+                    }
+                } catch (_: Exception) {
+                    runOnUiThread {
+                        if (generation == renewalGeneration) {
+                            scheduleRenewal(30L)
+                        }
+                    }
+                }
+            }
+        }, delay)
+    }
+
+    private fun stopPlayback() {
+        renewalGeneration += 1
+        player?.stop()
+        player?.clearMediaItems()
+        currentTrackId = null
+        currentTitle = null
+        recoveryAttempts = 0
+        recoveryInProgress = false
+    }
+
     override fun onDestroy() {
+        renewalGeneration += 1
+        mainHandler.removeCallbacksAndMessages(null)
         executor.shutdownNow()
         player?.release()
         player = null
