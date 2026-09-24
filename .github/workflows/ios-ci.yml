@@ -1,4 +1,4 @@
-# Native iOS build: unsigned IPA container for CI validation.
+# Native iOS build: unsigned production and staging IPA containers for CI validation.
 name: iOS Native CI
 on:
   push:
@@ -15,16 +15,26 @@ jobs:
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Build unsigned iPhoneOS app
+      - name: Build unsigned production app
         run: |
-          xcodebuild -project apps/ios/KubanFy.xcodeproj -scheme KubanFy -sdk iphoneos -configuration Release -derivedDataPath build/ios CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO build
-      - name: Package unsigned IPA container
+          xcodebuild -project apps/ios/KubanFy.xcodeproj -scheme KubanFy -sdk iphoneos -configuration Release -derivedDataPath build/ios-production KUBANFY_API_BASE_URL=https://api.kubanfy.com/v1 CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO build
+      - name: Build unsigned staging app
         run: |
-          mkdir -p build/ipa/Payload
-          cp -R build/ios/Build/Products/Release-iphoneos/KubanFy.app build/ipa/Payload/
-          cd build/ipa
-          zip -qry ../KubanFy-unsigned.ipa Payload
+          xcodebuild -project apps/ios/KubanFy.xcodeproj -scheme KubanFy -sdk iphoneos -configuration Release -derivedDataPath build/ios-staging KUBANFY_API_BASE_URL=https://kubanfy-api-staging.onrender.com/v1 CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO build
+      - name: Package unsigned IPA containers
+        run: |
+          mkdir -p build/ipa-production/Payload build/ipa-staging/Payload
+          cp -R build/ios-production/Build/Products/Release-iphoneos/KubanFy.app build/ipa-production/Payload/
+          cp -R build/ios-staging/Build/Products/Release-iphoneos/KubanFy.app build/ipa-staging/Payload/
+          cd build/ipa-production
+          zip -qry ../KubanFy-production-unsigned.ipa Payload
+          cd ../ipa-staging
+          zip -qry ../KubanFy-staging-unsigned.ipa Payload
       - uses: actions/upload-artifact@v4
         with:
-          name: kubanfy-ios-unsigned-ipa
-          path: build/KubanFy-unsigned.ipa
+          name: kubanfy-ios-production-unsigned-ipa
+          path: build/KubanFy-production-unsigned.ipa
+      - uses: actions/upload-artifact@v4
+        with:
+          name: kubanfy-ios-staging-unsigned-ipa
+          path: build/KubanFy-staging-unsigned.ipa
