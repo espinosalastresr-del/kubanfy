@@ -11,7 +11,6 @@ android {
         versionCode = 1
         versionName = "0.1.0"
         buildConfigField("String", "KUBANFY_API_URL", "\"https://api.kubanfy.com/v1\"")
-
     }
     buildTypes {
         release {
@@ -22,6 +21,7 @@ android {
 }
 dependencies {
     implementation("androidx.media3:media3-exoplayer:1.11.1")
+    implementation("androidx.media3:media3-session:1.11.1")
 }
 
 kotlin { jvmToolchain(17) }
