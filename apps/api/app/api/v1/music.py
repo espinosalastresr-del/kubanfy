@@ -228,6 +228,7 @@ async def music_download(
         track_id=result.track_id,
         storage_key=result.storage_key,
         content_hash=result.content_hash,
+        kby_key=result.kby_key,
         size_bytes=size_bytes,
         download_ticket=download_ticket,
         offline_license=offline_license,
