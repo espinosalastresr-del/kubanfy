@@ -3,7 +3,7 @@ plugins { id("com.android.application") }
 android {
     buildFeatures { buildConfig = true }
     namespace = "com.kubanfy.android"
-    compileSdk = 35
+    compileSdk = 36
     defaultConfig {
         applicationId = "com.kubanfy.android"
         minSdk = 26
