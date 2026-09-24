@@ -238,8 +238,17 @@ class R2Storage(StorageProvider):
         expires_in: int | None = None,
         method: str = "GET",
     ) -> SignedUrl:
-        expires = expires_in or self.settings.r2_signed_url_expiry_seconds
-        client_method = "get_object" if method.upper() == "GET" else "put_object"
+        normalized_method = method.upper()
+        if normalized_method not in {"GET", "PUT"}:
+            raise StorageError("Unsupported signed URL method", code="STORAGE_ERROR")
+        expires = (
+            self.settings.r2_signed_url_expiry_seconds
+            if expires_in is None
+            else expires_in
+        )
+        if expires < 1 or expires > self.settings.r2_signed_url_expiry_seconds:
+            raise StorageError("Invalid signed URL expiry", code="STORAGE_ERROR")
+        client_method = "get_object" if normalized_method == "GET" else "put_object"
         try:
             async with self._client() as client:
                 url = await client.generate_presigned_url(
@@ -250,7 +259,7 @@ class R2Storage(StorageProvider):
                     },
                     ExpiresIn=expires,
                 )
-            return SignedUrl(url=url, expires_in_seconds=expires, method=method.upper())
+            return SignedUrl(url=url, expires_in_seconds=expires, method=normalized_method)
         except Exception as exc:
             logger.exception("r2_signed_url_failed", key=key)
             raise StorageError(f"Failed to generate signed URL: {type(exc).__name__}") from exc
