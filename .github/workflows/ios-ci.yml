@@ -1,3 +1,4 @@
+# Native iOS build: unsigned IPA container for CI validation.
 name: iOS Native CI
 on:
   push:
