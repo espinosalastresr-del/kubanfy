@@ -19,7 +19,10 @@ enum OfflineCrypto {
         guard container.prefix(4) == Data([0x4B, 0x42, 0x59, 0x31]) else { throw CryptoError.invalidCiphertext }
         guard container[4] == 1 else { throw CryptoError.unsupportedVersion }
 
-        let headerLength = Int(UInt32(bigEndian: container.subdata(in: 5..<9).withUnsafeBytes { $0.load(as: UInt32.self) }))
+        let headerLength = (Int(container[5]) << 24)
+            | (Int(container[6]) << 16)
+            | (Int(container[7]) << 8)
+            | Int(container[8])
         guard headerLength > 1, headerLength <= 16 * 1024 else { throw CryptoError.invalidCiphertext }
         let headerStart = 21
         let headerEnd = headerStart + headerLength
