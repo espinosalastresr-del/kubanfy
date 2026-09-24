@@ -187,6 +187,29 @@ final class APIClient {
         return try decoder.decode(PlaybackResponse.self, from: try await performRequest(url: url))
     }
 
+    func fetchAndDecryptKBY(_ playback: PlaybackResponse) async throws -> URL {
+        let (data, response) = try await session.data(from: playback.url)
+        guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
+            throw APIError.network
+        }
+        let decoded = try OfflineCrypto.decryptKBY(
+            data,
+            base64Key: playback.kbyKey,
+            expectedHash: playback.contentHash
+        )
+        let ext: String
+        switch decoded.contentType.lowercased() {
+        case "audio/mp4", "audio/m4a": ext = "m4a"
+        case "audio/flac": ext = "flac"
+        case "audio/ogg", "audio/opus": ext = "ogg"
+        default: ext = "wav"
+        }
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("kubanfy-\(UUID().uuidString).\(ext)")
+        try decoded.data.write(to: url, options: .atomic)
+        return url
+    }
+
     func startPlayback(trackId: UUID, quality: String = "low", sessionId: String? = nil) async throws -> PlaybackStartResponse {
         var body: [String: Any] = ["track_id": trackId.uuidString, "quality": quality, "device_id": deviceID]
         if let sessionId { body["session_id"] = sessionId }
