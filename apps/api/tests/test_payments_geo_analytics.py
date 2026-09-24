@@ -1,8 +1,8 @@
-import pytest
-
 """Unit tests for payment statuses, geo defaults, analytics event catalog."""
 
 from __future__ import annotations
+
+import pytest
 
 from app.core.exceptions import ConflictError
 from app.models.entitlement import PlanCode
