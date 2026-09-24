@@ -90,7 +90,7 @@ final class APIClient {
     private let session: URLSession
 
     private init() {
-        let raw = ProcessInfo.processInfo.environment["KUBANFY_API_URL"] ?? "https://api.kubanfy.com/v1"
+        let raw = ProcessInfo.processInfo.environment["KUBANFY_API_URL"] ?? (Bundle.main.object(forInfoDictionaryKey: "KubanFyAPIBaseURL") as? String) ?? "https://api.kubanfy.com/v1"
         baseURL = URL(string: raw.trimmingCharacters(in: CharacterSet(charactersIn: "/")))! 
         decoder = JSONDecoder(); decoder.dateDecodingStrategy = .iso8601
         let configuration = URLSessionConfiguration.default
