@@ -7,6 +7,7 @@ import android.widget.Button
 import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.TextView
+import android.widget.ProgressBar
 import java.util.concurrent.Executors
 
 class MainActivity : Activity() {
@@ -105,7 +106,12 @@ class MainActivity : Activity() {
             text = "Nuevos lanzamientos: ${discovery.newReleases.take(5).joinToString(", ")}"
             setPadding(0, 8, 0, 16)
         })
-        listOf("Inicio", "Buscar", "Biblioteca", "Playlists").forEach { label ->
+        root.addView(Button(this).apply {
+            text = "Buscar"
+            isAllCaps = false
+            setOnClickListener { showSearch() }
+        })
+        listOf("Inicio", "Biblioteca", "Playlists").forEach { label ->
             root.addView(Button(this).apply { text = label; isAllCaps = false })
         }
         if (context.isArtist) root.addView(Button(this).apply { text = "Panel de artista"; isAllCaps = false })
@@ -116,6 +122,83 @@ class MainActivity : Activity() {
             setOnClickListener { api.logout(); showLogin() }
         })
         setContentView(root)
+    }
+
+    private fun showSearch() {
+        val root = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(32, 48, 32, 32)
+        }
+        val query = EditText(this).apply {
+            hint = "Buscar canciones o artistas"
+            singleLine = true
+            inputType = android.text.InputType.TYPE_CLASS_TEXT
+        }
+        val search = Button(this).apply {
+            text = "Buscar"
+            isAllCaps = false
+        }
+        val progress = ProgressBar(this).apply { visibility = android.view.View.GONE }
+        val results = TextView(this).apply { setPadding(0, 24, 0, 0) }
+        val back = Button(this).apply { text = "Volver"; isAllCaps = false }
+        root.addView(query)
+        root.addView(search)
+        root.addView(progress)
+        root.addView(results)
+        root.addView(back)
+        setContentView(root)
+
+        back.setOnClickListener {
+            executor.execute {
+                try {
+                    val context = api.context()
+                    val discovery = api.discoveryHome()
+                    val displayName = api.me().optString("display_name", "Usuario")
+                    runOnUiThread { showHome(displayName, context, discovery) }
+                } catch (e: Exception) {
+                    runOnUiThread { showLogin() }
+                }
+            }
+        }
+
+        search.setOnClickListener {
+            val text = query.text.toString().trim()
+            if (text.isEmpty()) {
+                results.text = "Escribe algo para buscar."
+                return@setOnClickListener
+            }
+            search.isEnabled = false
+            progress.visibility = android.view.View.VISIBLE
+            results.text = "Buscando…"
+            executor.execute {
+                try {
+                    val found = api.search(text)
+                    val rendered = if (found.isEmpty()) {
+                        "No se encontraron resultados."
+                    } else {
+                        found.joinToString("\n\n") { track ->
+                            val artists = track.artists.joinToString(", ")
+                            buildString {
+                                append(track.title)
+                                if (artists.isNotBlank()) append("\n$artists")
+                                track.album?.let { append("\n$it") }
+                            }
+                        }
+                    }
+                    runOnUiThread {
+                        results.text = rendered
+                        search.isEnabled = true
+                        progress.visibility = android.view.View.GONE
+                    }
+                } catch (e: Exception) {
+                    runOnUiThread {
+                        results.text = e.message ?: "No se pudo buscar."
+                        search.isEnabled = true
+                        progress.visibility = android.view.View.GONE
+                    }
+                }
+            }
+        }
     }
 
     override fun onDestroy() {
