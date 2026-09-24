@@ -225,10 +225,10 @@ class MainActivity : Activity() {
                                     try {
                                         val renewed = api.playback(currentId, "low")
                                         runOnUiThread {
-                                            created.setMediaItem(MediaItem.fromUri(renewed.url), position)
+                                            created.setMediaItem(MediaItem.Builder().setUri(renewed.url).setMediaId(currentId).setMediaMetadata(androidx.media3.common.MediaMetadata.Builder().setTitle(currentTitle).build()).build(), position)
                                             created.prepare()
                                             created.play()
-                                            status.text = "Conexión renovada: $title"
+                                            status.text = "Conexión renovada: $currentTitle"
                                         }
                                     } catch (renewError: Exception) {
                                         runOnUiThread {
@@ -240,7 +240,7 @@ class MainActivity : Activity() {
                         })
                         player = created
                     }
-                    exo.setMediaItem(MediaItem.fromUri(playback.url))
+                    exo.setMediaItem(MediaItem.Builder().setUri(playback.url).setMediaId(trackId).setMediaMetadata(androidx.media3.common.MediaMetadata.Builder().setTitle(title).build()).build())
                     exo.prepare()
                     exo.play()
                     status.text = "Reproduciendo: $title"
