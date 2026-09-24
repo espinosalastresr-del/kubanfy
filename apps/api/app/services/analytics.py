@@ -172,6 +172,6 @@ class AnalyticsService:
                     metadata=raw.get("metadata"),
                 )
                 count += 1
-            except Exception as exc:
+            except (ValidationError, KeyError, ValueError) as exc:
                 logger.warning("analytics_ingest_item_failed", error=str(exc))
         return count
