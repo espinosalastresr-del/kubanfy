@@ -12,6 +12,7 @@ import unicodedata
 from contextlib import suppress
 from dataclasses import dataclass
 from pathlib import Path
+from typing import BinaryIO
 from uuid import UUID
 
 from sqlalchemy import select
@@ -105,7 +106,7 @@ class ArtistUploadService:
         user_id: UUID,
         artist_id: UUID,
         title: str,
-        file_bytes: bytes,
+        file: BinaryIO,
         filename: str,
         accept_license: bool,
         license_version: str = "1.0",
@@ -134,12 +135,23 @@ class ArtistUploadService:
             )
 
         max_bytes = self.settings.max_upload_size_mb * 1024 * 1024
-        if len(file_bytes) > max_bytes:
-            raise ValidationError(f"File exceeds max size of {self.settings.max_upload_size_mb} MB")
-
-        # Write temp and validate
+        if hasattr(file, "seek"):
+            file.seek(0)
+        # Stream the request body to disk so upload size is bounded by the
+        # configured limit rather than by process RAM.
         with tempfile.NamedTemporaryFile(suffix=f".{ext}", delete=False) as tmp:
-            tmp.write(file_bytes)
+            total = 0
+            while True:
+                chunk = file.read(1024 * 1024)
+                if not chunk:
+                    break
+                total += len(chunk)
+                if total > max_bytes:
+                    raise ValidationError(
+                        f"File exceeds max size of {self.settings.max_upload_size_mb} MB"
+                    )
+                tmp.write(chunk)
+            tmp.flush()
             tmp_path = Path(tmp.name)
 
         try:
@@ -200,12 +212,13 @@ class ArtistUploadService:
                 f"artists/{artist_id}/tracks/{track.id}/master/"
                 f"{probe.content_hash[:16]}.{ext or 'bin'}"
             )
-            await self.storage.put(
-                master_key,
-                file_bytes,
-                bucket=StorageBucket.PERMANENT,
+            with tmp_path.open("rb") as master_file:
+                await self.storage.put(
+                    master_key,
+                    master_file,
+                    bucket=StorageBucket.PERMANENT,
                 content_type=f"audio/{probe.codec or ext or 'mpeg'}",
-            )
+                )
 
             master_asset = AudioAsset(
                 track_id=track.id,
@@ -267,7 +280,7 @@ class ArtistUploadService:
         user_id: UUID,
         artist_id: UUID,
         track_id: UUID,
-        file_bytes: bytes,
+        file: BinaryIO,
         filename: str,
         accept_license: bool = True,
     ) -> UploadResult:
@@ -295,11 +308,21 @@ class ArtistUploadService:
         if ext not in self.settings.allowed_audio_ext_list:
             raise ValidationError(f"File extension '.{ext}' not allowed")
         max_bytes = self.settings.max_upload_size_mb * 1024 * 1024
-        if len(file_bytes) > max_bytes:
-            raise ValidationError(f"File exceeds max size of {self.settings.max_upload_size_mb} MB")
-
+        if hasattr(file, "seek"):
+            file.seek(0)
         with tempfile.NamedTemporaryFile(suffix=f".{ext}", delete=False) as tmp:
-            tmp.write(file_bytes)
+            total = 0
+            while True:
+                chunk = file.read(1024 * 1024)
+                if not chunk:
+                    break
+                total += len(chunk)
+                if total > max_bytes:
+                    raise ValidationError(
+                        f"File exceeds max size of {self.settings.max_upload_size_mb} MB"
+                    )
+                tmp.write(chunk)
+            tmp.flush()
             tmp_path = Path(tmp.name)
         written_keys: list[str] = []
         try:
@@ -316,12 +339,13 @@ class ArtistUploadService:
             next_version = max((a.version for a in old_assets), default=0) + 1
             generation = f"v{next_version}"
             master_key = f"artists/{artist_id}/tracks/{track_id}/{generation}/master/{probe.content_hash[:16]}.{ext or 'bin'}"
-            await self.storage.put(
-                master_key,
-                file_bytes,
-                bucket=StorageBucket.PERMANENT,
+            with tmp_path.open("rb") as master_file:
+                await self.storage.put(
+                    master_key,
+                    master_file,
+                    bucket=StorageBucket.PERMANENT,
                 content_type=f"audio/{probe.codec or ext or 'mpeg'}",
-            )
+                )
             written_keys.append(master_key)
 
             master_asset = AudioAsset(
