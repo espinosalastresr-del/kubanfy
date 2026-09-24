@@ -59,13 +59,16 @@ class R2Storage(StorageProvider):
         content_type: str | None = None,
         metadata: dict[str, str] | None = None,
     ) -> StoredObject:
-        body: bytes
-        if isinstance(data, bytes):
-            body = data
-        else:
-            body = data.read()
-            if isinstance(body, str):
-                body = body.encode()
+        body = data
+        size = len(data) if isinstance(data, bytes) else None
+        if not isinstance(data, bytes):
+            try:
+                current = data.tell()
+                data.seek(0, 2)
+                size = data.tell()
+                data.seek(current)
+            except (AttributeError, OSError):
+                size = None
 
         extra: dict[str, Any] = {}
         if content_type:
@@ -75,16 +78,24 @@ class R2Storage(StorageProvider):
 
         try:
             async with self._client() as client:
-                resp = await client.put_object(
-                    Bucket=self._bucket_name(bucket),
-                    Key=key,
-                    Body=body,
-                    **extra,
-                )
+                if isinstance(body, bytes):
+                    resp = await client.put_object(
+                        Bucket=self._bucket_name(bucket),
+                        Key=key,
+                        Body=body,
+                        **extra,
+                    )
+                else:
+                    resp = await client.upload_fileobj(
+                        body,
+                        self._bucket_name(bucket),
+                        key,
+                        Extra=extra or None,
+                    )
             return StoredObject(
                 key=key,
                 bucket=bucket,
-                size=len(body),
+                size=size or 0,
                 content_type=content_type,
                 etag=resp.get("ETag"),
             )
