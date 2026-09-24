@@ -81,7 +81,9 @@ class Settings(BaseSettings):
     # -------------------------------------------------------------------------
     # Authentication
     # -------------------------------------------------------------------------
-    # Server-only secret used to derive per-asset .kby encryption keys.\n    kby_master_key: str = "dev-only-kby-master-key-change-in-production"\n    jwt_secret_key: str = Field(
+    # Server-only secret used to derive per-asset .kby encryption keys.
+    kby_master_key: str = "dev-only-kby-master-key-change-in-production"
+    jwt_secret_key: str = Field(
         default="dev-only-change-me-in-production-use-a-long-random-string",
         min_length=32,
     )
@@ -219,6 +221,8 @@ class Settings(BaseSettings):
                 )
             if not self.kby_master_key:
                 raise ValueError("KBY_MASTER_KEY is required")
+            if self.kby_master_key.lower().startswith("dev-only") or "change-me" in self.kby_master_key.lower():
+                raise ValueError("KBY_MASTER_KEY must be changed for production")
             if not self.r2_configured:
                 raise ValueError("R2_ENDPOINT, R2_ACCESS_KEY_ID and R2_SECRET_ACCESS_KEY are required in production")
             if self.allowed_hosts.strip() == "*":
