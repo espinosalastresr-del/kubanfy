@@ -59,7 +59,9 @@ class MainActivity : Activity() {
             executor.execute {
                 try {
                     val session = api.login(email.text.toString(), password.text.toString())
-                    runOnUiThread { showHome(session.displayName) }
+                    val context = api.context()
+                    val discovery = api.discoveryHome()
+                    runOnUiThread { showHome(session.displayName, context, discovery) }
                 } catch (e: Exception) {
                     runOnUiThread {
                         status.text = e.message ?: "No se pudo iniciar sesión"
@@ -70,7 +72,7 @@ class MainActivity : Activity() {
         }
     }
 
-    private fun showHome(displayName: String) {
+    private fun showHome(displayName: String, context: AuthContext, discovery: DiscoveryHome) {
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER_HORIZONTAL
@@ -82,14 +84,32 @@ class MainActivity : Activity() {
             gravity = Gravity.CENTER
         })
         root.addView(TextView(this).apply {
-            text = "Sesión segura · dispositivo identificado"
+            text = buildString {
+                append("Sesión segura · dispositivo identificado")
+                if (context.isAdmin) append("\nAcceso administrativo")
+                if (context.isArtist) append("\nAcceso de artista")
+            }
             textSize = 14f
             gravity = Gravity.CENTER
             setPadding(0, 12, 0, 32)
         })
-        listOf("Inicio", "Buscar", "Biblioteca", "Playlists", "Artista", "Administración").forEach { label ->
+        root.addView(TextView(this).apply {
+            text = "Descubrimiento · ${discovery.country}"
+            textSize = 20f
+            setPadding(0, 12, 0, 8)
+        })
+        root.addView(TextView(this).apply {
+            text = "Artistas locales: ${discovery.localArtists.take(5).joinToString(", ")}"
+        })
+        root.addView(TextView(this).apply {
+            text = "Nuevos lanzamientos: ${discovery.newReleases.take(5).joinToString(", ")}"
+            setPadding(0, 8, 0, 16)
+        })
+        listOf("Inicio", "Buscar", "Biblioteca", "Playlists").forEach { label ->
             root.addView(Button(this).apply { text = label; isAllCaps = false })
         }
+        if (context.isArtist) root.addView(Button(this).apply { text = "Panel de artista"; isAllCaps = false })
+        if (context.isAdmin) root.addView(Button(this).apply { text = "Administración"; isAllCaps = false })
         root.addView(Button(this).apply {
             text = "Cerrar sesión"
             isAllCaps = false
