@@ -11,6 +11,7 @@ from datetime import datetime
 from uuid import UUID
 
 from sqlalchemy import func, select, update
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import ConflictError, NotFoundError, ValidationError
@@ -154,7 +155,7 @@ class RightsRoyaltyService:
         try:
             async with self.session.begin_nested():
                 await self.session.flush()
-        except Exception:
+        except IntegrityError:
             account = await self.session.scalar(
                 select(RoyaltyAccount).where(RoyaltyAccount.artist_id == artist_id)
             )
@@ -203,7 +204,7 @@ class RightsRoyaltyService:
         try:
             async with self.session.begin_nested():
                 await self.session.flush()
-        except Exception:
+        except IntegrityError:
             existing = await self.session.scalar(
                 select(RoyaltyLedgerEntry).where(
                     RoyaltyLedgerEntry.idempotency_key == idempotency_key
@@ -252,7 +253,7 @@ class RightsRoyaltyService:
         try:
             async with self.session.begin_nested():
                 await self.session.flush()
-        except Exception:
+        except IntegrityError:
             existing = await self.session.scalar(
                 select(RoyaltySettlement).where(
                     RoyaltySettlement.idempotency_key == idempotency_key
