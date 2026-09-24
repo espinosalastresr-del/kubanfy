@@ -44,6 +44,14 @@ data class AuthSession(
     val displayName: String,
 )
 
+data class PlaybackSession(
+    val url: String,
+    val expiresInSeconds: Long,
+    val quality: String,
+    val trackId: String,
+    val contentHash: String?,
+)
+
 class APIException(val statusCode: Int, message: String) : Exception(message)
 
 class APIClient(context: Context) {
@@ -59,23 +67,28 @@ class APIClient(context: Context) {
             .put("device_id", device.id)
             .put("device_name", android.os.Build.MODEL)
             .put("platform", "android")
-        val json = request("/auth/login", "POST", body.toString())
-        val tokens = json.getJSONObject("tokens")
-        val user = json.getJSONObject("user")
-        val session = AuthSession(
-            accessToken = tokens.getString("access_token"),
-            refreshToken = tokens.getString("refresh_token"),
-            expiresIn = tokens.getLong("expires_in"),
-            userId = user.getString("id"),
-            displayName = user.getString("display_name"),
-        )
-        store.put("access_token", session.accessToken)
-        store.put("refresh_token", session.refreshToken)
-        return session
+        val json = request("/auth/login", "POST", body.toString(), allowRefresh = false)
+        return saveSession(json)
+    }
+
+    fun refresh(): Boolean {
+        val refreshToken = store.get("refresh_token") ?: return false
+        return try {
+            val body = JSONObject()
+                .put("refresh_token", refreshToken)
+                .put("device_id", device.id)
+            val json = request("/auth/refresh", "POST", body.toString(), allowRefresh = false)
+            store.put("access_token", json.getString("access_token"))
+            store.put("refresh_token", json.getString("refresh_token"))
+            true
+        } catch (_: Exception) {
+            clearSession()
+            false
+        }
     }
 
     fun context(): AuthContext {
-        val token = store.get("access_token") ?: throw APIException(401, "No hay sesión")
+        val token = requireAccessToken()
         val json = request("/auth/context", "GET", null, token)
         return AuthContext(
             roles = json.getJSONArray("roles").toStringList(),
@@ -86,7 +99,7 @@ class APIClient(context: Context) {
     }
 
     fun discoveryHome(): DiscoveryHome {
-        val json = request("/discovery/home", "GET", null, store.get("access_token"))
+        val json = request("/discovery/home", "GET", null, requireAccessToken())
         return DiscoveryHome(
             country = json.getString("country"),
             localArtists = json.getJSONArray("local_artists").getJSONObjectStrings("name"),
@@ -96,10 +109,17 @@ class APIClient(context: Context) {
         )
     }
 
-    fun playback(trackId: String, quality: String = "low"): String {
-        val token = store.get("access_token") ?: throw APIException(401, "No hay sesión")
+    fun playback(trackId: String, quality: String = "low"): PlaybackSession {
+        val token = requireAccessToken()
         val safeQuality = quality.lowercase().let { if (it in setOf("low", "medium", "lossless")) it else "low" }
-        return request("/music/play/$trackId?quality=$safeQuality", "GET", null, token).getString("url")
+        val json = request("/music/play/$trackId?quality=$safeQuality", "GET", null, token)
+        return PlaybackSession(
+            url = json.getString("url"),
+            expiresInSeconds = json.getLong("expires_in_seconds"),
+            quality = json.getString("quality"),
+            trackId = json.getString("track_id"),
+            contentHash = json.optString("content_hash").takeIf { it.isNotBlank() },
+        )
     }
 
     fun search(query: String, limit: Int = 20): List<TrackSearchResult> {
@@ -124,22 +144,45 @@ class APIClient(context: Context) {
         }
     }
 
-    fun me(): JSONObject {
-        val token = store.get("access_token") ?: throw APIException(401, "No hay sesión")
-        return request("/auth/me", "GET", null, token)
+    fun me(): JSONObject = request("/auth/me", "GET", null, requireAccessToken())
+
+    fun logout() = clearSession()
+
+    private fun saveSession(json: JSONObject): AuthSession {
+        val tokens = json.getJSONObject("tokens")
+        val user = json.getJSONObject("user")
+        val session = AuthSession(
+            accessToken = tokens.getString("access_token"),
+            refreshToken = tokens.getString("refresh_token"),
+            expiresIn = tokens.getLong("expires_in"),
+            userId = user.getString("id"),
+            displayName = user.getString("display_name"),
+        )
+        store.put("access_token", session.accessToken)
+        store.put("refresh_token", session.refreshToken)
+        return session
     }
 
-    fun logout() {
+    private fun requireAccessToken(): String =
+        store.get("access_token") ?: throw APIException(401, "No hay sesión")
+
+    private fun clearSession() {
         store.remove("access_token")
         store.remove("refresh_token")
     }
 
-    private fun request(path: String, method: String, body: String?, token: String? = null): JSONObject {
-        val text = requestRaw(path, method, body, token)
+    private fun request(path: String, method: String, body: String?, token: String? = null, allowRefresh: Boolean = true): JSONObject {
+        val text = requestRaw(path, method, body, token, allowRefresh)
         return if (text.isBlank()) JSONObject() else JSONObject(text)
     }
 
-    private fun requestRaw(path: String, method: String, body: String?, token: String? = null): String {
+    private fun requestRaw(
+        path: String,
+        method: String,
+        body: String?,
+        token: String? = null,
+        allowRefresh: Boolean = true,
+    ): String {
         val connection = (URL(baseUrl + path).openConnection() as HttpURLConnection).apply {
             requestMethod = method
             connectTimeout = 15_000
@@ -158,6 +201,9 @@ class APIClient(context: Context) {
             val stream = if (code in 200..299) connection.inputStream else connection.errorStream
             val text = stream?.bufferedReader()?.use { it.readText() }.orEmpty()
             if (code !in 200..299) {
+                if (code == 401 && allowRefresh && token != null && refresh()) {
+                    return requestRaw(path, method, body, store.get("access_token"), allowRefresh = false)
+                }
                 val message = runCatching {
                     JSONObject(text).getJSONObject("error").getString("message")
                 }.getOrDefault("Error HTTP $code")
@@ -170,7 +216,6 @@ class APIClient(context: Context) {
     }
 }
 
-
 private fun org.json.JSONArray.toStringList(): List<String> =
     (0 until length()).map { getString(it) }
 
@@ -178,7 +223,11 @@ private fun org.json.JSONArray.getDiscoveryTracks(): List<DiscoveryTrack> =
     (0 until length()).mapNotNull { i ->
         optJSONObject(i)?.let { item ->
             val id = item.optString("id")
-            if (id.isBlank()) null else DiscoveryTrack(id, item.optString("title"), if (item.isNull("duration")) null else item.optDouble("duration"))
+            if (id.isBlank()) null else DiscoveryTrack(
+                id,
+                item.optString("title"),
+                if (item.isNull("duration")) null else item.optDouble("duration"),
+            )
         }
     }
 
@@ -186,7 +235,11 @@ private fun org.json.JSONArray.getDiscoveryRankings(): List<DiscoveryRanking> =
     (0 until length()).mapNotNull { i ->
         optJSONObject(i)?.let { item ->
             val id = item.optString("track_id")
-            if (id.isBlank()) null else DiscoveryRanking(id, item.optString("title").takeIf { it.isNotBlank() }, item.optInt("rank"))
+            if (id.isBlank()) null else DiscoveryRanking(
+                id,
+                item.optString("title").takeIf { it.isNotBlank() },
+                item.optInt("rank"),
+            )
         }
     }
 
