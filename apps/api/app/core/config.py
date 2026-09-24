@@ -217,6 +217,8 @@ class Settings(BaseSettings):
                 raise ValueError(
                     "OFFLINE_LICENSE_PRIVATE_KEY and OFFLINE_LICENSE_PUBLIC_KEY are required"
                 )
+            if not self.kby_master_key:
+                raise ValueError("KBY_MASTER_KEY is required")
             if not self.r2_configured:
                 raise ValueError("R2_ENDPOINT, R2_ACCESS_KEY_ID and R2_SECRET_ACCESS_KEY are required in production")
             if self.allowed_hosts.strip() == "*":
