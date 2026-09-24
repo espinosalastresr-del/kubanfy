@@ -71,6 +71,23 @@ struct DiscoveryHome: Codable {
     }
 }
 
+struct TrackSearchResult: Codable, Identifiable {
+    let id = UUID()
+    let provider: String
+    let providerTrackId: String
+    let title: String
+    let artists: [String]
+    let album: String?
+    let duration: Double?
+    let artwork: String?
+    let isrc: String?
+
+    enum CodingKeys: String, CodingKey {
+        case provider, title, artists, album, duration, artwork, isrc
+        case providerTrackId = "provider_track_id"
+    }
+}
+
 struct LoginResponse: Codable {
     let user: UserResponse
     let tokens: TokenResponse
@@ -180,6 +197,17 @@ final class APIClient {
         return try decoder.decode(DiscoveryHome.self, from: data)
     }
 
+    func search(query: String, limit: Int = 20) async throws -> [TrackSearchResult] {
+        var components = URLComponents(url: baseURL.appendingPathComponent("music/search"), resolvingAgainstBaseURL: false)
+        components?.queryItems = [
+            URLQueryItem(name: "q", value: query.trimmingCharacters(in: .whitespacesAndNewlines)),
+            URLQueryItem(name: "limit", value: String(min(max(limit, 1), 50)))
+        ]
+        guard let url = components?.url else { throw APIError.invalidURL }
+        let data = try await request(url: url)
+        return try decoder.decode([TrackSearchResult].self, from: data)
+    }
+
     func me() async throws -> UserResponse {
         guard keychain.load("access") != nil else { throw APIError.missingSession }
         let data = try await request(path: "/auth/me")
@@ -194,6 +222,10 @@ final class APIClient {
     func request(path: String, method: String = "GET", body: Data? = nil) async throws -> Data {
         let cleanPath = path.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
         let url = baseURL.appendingPathComponent(cleanPath)
+        return try await request(url: url, method: method, body: body)
+    }
+
+    private func request(url: URL, method: String = "GET", body: Data? = nil) async throws -> Data {
         var request = URLRequest(url: url)
         request.httpMethod = method
         request.httpBody = body
