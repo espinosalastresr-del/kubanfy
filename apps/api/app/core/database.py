@@ -26,8 +26,14 @@ class Base(DeclarativeBase):
 
 def create_engine(settings: Settings | None = None) -> Any:
     settings = settings or get_settings()
+    database_url = settings.database_url
+    if database_url.startswith("postgresql://"):
+        database_url = "postgresql+asyncpg://" + database_url[len("postgresql://"):]
+    elif database_url.startswith("postgres://"):
+        database_url = "postgresql+asyncpg://" + database_url[len("postgres://"):]
+
     return create_async_engine(
-        settings.database_url,
+        database_url,
         pool_size=settings.db_pool_size,
         max_overflow=settings.db_max_overflow,
         pool_timeout=settings.db_pool_timeout,
