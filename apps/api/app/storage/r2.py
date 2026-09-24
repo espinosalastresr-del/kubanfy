@@ -97,7 +97,7 @@ class R2Storage(StorageProvider):
                 bucket=bucket,
                 size=size or 0,
                 content_type=content_type,
-                etag=resp.get("ETag"),
+                etag=resp.get("ETag") if isinstance(resp, dict) else None,
             )
         except Exception as exc:
             logger.exception("r2_put_failed", key=key, bucket=bucket.value)
