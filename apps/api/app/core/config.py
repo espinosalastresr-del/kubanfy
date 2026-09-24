@@ -129,6 +129,9 @@ class Settings(BaseSettings):
     rate_limit_search: int = 60
     rate_limit_download: int = 20
     rate_limit_preview: int = 30
+    rate_limit_analytics: int = 120
+    rate_limit_playback: int = 120
+    rate_limit_share: int = 30
     rate_limit_upload: int = 10
     # If true, sensitive rate limits allow traffic when Redis is unavailable.
     # Production forces fail-closed unless explicitly changed in a future policy.
