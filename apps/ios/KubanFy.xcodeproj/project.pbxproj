@@ -24,7 +24,7 @@
   666666666666666666666661 = {isa = PBXProject; buildConfigurationList = 777777777777777777777771; compatibilityVersion = "Xcode 15.0"; developmentRegion = en; mainGroup = 333333333333333333333331; productRefGroup = 333333333333333333333333; projectDirPath = ""; projectRoot = ""; targets = (555555555555555555555551);};
   777777777777777777777771 = {isa = XCConfigurationList; buildConfigurations = (888888888888888888888881,888888888888888888888882); defaultConfigurationName = Release;};
   777777777777777777777772 = {isa = XCConfigurationList; buildConfigurations = (888888888888888888888881,888888888888888888888882); defaultConfigurationName = Release;};
-  888888888888888888888881 = {isa = XCBuildConfiguration; buildSettings = {PRODUCT_BUNDLE_IDENTIFIER = com.kubanfy.ios; SWIFT_VERSION = 5.0; INFOPLIST_FILE = KubanFy/Info.plist; IPHONEOS_DEPLOYMENT_TARGET = 16.0; TARGETED_DEVICE_FAMILY = "1,2"; CODE_SIGNING_ALLOWED = NO;}; name = Debug;};
+  888888888888888888888881 = {isa = XCBuildConfiguration; buildSettings = {PRODUCT_BUNDLE_IDENTIFIER = com.kubanfy.ios; KUBANFY_API_BASE_URL = "https://api.kubanfy.com/v1"; SWIFT_VERSION = 5.0; INFOPLIST_FILE = KubanFy/Info.plist; IPHONEOS_DEPLOYMENT_TARGET = 16.0; TARGETED_DEVICE_FAMILY = "1,2"; CODE_SIGNING_ALLOWED = NO;}; name = Debug;};
   888888888888888888888882 = {isa = XCBuildConfiguration; buildSettings = {PRODUCT_BUNDLE_IDENTIFIER = com.kubanfy.ios; SWIFT_VERSION = 5.0; INFOPLIST_FILE = KubanFy/Info.plist; IPHONEOS_DEPLOYMENT_TARGET = 16.0; TARGETED_DEVICE_FAMILY = "1,2"; CODE_SIGNING_ALLOWED = NO;}; name = Release;};
  };
  rootObject = 666666666666666666666661;
