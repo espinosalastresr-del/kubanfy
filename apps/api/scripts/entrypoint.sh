@@ -25,5 +25,13 @@ PY
 echo "[kubanfy] alembic upgrade head..."
 alembic upgrade head
 
+if [ "${KUBANFY_SEED_DEMO_AUDIO:-false}" = "true" ]; then
+  echo "[kubanfy] seeding development demo fixture..."
+  PYTHONPATH=. python -m scripts.seed
+  echo "[kubanfy] normalizing demo fixture to KBY..."
+  PYTHONPATH=. python -m scripts.normalize_demo_kby
+fi
+
+
 echo "[kubanfy] starting API..."
 exec uvicorn app.main:app --host 0.0.0.0 --port "${PORT:-8000}" --proxy-headers
