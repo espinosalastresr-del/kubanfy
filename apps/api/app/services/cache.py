@@ -16,7 +16,7 @@ from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import Settings, get_settings
-from app.core.logging import get_logger
+from app.core.logging import get_logger\nfrom app.services.kby import pack
 from app.models.music import AudioQuality, CacheEntry, CacheEntryStatus
 from app.storage import StorageBucket, get_storage
 from app.storage.base import SignedUrl, StorageProvider
@@ -113,7 +113,7 @@ class CacheService:
         )
         if existing:
             existing.storage_key = storage_key
-            existing.size = len(body)
+            existing.size = len(kby_body)
             existing.expires_at = expires_at
             existing.status = CacheEntryStatus.READY
             existing.last_accessed_at = datetime.now(UTC)
@@ -127,7 +127,7 @@ class CacheService:
             provider_track_id=provider_track_id,
             quality=quality,
             storage_key=storage_key,
-            size=len(body),
+            size=len(kby_body),
             expires_at=expires_at,
             status=CacheEntryStatus.READY,
         )
