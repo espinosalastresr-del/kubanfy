@@ -10,6 +10,7 @@ from typing import Any
 from uuid import UUID, uuid4
 
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import Settings, get_settings
@@ -137,7 +138,17 @@ class AnalyticsService:
             metadata_json=metadata or {},
         )
         self.session.add(evt)
-        await self.session.flush()
+        try:
+            async with self.session.begin_nested():
+                await self.session.flush()
+        except IntegrityError:
+            # Concurrent retries can race on the unique event_id constraint.
+            existing = await self.session.scalar(
+                select(AnalyticsEvent).where(AnalyticsEvent.event_id == event_id)
+            )
+            if existing is None:
+                raise
+            return existing
         return evt
 
     async def ingest_batch(self, events: list[dict[str, Any]]) -> int:
