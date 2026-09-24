@@ -115,7 +115,7 @@ class MainActivity : Activity() {
                 isAllCaps = false
                 setOnClickListener { playTrack(track.id, track.title) }
             })
-        })
+        }
         root.addView(Button(this).apply {
             text = "Buscar"
             isAllCaps = false
