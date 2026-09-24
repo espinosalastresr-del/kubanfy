@@ -89,7 +89,7 @@ class MainActivity : Activity() {
         })
         listOf("Inicio", "Buscar", "Biblioteca", "Playlists", "Artista", "Administración").forEach { label ->
             root.addView(Button(this).apply { text = label; isAllCaps = false })
-        })
+        }
         root.addView(Button(this).apply {
             text = "Cerrar sesión"
             isAllCaps = false
