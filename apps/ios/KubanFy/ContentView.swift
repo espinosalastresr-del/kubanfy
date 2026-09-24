@@ -16,6 +16,7 @@ struct ContentView: View {
     @State private var showRecoveryInfo = false
     @State private var showRegister = false
     @StateObject private var audioPlayer = AudioPlayer()
+    @State private var showPlayer = false
 
     var body: some View {
         ZStack {
@@ -195,6 +196,10 @@ struct ContentView: View {
                             ProgressView("Cargando tu inicio…").tint(.green).frame(maxWidth: .infinity).padding(.vertical, 50)
                         }
 
+                        if audioPlayer.currentTrackID != nil {
+                            MiniPlayer(audioPlayer: audioPlayer) { showPlayer = true }
+                        }
+
                         HStack(spacing: 10) {
                             NavigationLink { SearchView() } label: { quickAction("magnifyingglass", "Buscar") }
                             quickAction("rectangle.stack", "Biblioteca")
@@ -205,6 +210,9 @@ struct ContentView: View {
                 }
             }
             .navigationBarTitleDisplayMode(.inline)
+            .sheet(isPresented: $showPlayer) {
+                PlayerView(audioPlayer: audioPlayer)
+            }
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) { Text("KubanFy").font(.headline.weight(.bold)) }
                 ToolbarItem(placement: .topBarTrailing) {
@@ -398,6 +406,61 @@ private struct RegisterView: View {
     private func hideKeyboard() { UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil) }
 }
 
+private struct MiniPlayer: View {
+    @ObservedObject var audioPlayer: AudioPlayer
+    let onTap: () -> Void
+
+    var body: some View {
+        Button(action: onTap) {
+            HStack(spacing: 12) {
+                RoundedRectangle(cornerRadius: 8).fill(Color.green.opacity(0.22)).frame(width: 44, height: 44)
+                    .overlay(Image(systemName: "music.note").foregroundStyle(.green))
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(audioPlayer.currentTitle ?? "Reproduciendo").font(.subheadline.weight(.semibold)).lineLimit(1)
+                    Text(audioPlayer.isPlaying ? "Reproduciendo" : "Pausado").font(.caption).foregroundStyle(.white.opacity(0.45))
+                }
+                Spacer()
+                Button { Task { await audioPlayer.toggleCurrent() } } label: {
+                    Image(systemName: audioPlayer.isPlaying ? "pause.fill" : "play.fill").font(.headline).frame(width: 40, height: 40)
+                }
+                .buttonStyle(.plain)
+            }.padding(8).background(.ultraThinMaterial).clipShape(RoundedRectangle(cornerRadius: 14))
+        }.buttonStyle(.plain)
+    }
+}
+
+private struct PlayerView: View {
+    @ObservedObject var audioPlayer: AudioPlayer
+
+    var body: some View {
+        NavigationStack {
+            VStack(spacing: 24) {
+                Spacer()
+                RoundedRectangle(cornerRadius: 28).fill(LinearGradient(colors: [Color.green.opacity(0.72), Color.white.opacity(0.08)], startPoint: .topLeading, endPoint: .bottomTrailing))
+                    .frame(width: 280, height: 280)
+                    .overlay(Image(systemName: "music.note").font(.system(size: 72)).foregroundStyle(.white.opacity(0.9)))
+                VStack(spacing: 6) {
+                    Text(audioPlayer.currentTitle ?? "Sin reproducción").font(.title2.weight(.bold)).lineLimit(2).multilineTextAlignment(.center)
+                    Text("KubanFy").foregroundStyle(.white.opacity(0.45))
+                }
+                VStack(spacing: 8) {
+                    Slider(value: Binding(get: { audioPlayer.position }, set: { audioPlayer.seek(to: $0) }), in: 0...max(audioPlayer.duration, 1))
+                    HStack { Text(formatDuration(audioPlayer.position)); Spacer(); Text(formatDuration(audioPlayer.duration)) }.font(.caption).foregroundStyle(.white.opacity(0.4))
+                }
+                HStack(spacing: 42) {
+                    Button { audioPlayer.seek(to: max(0, audioPlayer.position - 10)) } label: { Image(systemName: "gobackward.10").font(.title2) }
+                    Button { Task { await audioPlayer.toggleCurrent() } } label: { Image(systemName: audioPlayer.isPlaying ? "pause.circle.fill" : "play.circle.fill").font(.system(size: 62)) }
+                    Button { audioPlayer.seek(to: audioPlayer.position + 10) } label: { Image(systemName: "goforward.10").font(.title2) }
+                }
+                if let error = audioPlayer.errorMessage { Text(error).font(.caption).foregroundStyle(.red).multilineTextAlignment(.center) }
+                Spacer()
+            }.padding(24).background(Color.black.ignoresSafeArea())
+            .navigationTitle("Reproduciendo")
+            .navigationBarTitleDisplayMode(.inline)
+        }.preferredColorScheme(.dark)
+    }
+}
+
 private struct SearchView: View {
     @State private var query = ""
     @State private var results: [TrackSearchResult] = []
@@ -443,6 +506,8 @@ private final class AudioPlayer: ObservableObject {
     @Published private(set) var errorMessage: String?
     @Published private(set) var isPlaying = false
     @Published private(set) var position: Double = 0
+    @Published private(set) var duration: Double = 0
+    @Published private(set) var currentTitle: String?
 
     private var player: AVPlayer?
     private var timeObserver: Any?
@@ -535,6 +600,11 @@ private final class AudioPlayer: ObservableObject {
         await start(track: track)
     }
 
+    func toggleCurrent() async {
+        guard currentTrack != nil else { return }
+        if isPlaying { await pause() } else { resume() }
+    }
+
     private func start(track: DiscoveryHome.Track) async {
         do {
             heartbeatTask?.cancel()
@@ -553,7 +623,9 @@ private final class AudioPlayer: ObservableObject {
             guard generation == playbackGeneration else { return }
             currentTrack = track
             currentTrackID = track.id
+            currentTitle = track.title
             currentPlayback = playback
+            duration = track.duration ?? 0
             position = 0
             try? AVAudioSession.sharedInstance().setActive(true)
             replaceItem(with: playback.url, position: 0)
@@ -570,6 +642,7 @@ private final class AudioPlayer: ObservableObject {
 
     private func replaceItem(with url: URL, position: Double) {
         let item = AVPlayerItem(url: url)
+        if let itemDuration = item.asset.duration.seconds.isFinite ? item.asset.duration.seconds : nil, itemDuration > 0 { duration = itemDuration }
         if let player {
             player.replaceCurrentItem(with: item)
         } else {
@@ -745,6 +818,8 @@ private final class AudioPlayer: ObservableObject {
         currentPlayback = nil
         currentTrack = nil
         currentTrackID = nil
+        currentTitle = nil
+        duration = 0
         position = 0
         isPlaying = false
         playbackGeneration = UUID()
