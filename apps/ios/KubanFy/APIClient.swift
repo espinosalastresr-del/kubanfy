@@ -204,6 +204,7 @@ final class APIClient {
     func logout() {
         keychain.remove("access")
         keychain.remove("refresh")
+        keychain.remove("cached_user")
     }
 
     func cachedUser() -> UserResponse? {
@@ -212,7 +213,9 @@ final class APIClient {
     }
 
     func cacheUser(_ user: UserResponse) {
-        guard let data = try? JSONEncoder().encode(user) else { return }
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        guard let data = try? encoder.encode(user) else { return }
         try? keychain.saveData(data, account: "cached_user")
     }
 
