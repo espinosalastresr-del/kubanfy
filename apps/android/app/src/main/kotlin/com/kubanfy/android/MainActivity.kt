@@ -7,7 +7,9 @@ import android.widget.Button
 import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.TextView
-import androidx.media3.common.MediaItem\nimport androidx.media3.common.PlaybackException\nimport androidx.media3.common.Player
+import androidx.media3.common.MediaItem
+import androidx.media3.common.PlaybackException
+import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
 import android.widget.ProgressBar
 import java.util.concurrent.Executors
@@ -219,7 +221,8 @@ class MainActivity : Activity() {
                     val exo = player ?: ExoPlayer.Builder(this).build().also { created ->
                         created.addListener(object : Player.Listener {
                             override fun onPlayerError(error: PlaybackException) {
-                                val currentId = trackId
+                                val currentId = created.currentMediaItem?.mediaId ?: trackId
+                                val currentTitle = created.currentMediaItem?.mediaMetadata?.title?.toString() ?: title
                                 val position = created.currentPosition
                                 executor.execute {
                                     try {
