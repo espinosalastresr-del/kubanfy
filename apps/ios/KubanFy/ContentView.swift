@@ -281,6 +281,275 @@ private final class AudioPlayer: ObservableObject {
     }
 }
 
+@MainActor
+private final class AudioPlayer: ObservableObject {
+    @Published private(set) var currentTrackID: UUID?
+    @Published private(set) var errorMessage: String?
+    @Published private(set) var isPlaying = false
+    @Published private(set) var position: Double = 0
+
+    private var player: AVPlayer?
+    private var timeObserver: Any?
+    private var currentTrack: DiscoveryHome.Track?
+    private var currentPlayback: PlaybackResponse?
+    private var playbackToken: String?
+    private var playbackSessionID: UUID?
+    private var heartbeatTask: Task<Void, Never>?
+    private var renewalTask: Task<Void, Never>?
+    private var notificationTokens: [NSObjectProtocol] = []
+
+    init() {
+        let session = AVAudioSession.sharedInstance()
+        try? session.setCategory(.playback, mode: .default, options: [])
+        try? session.setActive(true)
+
+        let interruption = NotificationCenter.default.addObserver(
+            forName: AVAudioSession.interruptionNotification,
+            object: session,
+            queue: .main
+        ) { [weak self] notification in
+            Task { @MainActor in
+                self?.handleInterruption(notification)
+            }
+        }
+        notificationTokens.append(interruption)
+
+        let ended = NotificationCenter.default.addObserver(
+            forName: .AVPlayerItemDidPlayToEndTime,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor in
+                await self?.handlePlaybackEnded()
+            }
+        }
+        notificationTokens.append(ended)
+
+        let commands = MPRemoteCommandCenter.shared()
+        commands.playCommand.addTarget { [weak self] _ in
+            guard let self else { return .commandFailed }
+            Task { @MainActor in
+                self.resume()
+            }
+            return .success
+        }
+        commands.pauseCommand.addTarget { [weak self] _ in
+            guard let self else { return .commandFailed }
+            Task { @MainActor in
+                await self.pause()
+            }
+            return .success
+        }
+        commands.changePlaybackPositionCommand.addTarget { [weak self] event in
+            guard let self, let event = event as? MPChangePlaybackPositionCommandEvent else {
+                return .commandFailed
+            }
+            Task { @MainActor in
+                self.seek(to: event.positionTime)
+            }
+            return .success
+        }
+
+        timeObserver = player?.addPeriodicTimeObserver(
+            forInterval: CMTime(seconds: 1, preferredTimescale: 600),
+            queue: .main
+        ) { [weak self] time in
+            Task { @MainActor in
+                self?.position = max(0, time.seconds.isFinite ? time.seconds : 0)
+                self?.updateNowPlaying()
+            }
+        }
+    }
+
+    func toggle(track: DiscoveryHome.Track) async {
+        errorMessage = nil
+        if currentTrackID == track.id {
+            if isPlaying {
+                await pause()
+            } else {
+                resume()
+            }
+            return
+        }
+        await start(track: track)
+    }
+
+    private func start(track: DiscoveryHome.Track) async {
+        do {
+            heartbeatTask?.cancel()
+            renewalTask?.cancel()
+            let session = try await APIClient.shared.startPlayback(
+                trackId: track.id,
+                quality: "low"
+            )
+            playbackToken = session.playbackToken
+            playbackSessionID = session.playbackSessionId
+            let playback = try await APIClient.shared.playback(trackId: track.id, quality: "low")
+            currentTrack = track
+            currentTrackID = track.id
+            currentPlayback = playback
+            position = 0
+            try? AVAudioSession.sharedInstance().setActive(true)
+            replaceItem(with: playback.url, position: 0)
+            isPlaying = true
+            updateNowPlaying()
+            player?.play()
+            startHeartbeatLoop(interval: session.heartbeatIntervalSeconds)
+            startRenewalLoop(expiresIn: playback.expiresInSeconds)
+        } catch {
+            resetPlaybackState()
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    private func replaceItem(with url: URL, position: Double) {
+        let item = AVPlayerItem(url: url)
+        if let player {
+            player.replaceCurrentItem(with: item)
+        } else {
+            player = AVPlayer(playerItem: item)
+        }
+        let target = max(0, position)
+        if target > 0 {
+            player?.seek(to: CMTime(seconds: target, preferredTimescale: 600))
+        }
+        player?.playImmediately(atRate: 1)
+    }
+
+    private func startHeartbeatLoop(interval: Int) {
+        heartbeatTask?.cancel()
+        let seconds = max(5, interval)
+        heartbeatTask = Task { [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(seconds))
+                guard !Task.isCancelled else { return }
+                await self?.sendHeartbeat(completed: false)
+            }
+        }
+    }
+
+    private func startRenewalLoop(expiresIn: Int) {
+        renewalTask?.cancel()
+        let delay = max(15, expiresIn - 30)
+        renewalTask = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(delay))
+            guard !Task.isCancelled else { return }
+            await self?.renewSignedURL()
+        }
+    }
+
+    private func renewSignedURL() async {
+        guard let track = currentTrack else { return }
+        let savedPosition = position
+        do {
+            let playback = try await APIClient.shared.playback(trackId: track.id, quality: "low")
+            guard currentTrackID == track.id else { return }
+            currentPlayback = playback
+            replaceItem(with: playback.url, position: savedPosition)
+            if !isPlaying { player?.pause() }
+            startRenewalLoop(expiresIn: playback.expiresInSeconds)
+        } catch {
+            // Keep the current item alive; the next playback error will retry renewal.
+            startRenewalLoop(expiresIn: max(15, currentPlayback?.expiresInSeconds ?? 30))
+        }
+    }
+
+    private func sendHeartbeat(completed: Bool) async {
+        guard let token = playbackToken else { return }
+        do {
+            _ = try await APIClient.shared.heartbeat(
+                token: token,
+                positionMs: Int(max(0, position) * 1000),
+                paused: !isPlaying,
+                completed: completed
+            )
+        } catch {
+            // Connectivity loss must not stop local playback.
+        }
+    }
+
+    private func pause() async {
+        player?.pause()
+        isPlaying = false
+        updateNowPlaying()
+        await sendHeartbeat(completed: false)
+    }
+
+    private func resume() {
+        try? AVAudioSession.sharedInstance().setActive(true)
+        player?.play()
+        isPlaying = true
+        updateNowPlaying()
+    }
+
+    private func seek(to seconds: Double) {
+        guard seconds.isFinite, seconds >= 0 else { return }
+        player?.seek(to: CMTime(seconds: seconds, preferredTimescale: 600))
+        position = seconds
+        updateNowPlaying()
+    }
+
+    private func handlePlaybackEnded() async {
+        isPlaying = false
+        await sendHeartbeat(completed: true)
+        updateNowPlaying()
+    }
+
+    private func updateNowPlaying() {
+        guard let track = currentTrack else {
+            MPNowPlayingInfoCenter.default().nowPlayingInfo = nil
+            return
+        }
+        var info: [String: Any] = [
+            MPMediaItemPropertyTitle: track.title,
+            MPNowPlayingInfoPropertyElapsedPlaybackTime: position,
+            MPNowPlayingInfoPropertyPlaybackRate: isPlaying ? 1.0 : 0.0
+        ]
+        if let duration = track.duration {
+            info[MPMediaItemPropertyPlaybackDuration] = duration
+        }
+        MPNowPlayingInfoCenter.default().nowPlayingInfo = info
+    }
+
+    private func handleInterruption(_ notification: Notification) {
+        guard let typeValue = notification.userInfo?[AVAudioSessionInterruptionTypeKey] as? UInt,
+              let type = AVAudioSession.InterruptionType(rawValue: typeValue) else { return }
+        if type == .ended {
+            try? AVAudioSession.sharedInstance().setActive(true)
+        } else {
+            isPlaying = false
+            Task { await sendHeartbeat(completed: false) }
+        }
+        updateNowPlaying()
+    }
+
+    private func resetPlaybackState() {
+        heartbeatTask?.cancel()
+        renewalTask?.cancel()
+        heartbeatTask = nil
+        renewalTask = nil
+        playbackToken = nil
+        playbackSessionID = nil
+        currentPlayback = nil
+        currentTrack = nil
+        currentTrackID = nil
+        position = 0
+        isPlaying = false
+    }
+
+    deinit {
+        heartbeatTask?.cancel()
+        renewalTask?.cancel()
+        if let timeObserver, let player {
+            player.removeTimeObserver(timeObserver)
+        }
+        for token in notificationTokens {
+            NotificationCenter.default.removeObserver(token)
+        }
+        player?.pause()
+    }
+}
+
 private func formatDuration(_ seconds: Double) -> String {
     guard seconds.isFinite, seconds >= 0 else { return "--:--" }
     let totalSeconds = Int(seconds.rounded())
