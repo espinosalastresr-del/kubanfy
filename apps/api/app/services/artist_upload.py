@@ -43,6 +43,7 @@ from app.models.music import (
 from app.models.rights import LicenseRecord, LicenseStatus
 from app.services.audio_validation import AudioValidationService
 from app.services.job import JobService
+from app.services.kby import pack
 from app.services.transcoding import TranscodingService
 from app.storage import StorageBucket, get_storage
 from app.storage.base import StorageProvider
@@ -212,13 +213,21 @@ class ArtistUploadService:
                 f"artists/{artist_id}/tracks/{track.id}/master/"
                 f"{probe.content_hash[:16]}.{ext or 'bin'}"
             )
-            with tmp_path.open("rb") as master_file:
-                await self.storage.put(
-                    master_key,
-                    master_file,
-                    bucket=StorageBucket.PERMANENT,
-                    content_type=f"audio/{probe.codec or ext or 'mpeg'}",
-                )
+            master_bytes = tmp_path.read_bytes()
+            master_kby = pack(
+                master_bytes,
+                content_hash=probe.content_hash,
+                quality=AudioQuality.LOSSLESS.value,
+                content_type=f"audio/{probe.codec or ext or 'mpeg'}",
+                settings=self.settings,
+            )
+            master_key = master_key.rsplit(".", 1)[0] + ".kby"
+            await self.storage.put(
+                master_key,
+                master_kby,
+                bucket=StorageBucket.PERMANENT,
+                content_type="application/vnd.kubanfy.kby",
+            )
 
             master_asset = AudioAsset(
                 track_id=track.id,
@@ -341,13 +350,21 @@ class ArtistUploadService:
             next_version = max((a.version for a in old_assets), default=0) + 1
             generation = f"v{next_version}"
             master_key = f"artists/{artist_id}/tracks/{track_id}/{generation}/master/{probe.content_hash[:16]}.{ext or 'bin'}"
-            with tmp_path.open("rb") as master_file:
-                await self.storage.put(
-                    master_key,
-                    master_file,
-                    bucket=StorageBucket.PERMANENT,
+            master_bytes = tmp_path.read_bytes()
+            master_kby = pack(
+                master_bytes,
+                content_hash=probe.content_hash,
+                quality=AudioQuality.LOSSLESS.value,
                 content_type=f"audio/{probe.codec or ext or 'mpeg'}",
-                )
+                settings=self.settings,
+            )
+            master_key = master_key.rsplit(".", 1)[0] + ".kby"
+            await self.storage.put(
+                master_key,
+                master_kby,
+                bucket=StorageBucket.PERMANENT,
+                content_type="application/vnd.kubanfy.kby",
+            )
             written_keys.append(master_key)
 
             master_asset = AudioAsset(
@@ -377,14 +394,21 @@ class ArtistUploadService:
             )
             derivative_assets: list[AudioAsset] = []
             for output in derivative_outputs:
-                key = f"artists/{artist_id}/tracks/{track_id}/{generation}/{output.quality.value}/{output.probe.content_hash[:16]}.m4a"
-                with output.path.open("rb") as derivative_file:
-                    await self.storage.put(
-                        key,
-                        derivative_file,
-                        bucket=StorageBucket.PERMANENT,
-                        content_type="audio/mp4",
-                    )
+                key = f"artists/{artist_id}/tracks/{track_id}/{generation}/{output.quality.value}/{output.probe.content_hash[:16]}.kby"
+                derivative_bytes = output.path.read_bytes()
+                derivative_kby = pack(
+                    derivative_bytes,
+                    content_hash=output.probe.content_hash,
+                    quality=output.quality.value,
+                    content_type="audio/mp4",
+                    settings=self.settings,
+                )
+                await self.storage.put(
+                    key,
+                    derivative_kby,
+                    bucket=StorageBucket.PERMANENT,
+                    content_type="application/vnd.kubanfy.kby",
+                )
                 written_keys.append(key)
                 asset = AudioAsset(
                     track_id=track_id,
