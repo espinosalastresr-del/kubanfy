@@ -26,7 +26,14 @@ struct ContentView: View {
             }
         }
         .preferredColorScheme(.dark)
-        .task { await restoreSession() }
+        .task {
+            if let savedEmail = APIClient.shared.savedEmail { email = savedEmail }
+            if let savedPassword = APIClient.shared.savedPassword {
+                password = savedPassword
+                saveCredentials = true
+            }
+            await restoreSession()
+        }
         .alert("Recuperar contraseña", isPresented: $showRecoveryInfo) {
             Button("OK", role: .cancel) {}
         } message: {
