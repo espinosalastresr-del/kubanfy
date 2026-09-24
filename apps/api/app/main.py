@@ -10,7 +10,8 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, ORJSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
-from starlette.responses import Request, status
+from starlette.requests import Request
+from starlette.responses import status
 from starlette.responses import Response as StarletteResponse
 
 from app import __version__
