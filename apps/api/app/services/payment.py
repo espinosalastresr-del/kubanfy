@@ -136,6 +136,11 @@ class PaymentService:
         if order.status not in (PaymentStatus.PENDING, PaymentStatus.REJECTED):
             raise ConflictError(f"Cannot submit order in status {order.status.value}")
         if proof_storage_key:
+            self._validate_proof_storage_key(
+                order_id=order.id,
+                user_id=user_id,
+                proof_storage_key=proof_storage_key,
+            )
             order.proof_storage_key = proof_storage_key
         order.status = PaymentStatus.UNDER_REVIEW
         await self.session.flush()
@@ -222,6 +227,23 @@ class PaymentService:
         await self.session.flush()
         logger.info("payment_rejected", order_id=str(order_id), by=str(admin_user_id))
         return order
+
+    @staticmethod
+    def _validate_proof_storage_key(
+        *,
+        order_id: UUID,
+        user_id: UUID,
+        proof_storage_key: str,
+    ) -> None:
+        """Constrain payment proofs to the submitting user's order namespace."""
+        prefix = f"payment-proofs/{user_id}/{order_id}/"
+        if (
+            not proof_storage_key.startswith(prefix)
+            or proof_storage_key == prefix
+            or "\\" in proof_storage_key
+            or any(part in {".", ".."} for part in proof_storage_key.split("/"))
+        ):
+            raise ValidationError("Invalid payment proof storage key")
 
     async def list_for_user(self, user_id: UUID) -> list[PaymentOrder]:
         result = await self.session.execute(
