@@ -144,6 +144,15 @@ class AudioValidationService:
             tmp.flush()
             return await self.probe_file(tmp.name)
 
+    async def validate_bytes(self, data: bytes, *, suffix: str = ".bin") -> AudioProbeResult:
+        """Validate an acquired audio payload before it can enter KubanFy storage."""
+        if not data:
+            raise ValidationError("Empty audio payload")
+        with tempfile.NamedTemporaryFile(suffix=suffix, delete=True) as tmp:
+            tmp.write(data)
+            tmp.flush()
+            return await self.validate_for_storage(tmp.name)
+
     async def validate_for_storage(self, path: str | Path) -> AudioProbeResult:
         """Full validation before storing master/derivative."""
         result = await self.probe_file(path)
