@@ -9,7 +9,7 @@ services:
     repo: https://github.com/espinosalastresr-del/kubanfy
     branch: feat/release-track-management
     buildCommand: cd apps/api && pip install .
-    startCommand: cd apps/api && uvicorn app.main:app --host 0.0.0.0 --port $PORT --proxy-headers
+    startCommand: cd apps/api && sh scripts/entrypoint.sh
     healthCheckPath: /health
     autoDeploy: true
     envVars:
