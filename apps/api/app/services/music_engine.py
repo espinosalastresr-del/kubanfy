@@ -343,42 +343,24 @@ class MusicEngine:
         body: bytes,
         source: ResolvedSource,
     ) -> DownloadResult:
-        import hashlib
-
-        content_hash = hashlib.sha256(body).hexdigest()
-        storage_key = f"cache/{provider}/{provider_track_id}/{quality.value}/{content_hash[:16]}"
-
-        await self.storage.put(
-            storage_key,
-            body,
-            bucket=StorageBucket.CACHE,
-            content_type=f"audio/{source.codec or 'mpeg'}",
-        )
-
-        ttl_hours = self.settings.cache_ttl_medium_demand_hours
-        expires_at = datetime.now(UTC) + timedelta(hours=ttl_hours)
-
-        entry = CacheEntry(
-            content_hash=content_hash,
+        """Compatibility helper that always enters the protected cache pipeline."""
+        cache_svc = CacheService(self.session, storage=self.storage, settings=self.settings)
+        entry = await cache_svc.store_bytes(
             provider=provider,
             provider_track_id=provider_track_id,
             quality=quality,
-            storage_key=storage_key,
-            size=len(body),
-            expires_at=expires_at,
-            status=CacheEntryStatus.READY,
+            body=body,
+            content_type=f"audio/{source.codec or "mpeg"}",
         )
-        self.session.add(entry)
-        await self.session.flush()
-
-        signed = await self.storage.signed_url(storage_key, bucket=StorageBucket.CACHE)
+        signed = await cache_svc.signed_delivery(entry)
         return DownloadResult(
             signed_url=signed,
-            storage_key=storage_key,
+            storage_key=entry.storage_key,
             quality=quality.value,
             from_cache=False,
-            content_hash=content_hash,
-            expires_at=expires_at,
+            content_hash=entry.content_hash,
+            kby_key=key_base64(entry.content_hash),
+            expires_at=entry.expires_at,
         )
 
     async def download_by_track_id(
