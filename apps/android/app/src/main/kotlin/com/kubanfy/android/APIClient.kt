@@ -120,4 +120,10 @@ class APIClient(context: Context) {
         }
     }
 }
-\n\nprivate fun org.json.JSONArray.toStringList(): List<String> =\n    (0 until length()).map { getString(it) }\n\nprivate fun org.json.JSONArray.getJSONObjectStrings(key: String): List<String> =\n    (0 until length()).mapNotNull { i -> optJSONObject(i)?.optString(key)?.takeIf { it.isNotBlank() } }\n
+
+
+private fun org.json.JSONArray.toStringList(): List<String> =
+    (0 until length()).map { getString(it) }
+
+private fun org.json.JSONArray.getJSONObjectStrings(key: String): List<String> =
+    (0 until length()).mapNotNull { i -> optJSONObject(i)?.optString(key)?.takeIf { it.isNotBlank() } }
