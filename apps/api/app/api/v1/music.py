@@ -22,6 +22,7 @@ from app.schemas.music import (
 from app.services.anti_abuse import AntiAbuseService
 from app.services.engagement import EngagementService
 from app.services.entitlement import EntitlementService
+from app.services.geo import GeoService
 from app.services.music_engine import MusicEngine
 from app.services.offline_license import OfflineLicenseService
 
@@ -110,8 +111,10 @@ async def music_play(
     quality: str = Query("low"),
 ) -> MusicPlaybackResponse:
     """Return a short-lived signed URL for authenticated streaming playback."""
+    geo = GeoService()
     ip = request.client.host if request.client else None
-    await AntiAbuseService().check_download(str(user.id), ip)
+    real_ip = geo.resolve_client_ip(ip, forwarded_for=request.headers.get("x-forwarded-for"))
+    await AntiAbuseService().check_download(str(user.id), real_ip)
     entitlement = EntitlementService(session)
     await entitlement.require_track_access(user.id, track_id)
     await entitlement.require_quality_access(user.id, quality)
@@ -235,8 +238,10 @@ async def music_search(
     q: str = Query(..., min_length=1, max_length=500),
     limit: int = Query(20, ge=1, le=50),
 ) -> list[TrackSearchResult]:
+    geo = GeoService()
     ip = request.client.host if request.client else None
-    await AntiAbuseService().check_search(ip)
+    real_ip = geo.resolve_client_ip(ip, forwarded_for=request.headers.get("x-forwarded-for"))
+    await AntiAbuseService().check_search(real_ip)
     results = await _manager.search(q, limit=limit)
     return [
         TrackSearchResult(
