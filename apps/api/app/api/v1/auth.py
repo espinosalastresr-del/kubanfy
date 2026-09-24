@@ -8,6 +8,7 @@ from fastapi import APIRouter, Request
 
 from app.api.deps import CurrentUser, DbSession
 from app.schemas.auth import (
+    AuthContextResponse,
     DeviceResponse,
     LoginRequest,
     LoginResponse,
@@ -63,6 +64,19 @@ async def refresh(
 @router.get("/me", response_model=UserResponse)
 async def me(user: CurrentUser) -> UserResponse:
     return AuthService.to_response(user)
+
+
+@router.get("/context", response_model=AuthContextResponse)
+async def context(user: CurrentUser, session: DbSession) -> AuthContextResponse:
+    service = AuthService(session)
+    roles, artist_ids = await service.get_access_context(user.id)
+    return AuthContextResponse(
+        user=AuthService.to_response(user),
+        roles=roles,
+        artist_ids=artist_ids,
+        is_artist=bool(artist_ids),
+        is_admin=any(role in {"admin", "super_admin"} for role in roles),
+    )
 
 
 @router.get("/devices", response_model=list[DeviceResponse])
