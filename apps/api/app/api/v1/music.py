@@ -271,7 +271,7 @@ async def music_content_stream(
     """Stream audio with HTTP Range (resume). Uses cache object when available."""
     from fastapi.responses import Response, StreamingResponse
 
-    from app.core.exceptions import NotFoundError, ValidationError
+    from app.core.exceptions import ValidationError
     from app.services.http_range import parse_bytes_range
     from app.storage import get_storage
 
@@ -291,10 +291,7 @@ async def music_content_stream(
     await entitlement.require_track_access(user.id, track_id)
     await entitlement.require_quality_access(user.id, quality)
     engine = MusicEngine(session, provider_manager=_manager)
-    try:
-        result = await engine.download_by_track_id(track_id=track_id, quality=quality)
-    except Exception as exc:
-        raise NotFoundError("Audio not available") from exc
+    result = await engine.download_by_track_id(track_id=track_id, quality=quality)
 
     storage_key = result.storage_key
     if not storage_key:
