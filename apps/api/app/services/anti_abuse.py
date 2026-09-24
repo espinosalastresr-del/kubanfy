@@ -117,6 +117,31 @@ class AntiAbuseService:
                 limit=self.settings.rate_limit_search,
             )
 
+    async def check_analytics(self, ip: str | None, user_id: str | None = None) -> None:
+        if user_id:
+            await self.enforce_rate_limit(
+                f"analytics:user:{user_id}", limit=self.settings.rate_limit_analytics
+            )
+        elif ip:
+            await self.enforce_rate_limit(
+                f"analytics:ip:{ip}", limit=self.settings.rate_limit_analytics
+            )
+
+    async def check_playback(self, token: str, ip: str | None = None) -> None:
+        await self.enforce_rate_limit(
+            f"playback:token:{token}", limit=self.settings.rate_limit_playback
+        )
+        if ip:
+            await self.enforce_rate_limit(
+                f"playback:ip:{ip}", limit=self.settings.rate_limit_playback * 2
+            )
+
+    async def check_share(self, ip: str | None) -> None:
+        if ip:
+            await self.enforce_rate_limit(
+                f"share:ip:{ip}", limit=self.settings.rate_limit_share
+            )
+
     async def flag_suspicious(
         self,
         *,
