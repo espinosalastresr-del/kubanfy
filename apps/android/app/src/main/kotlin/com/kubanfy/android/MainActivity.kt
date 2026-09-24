@@ -7,6 +7,8 @@ import android.widget.Button
 import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.TextView
+import androidx.media3.common.MediaItem
+import androidx.media3.exoplayer.ExoPlayer
 import android.widget.ProgressBar
 import java.util.concurrent.Executors
 
@@ -14,6 +16,7 @@ class MainActivity : Activity() {
     private val executor = Executors.newSingleThreadExecutor()
     private lateinit var api: APIClient
     private lateinit var status: TextView
+    private var player: ExoPlayer? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -103,8 +106,15 @@ class MainActivity : Activity() {
             text = "Artistas locales: ${discovery.localArtists.take(5).joinToString(", ")}"
         })
         root.addView(TextView(this).apply {
-            text = "Nuevos lanzamientos: ${discovery.newReleases.take(5).joinToString(", ")}"
-            setPadding(0, 8, 0, 16)
+            text = "Nuevos lanzamientos"
+            setPadding(0, 8, 0, 8)
+        })
+        discovery.newReleases.take(5).forEach { track ->
+            root.addView(Button(this).apply {
+                text = "▶ ${track.title}"
+                isAllCaps = false
+                setOnClickListener { playTrack(track.id, track.title) }
+            })
         })
         root.addView(Button(this).apply {
             text = "Buscar"
@@ -201,8 +211,27 @@ class MainActivity : Activity() {
         }
     }
 
+    private fun playTrack(trackId: String, title: String) {
+        executor.execute {
+            try {
+                val url = api.playback(trackId, "low")
+                runOnUiThread {
+                    val exo = player ?: ExoPlayer.Builder(this).build().also { player = it }
+                    exo.setMediaItem(MediaItem.fromUri(url))
+                    exo.prepare()
+                    exo.play()
+                    status.text = "Reproduciendo: $title"
+                }
+            } catch (e: Exception) {
+                runOnUiThread { status.text = e.message ?: "No se pudo reproducir" }
+            }
+        }
+    }
+
     override fun onDestroy() {
         executor.shutdownNow()
+        player?.release()
+        player = null
         super.onDestroy()
     }
 }
