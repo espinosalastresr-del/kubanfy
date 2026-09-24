@@ -1,5 +1,5 @@
 import SwiftUI
-import AVFoundation
+import AVFoundation\nimport MediaPlayer\nimport UIKit
 
 struct ContentView: View {
     @State private var email = ""
@@ -73,7 +73,23 @@ struct ContentView: View {
             if let discovery {
                 Section("Descubrimiento · \(discovery.country)") {
                     Text("Artistas locales: \(discovery.localArtists.prefix(5).map(\.name).joined(separator: ", "))")
-                    Text("Nuevos: \(discovery.newReleases.prefix(5).map(\.title).joined(separator: ", "))")
+                    ForEach(discovery.newReleases.prefix(10), id: \.id) { track in
+                        HStack {
+                            VStack(alignment: .leading) {
+                                Text(track.title)
+                                if let duration = track.duration {
+                                    Text(formatDuration(duration))
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                }
+                            }
+                            Spacer()
+                            Button(audioPlayer.currentTrackID == track.id && audioPlayer.isPlaying ? "Pausa" : "Reproducir") {
+                                Task { await audioPlayer.toggle(track: track) }
+                            }
+                            .buttonStyle(.borderless)
+                        }
+                    }
                     Text("Tendencias: \(discovery.trending.prefix(5).compactMap(\.title).joined(separator: ", "))")
                 }
             }
@@ -175,20 +191,46 @@ private struct SearchView: View {
 private final class AudioPlayer: ObservableObject {
     @Published private(set) var currentTrackID: UUID?
     @Published private(set) var errorMessage: String?
+    @Published private(set) var isPlaying = false
     private var player: AVPlayer?
+    private var timeObserver: Any?
+    private var currentTrack: DiscoveryHome.Track?
+    private var currentPlayback: PlaybackResponse?
 
     init() {
-        try? AVAudioSession.sharedInstance().setCategory(.playback, mode: .default, options: [])
-        try? AVAudioSession.sharedInstance().setActive(true)
+        let session = AVAudioSession.sharedInstance()
+        try? session.setCategory(.playback, mode: .default, options: [])
+        try? session.setActive(true)
+
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleInterruption(_:)),
+            name: AVAudioSession.interruptionNotification,
+            object: session
+        )
+        UIApplication.shared.beginReceivingRemoteControlEvents()
+        let commands = MPRemoteCommandCenter.shared()
+        commands.playCommand.addTarget { [weak self] _ in
+            self?.player?.play()
+            self?.isPlaying = true
+            return .success
+        }
+        commands.pauseCommand.addTarget { [weak self] _ in
+            self?.player?.pause()
+            self?.isPlaying = false
+            return .success
+        }
     }
 
     func toggle(track: DiscoveryHome.Track) async {
         errorMessage = nil
         if currentTrackID == track.id {
-            if player?.timeControlStatus == .playing {
+            if isPlaying {
                 player?.pause()
+                isPlaying = false
             } else {
                 player?.play()
+                isPlaying = true
             }
             return
         }
@@ -196,15 +238,47 @@ private final class AudioPlayer: ObservableObject {
             let playback = try await APIClient.shared.playback(trackId: track.id, quality: "low")
             player?.pause()
             player = AVPlayer(url: playback.url)
+            currentTrack = track
+            currentPlayback = playback
             currentTrackID = track.id
+            isPlaying = true
+            updateNowPlaying()
             player?.play()
         } catch {
             currentTrackID = nil
+            isPlaying = false
             errorMessage = error.localizedDescription
         }
     }
 
+    private func updateNowPlaying() {
+        guard let track = currentTrack, let player else { return }
+        var info: [String: Any] = [
+            MPMediaItemPropertyTitle: track.title,
+            MPNowPlayingInfoPropertyPlaybackRate: player.rate
+        ]
+        if let duration = track.duration {
+            info[MPMediaItemPropertyPlaybackDuration] = duration
+        }
+        MPNowPlayingInfoCenter.default().nowPlayingInfo = info
+    }
+
+    @objc private func handleInterruption(_ notification: Notification) {
+        guard let typeValue = notification.userInfo?[AVAudioSessionInterruptionTypeKey] as? UInt,
+              let type = AVAudioSession.InterruptionType(rawValue: typeValue) else { return }
+        if type == .ended {
+            try? AVAudioSession.sharedInstance().setActive(true)
+        } else {
+            isPlaying = false
+        }
+    }
+
     deinit {
+        if let timeObserver { player?.removeTimeObserver(timeObserver) }
+        NotificationCenter.default.removeObserver(self)
+        MPRemoteCommandCenter.shared().playCommand.removeTarget(self)
+        MPRemoteCommandCenter.shared().pauseCommand.removeTarget(self)
+        UIApplication.shared.endReceivingRemoteControlEvents()
         player?.pause()
     }
 }
