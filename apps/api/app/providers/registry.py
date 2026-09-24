@@ -6,6 +6,7 @@ Selection uses priority, health, capabilities — never if provider == "x".
 
 from __future__ import annotations
 
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from app.core.logging import get_logger
@@ -17,6 +18,32 @@ from app.providers.base import (
     TrackMetadata,
 )
 from app.providers.mock import MockProvider
+
+
+class _Circuit:
+    def __init__(self, threshold: int = 3, cooldown_seconds: int = 30) -> None:
+        self.threshold = threshold
+        self.cooldown = timedelta(seconds=cooldown_seconds)
+        self.failures = 0
+        self.opened_at: datetime | None = None
+
+    def allow(self) -> bool:
+        if self.opened_at is None:
+            return True
+        if datetime.now(UTC) - self.opened_at >= self.cooldown:
+            self.opened_at = None
+            self.failures = 0
+            return True
+        return False
+
+    def success(self) -> None:
+        self.failures = 0
+        self.opened_at = None
+
+    def failure(self) -> None:
+        self.failures += 1
+        if self.failures >= self.threshold:
+            self.opened_at = datetime.now(UTC)
 
 logger = get_logger(__name__)
 
@@ -44,6 +71,7 @@ class ProviderManager:
 
     def __init__(self, registry: ProviderRegistry | None = None) -> None:
         self.registry = registry or ProviderRegistry()
+        self._circuits: dict[str, _Circuit] = {}
 
     async def search(
         self,
@@ -80,7 +108,16 @@ class ProviderManager:
         provider = self.registry.get(provider_name)
         if provider is None or not provider.is_available():
             return None
-        return await provider.get_track(provider_track_id)
+        circuit = self._circuits.setdefault(provider.name, _Circuit())
+        if not circuit.allow():
+            return None
+        try:
+            result = await provider.get_track(provider_track_id)
+            circuit.success()
+            return result
+        except Exception:
+            circuit.failure()
+            raise
 
     async def resolve(
         self,
@@ -92,7 +129,16 @@ class ProviderManager:
         provider = self.registry.get(provider_name)
         if provider is None or not provider.is_available():
             return None
-        return await provider.resolve(provider_track_id, quality=quality)
+        circuit = self._circuits.setdefault(provider.name, _Circuit())
+        if not circuit.allow():
+            return None
+        try:
+            result = await provider.resolve(provider_track_id, quality=quality)
+            circuit.success()
+            return result
+        except Exception:
+            circuit.failure()
+            raise
 
     async def preview(
         self,
@@ -102,7 +148,16 @@ class ProviderManager:
         provider = self.registry.get(provider_name)
         if provider is None or not provider.is_available():
             return None
-        return await provider.preview(provider_track_id)
+        circuit = self._circuits.setdefault(provider.name, _Circuit())
+        if not circuit.allow():
+            return None
+        try:
+            result = await provider.preview(provider_track_id)
+            circuit.success()
+            return result
+        except Exception:
+            circuit.failure()
+            raise
 
     async def health_all(self) -> dict[str, ProviderHealth]:
         out: dict[str, ProviderHealth] = {}
@@ -132,7 +187,7 @@ class ProviderManager:
         return candidates
 
 
-def create_default_registry(*, include_mock: bool = True) -> ProviderRegistry:
+def create_default_registry(*, include_mock: bool = False) -> ProviderRegistry:
     registry = ProviderRegistry()
     if include_mock:
         registry.register(MockProvider())
