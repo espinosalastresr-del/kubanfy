@@ -178,7 +178,7 @@ private final class AudioPlayer: ObservableObject {
     private var player: AVPlayer?
 
     init() {
-        try? AVAudioSession.sharedInstance().setCategory(.playback, mode: .music, options: [])
+        try? AVAudioSession.sharedInstance().setCategory(.playback, mode: .default, options: [])
         try? AVAudioSession.sharedInstance().setActive(true)
     }
 
