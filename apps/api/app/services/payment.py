@@ -86,7 +86,7 @@ class PaymentService:
             if existing:
                 # Never let a caller replay another user's idempotency key.
                 if existing.user_id != user_id:
-                    raise ConflictError("Idempotency key already belongs to another user") from None from None
+                    raise ConflictError("Idempotency key already belongs to another user") from None
                 return existing
 
         provider = self._providers.get(method)
@@ -118,7 +118,7 @@ class PaymentService:
             if existing is None:
                 raise
             if existing.user_id != user_id:
-                raise ConflictError("Idempotency key already belongs to another user")
+                raise ConflictError("Idempotency key already belongs to another user") from None
             return existing
         logger.info(
             "payment_order_created",
