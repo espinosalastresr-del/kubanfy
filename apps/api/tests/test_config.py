@@ -67,3 +67,21 @@ def test_production_requires_trusted_proxy_configuration() -> None:
             cors_origins="https://kubanfy.com",
             trusted_proxy_ips="",
         )
+
+
+def test_production_forces_rate_limit_fail_closed() -> None:
+    s = Settings(
+        environment=Environment.PRODUCTION,
+        jwt_secret_key="x" * 64,
+        super_admin_password="strong-production-password",
+        offline_license_private_key="private-key",
+        offline_license_public_key="public-key",
+        r2_endpoint="https://r2.example",
+        r2_access_key_id="key",
+        r2_secret_access_key="secret",
+        allowed_hosts="api.kubanfy.com",
+        cors_origins="https://kubanfy.com",
+        trusted_proxy_ips="10.0.0.1",
+        rate_limit_fail_open=True,
+    )
+    assert s.rate_limit_fail_open is False
