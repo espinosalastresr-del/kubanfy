@@ -209,6 +209,14 @@ class Settings(BaseSettings):
                 raise ValueError(
                     "OFFLINE_LICENSE_PRIVATE_KEY and OFFLINE_LICENSE_PUBLIC_KEY are required"
                 )
+            if not self.r2_configured:
+                raise ValueError("R2_ENDPOINT, R2_ACCESS_KEY_ID and R2_SECRET_ACCESS_KEY are required in production")
+            if self.allowed_hosts.strip() == "*":
+                raise ValueError("ALLOWED_HOSTS must not be '*' in production")
+            if not self.cors_origins_list:
+                raise ValueError("CORS_ORIGINS must contain at least one explicit origin in production")
+            if not self.trusted_proxy_ip_list:
+                raise ValueError("TRUSTED_PROXY_IPS must be configured in production")
         return self
 
     # -------------------------------------------------------------------------
