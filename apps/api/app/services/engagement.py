@@ -203,13 +203,20 @@ class EngagementService:
         return row, token
 
     async def complete_download(
-        self, *, user_id: UUID, token: str, size_bytes: int | None
+        self,
+        *,
+        user_id: UUID,
+        token: str,
+        size_bytes: int | None,
+        device_id: str | None = None,
     ) -> DownloadReceipt:
         row = await self.session.scalar(
             select(DownloadReceipt).where(DownloadReceipt.ticket_hash == _hash_token(token)).with_for_update()
         )
         if row is None or row.user_id != user_id:
             raise AuthError("Invalid download ticket")
+        if row.device_id is not None and row.device_id != device_id:
+            raise AuthError("Download ticket device mismatch")
         if row.completed_at is not None:
             return row
         if datetime.now(UTC) - row.issued_at > DOWNLOAD_TICKET_TTL:
