@@ -18,7 +18,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import Settings, get_settings
 from app.core.logging import get_logger
 from app.services.audio_validation import AudioValidationService
-from app.services.kby import pack\nfrom app.services.kby import pack
+from app.services.kby import pack
 from app.models.music import AudioQuality, CacheEntry, CacheEntryStatus
 from app.storage import StorageBucket, get_storage
 from app.storage.base import SignedUrl, StorageProvider
