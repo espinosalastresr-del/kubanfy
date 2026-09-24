@@ -54,7 +54,7 @@ export async function setOfflineUserId(userId: string): Promise<void> {
 export async function getOfflineUserId(): Promise<string | null> {
   try {
     const credentials = await Keychain.getGenericPassword({service: OFFLINE_USER_KEYCHAIN_SERVICE});
-    return credentials?.password || null;
+    return credentials === false ? null : credentials.password;
   } catch {
     return null;
   }
