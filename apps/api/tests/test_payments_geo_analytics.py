@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from app.core.exceptions import ConflictError
+from app.models.entitlement import PlanCode
 from app.models.payment import PaymentMethod, PaymentStatus
 from app.services.analytics import KNOWN_EVENT_TYPES
 from app.services.discovery import DEFAULT_WEIGHTS
@@ -57,13 +59,8 @@ def test_ranking_weights_only_use_server_qualified_engagement() -> None:
 
 def test_free_plan_quality_policy_is_low() -> None:
     # Free streaming is 128 kbps / LOW; persistent downloads remain premium-only.
-    from app.models.entitlement import PlanCode
-
     assert PlanCode.FREE.value == "free"
-    assert {"downloads": False, "quality_max": "low"}["quality_max"] == "low"
 
 
 def test_payment_idempotency_conflict_type_is_available() -> None:
-    from app.core.exceptions import ConflictError
-
     assert issubclass(ConflictError, Exception)
