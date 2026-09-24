@@ -61,6 +61,9 @@ services:
     region: oregon
     maxmemoryPolicy: allkeys-lru
     persistenceMode: off
+    ipAllowList:
+      - cidrBlock: 0.0.0.0/0
+        description: temporary staging access
 
 databases:
   - name: kubanfy-staging-db
