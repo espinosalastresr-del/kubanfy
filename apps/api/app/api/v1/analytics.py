@@ -77,7 +77,9 @@ async def ingest_event(
 ) -> dict[str, str]:
     geo = GeoService()
     ip = request.client.host if request.client else None
-    country = geo.resolve(ip=ip).country
+    forwarded_for = request.headers.get("x-forwarded-for")
+    real_ip = geo.resolve_client_ip(ip, forwarded_for=forwarded_for)
+    country = geo.resolve(ip=real_ip).country
     await AnalyticsService(session).ingest(
         body.event_type,
         event_id=body.event_id,
@@ -105,7 +107,9 @@ async def ingest_batch(
 ) -> dict[str, int]:
     geo = GeoService()
     ip = request.client.host if request.client else None
-    country = geo.resolve(ip=ip).country
+    forwarded_for = request.headers.get("x-forwarded-for")
+    real_ip = geo.resolve_client_ip(ip, forwarded_for=forwarded_for)
+    country = geo.resolve(ip=real_ip).country
     svc = AnalyticsService(session)
     raw = []
     for e in body.events:
@@ -137,7 +141,10 @@ async def start_playback(
     session: DbSession,
     user: OptionalUser,
 ) -> dict[str, Any]:
-    country = GeoService().resolve(ip=request.client.host if request.client else None).country
+    geo = GeoService()
+    ip = request.client.host if request.client else None
+    real_ip = geo.resolve_client_ip(ip, forwarded_for=request.headers.get("x-forwarded-for"))
+    country = geo.resolve(ip=real_ip).country
     row, token = await EngagementService(session).start_playback(
         user_id=user.id if user else None,
         device_id=body.device_id,
