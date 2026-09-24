@@ -145,8 +145,10 @@ async def music_download(
     user: CurrentUser,
 ) -> MusicDownloadResponse:
     """Requires authentication and premium entitlement for persistent downloads."""
+    geo = GeoService()
     ip = request.client.host if request.client else None
-    await AntiAbuseService().check_download(str(user.id), ip)
+    real_ip = geo.resolve_client_ip(ip, forwarded_for=request.headers.get("x-forwarded-for"))
+    await AntiAbuseService().check_download(str(user.id), real_ip)
     entitlement = EntitlementService(session)
     await entitlement.require_download_access(user.id)
     await entitlement.require_quality_access(user.id, body.quality)
@@ -281,8 +283,10 @@ async def music_content_stream(
             bucket=bucket,
         )
 
+    geo = GeoService()
     ip = request.client.host if request.client else None
-    await AntiAbuseService().check_download(str(user.id), ip)
+    real_ip = geo.resolve_client_ip(ip, forwarded_for=request.headers.get("x-forwarded-for"))
+    await AntiAbuseService().check_download(str(user.id), real_ip)
     entitlement = EntitlementService(session)
     await entitlement.require_track_access(user.id, track_id)
     await entitlement.require_quality_access(user.id, quality)
