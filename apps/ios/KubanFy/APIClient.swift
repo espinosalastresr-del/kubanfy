@@ -62,7 +62,7 @@ struct LoginResponse: Codable { let user: UserResponse; let tokens: TokenRespons
 enum APIError: LocalizedError {
     case invalidURL; case http(Int, String); case decoding; case missingSession
     var errorDescription: String? {
-        switch self { case .invalidURL: return "URL de API inválida"; case let .http(code, message): return "\(message) (HTTP \(code))"; case .decoding: return "Respuesta inválida del servidor"; case .missingSession: return "No hay una sesión activa" }
+        switch self { case .invalidURL: return "URL de API inválida"; case let .http(code, message): return "(message) (HTTP (code))"; case .decoding: return "Respuesta inválida del servidor"; case .missingSession: return "No hay una sesión activa" }
     }
 }
 
@@ -76,12 +76,12 @@ private final class KeychainStore {
         guard SecItemAdd(query as CFDictionary, nil) == errSecSuccess else { throw APIError.http(0, "No se pudo guardar la credencial") }
     }
     func load(_ account: String) -> String? {
-        let query: [String: Any] = [kSecClass as String: kSecClassGenericPassword, kSecAttrService as String: service, kSecAttrAccount as String: account, kSecReturnData as String: true, kSecMatchLimit as String: kSecMatchLimitOne]
+        let query: [String: Any] = [kSecClass as String: kSecClassGenericPassword, kSecAttrService as String, kSecAttrAccount as String, kSecReturnData as String: true, kSecMatchLimit as String: kSecMatchLimitOne]
         var item: CFTypeRef?
         guard SecItemCopyMatching(query as CFDictionary, &item) == errSecSuccess, let data = item as? Data else { return nil }
         return String(data: data, encoding: .utf8)
     }
-    func remove(_ account: String) { SecItemDelete([kSecClass as String: kSecClassGenericPassword, kSecAttrService as String: service, kSecAttrAccount as String: account] as CFDictionary) }
+    func remove(_ account: String) { SecItemDelete([kSecClass as String: kSecClassGenericPassword, kSecAttrService as String, kSecAttrAccount as String] as CFDictionary) }
 }
 
 final class APIClient {
@@ -89,10 +89,17 @@ final class APIClient {
     private let baseURL: URL
     private let keychain = KeychainStore()
     private let decoder: JSONDecoder
+    private let session: URLSession
     private init() {
         let raw = ProcessInfo.processInfo.environment["KUBANFY_API_URL"] ?? "https://api.kubanfy.com/v1"
-        baseURL = URL(string: raw.trimmingCharacters(in: CharacterSet(charactersIn: "/")) )!
+        baseURL = URL(string: raw.trimmingCharacters(in: CharacterSet(charactersIn: "/")))!
         decoder = JSONDecoder(); decoder.dateDecodingStrategy = .iso8601
+        let configuration = URLSessionConfiguration.default
+        configuration.waitsForConnectivity = true
+        configuration.timeoutIntervalForRequest = 30
+        configuration.timeoutIntervalForResource = 120
+        configuration.httpMaximumConnectionsPerHost = 4
+        session = URLSession(configuration: configuration)
     }
     var deviceID: String {
         if let existing = keychain.load("device_id") { return existing }
@@ -114,13 +121,14 @@ final class APIClient {
     func context() async throws -> AuthContext { let data = try await performRequest(path: "/auth/context"); return try decoder.decode(AuthContext.self, from: data) }
     func discoveryHome() async throws -> DiscoveryHome { let data = try await performRequest(path: "/discovery/home"); return try decoder.decode(DiscoveryHome.self, from: data) }
     func playback(trackId: UUID, quality: String = "low") async throws -> PlaybackResponse {
-        var components = URLComponents(url: baseURL.appendingPathComponent("music/play/\(trackId.uuidString)"), resolvingAgainstBaseURL: false)
+        var components = URLComponents(url: baseURL.appendingPathComponent("music/play/(trackId.uuidString)"), resolvingAgainstBaseURL: false)
         components?.queryItems = [URLQueryItem(name: "quality", value: quality.lowercased() == "medium" || quality.lowercased() == "lossless" ? quality.lowercased() : "low")]
         guard let url = components?.url else { throw APIError.invalidURL }
         return try decoder.decode(PlaybackResponse.self, from: try await performRequest(url: url))
     }
     func startPlayback(trackId: UUID, quality: String = "low", sessionId: String? = nil) async throws -> PlaybackStartResponse {
-        let body: [String: Any] = ["track_id": trackId.uuidString, "quality": quality, "device_id": deviceID] .merging(sessionId.map { ["session_id": $0] } ?? [:]) { _, new in new }
+        var body: [String: Any] = ["track_id": trackId.uuidString, "quality": quality, "device_id": deviceID]
+        if let sessionId { body["session_id"] = sessionId }
         let data = try await performRequest(path: "/analytics/playback/start", method: "POST", body: JSONSerialization.data(withJSONObject: body))
         return try decoder.decode(PlaybackStartResponse.self, from: data)
     }
@@ -143,14 +151,14 @@ final class APIClient {
     private func performRequest(url: URL, method: String = "GET", body: Data? = nil, allowRefresh: Bool = true) async throws -> Data {
         var request = URLRequest(url: url); request.httpMethod = method; request.httpBody = body
         request.setValue("application/json", forHTTPHeaderField: "Accept"); request.setValue("application/json", forHTTPHeaderField: "Content-Type"); request.setValue(deviceID, forHTTPHeaderField: "X-Device-ID")
-        if let token = keychain.load("access") { request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization") }
-        let (data, response) = try await URLSession.shared.data(for: request)
+        if let token = keychain.load("access") { request.setValue("Bearer (token)", forHTTPHeaderField: "Authorization") }
+        let (data, response) = try await session.data(for: request)
         guard let http = response as? HTTPURLResponse else { throw APIError.invalidURL }
         guard (200..<300).contains(http.statusCode) else {
             if http.statusCode == 401, allowRefresh, keychain.load("access") != nil, keychain.load("refresh") != nil {
                 do { try await refresh(); return try await performRequest(url: url, method: method, body: body, allowRefresh: false) } catch { logout() }
             }
-            let message = (try? JSONDecoder().decode(APIErrorEnvelope.self, from: data))?.error.message ?? "Error HTTP \(http.statusCode)"
+            let message = (try? JSONDecoder().decode(APIErrorEnvelope.self, from: data))?.error.message ?? "Error HTTP (http.statusCode)"
             throw APIError.http(http.statusCode, message)
         }
         return data
@@ -158,4 +166,3 @@ final class APIClient {
 }
 private struct APIErrorEnvelope: Decodable { let error: APIErrorBody }
 private struct APIErrorBody: Decodable { let message: String }
-private extension Dictionary where Key == String, Value == Any { func merging(_ other: [String: Any], _ combine: (Any, Any) -> Any) -> [String: Any] { var copy = self; for (key, value) in other { copy[key] = value }; return copy } }
