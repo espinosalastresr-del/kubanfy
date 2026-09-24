@@ -131,7 +131,7 @@ class MainActivity : Activity() {
         }
         val query = EditText(this).apply {
             hint = "Buscar canciones o artistas"
-            singleLine = true
+            setSingleLine(true)
             inputType = android.text.InputType.TYPE_CLASS_TEXT
         }
         val search = Button(this).apply {
