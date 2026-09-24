@@ -12,6 +12,7 @@ struct ContentView: View {
     @State private var discovery: DiscoveryHome?
     @State private var errorMessage: String?
     @State private var isLoading = false
+    @State private var saveCredentials = false
     @State private var showRecoveryInfo = false
     @State private var showRegister = false
     @StateObject private var audioPlayer = AudioPlayer()
@@ -51,6 +52,8 @@ struct ContentView: View {
                     }
                     Text("Tu música. Tu isla. Tu ritmo.").font(.title3.weight(.semibold)).foregroundStyle(.white.opacity(0.72)).padding(.top, 12)
                     Text("Inicia sesión para continuar").font(.subheadline).foregroundStyle(.white.opacity(0.48)).padding(.top, 5)
+                    Toggle(isOn: $saveCredentials) { Text("Guardar credenciales").font(.subheadline) }
+                        .tint(.green).padding(.top, 16)
 
                     VStack(spacing: 14) {
                         loginField("Correo electrónico", "envelope", $email)
@@ -108,7 +111,13 @@ struct ContentView: View {
             .scrollDismissesKeyboard(.interactively).scrollIndicators(.hidden)
         }
         .ignoresSafeArea(.keyboard, edges: .bottom)
-        .sheet(isPresented: $showRegister) { RegisterView() }
+        .sheet(isPresented: $showRegister) {
+            RegisterView { registeredEmail, registeredPassword in
+                email = registeredEmail
+                password = registeredPassword
+                saveCredentials = true
+            }
+        }
     }
 
     private var canSubmit: Bool {
@@ -210,13 +219,18 @@ struct ContentView: View {
 
     private func restoreSession() async {
         guard APIClient.shared.hasStoredSession else { return }
+        if let cachedUser = APIClient.shared.cachedUser() {
+            user = cachedUser
+        }
         do {
+            try await APIClient.shared.refreshIfNeeded()
             let restoredUser = try await APIClient.shared.me()
             user = restoredUser
+            APIClient.shared.cacheUser(restoredUser)
             authContext = try await APIClient.shared.context()
             discovery = try await APIClient.shared.discoveryHome()
         } catch {
-            APIClient.shared.logout(); user = nil
+            // Network failure must not erase the local authenticated shell.
         }
     }
 
@@ -225,8 +239,9 @@ struct ContentView: View {
         isLoading = true; errorMessage = nil
         defer { isLoading = false }
         do {
-            let response = try await APIClient.shared.login(email: email, password: password)
+            let response = try await APIClient.shared.login(email: email, password: password, saveCredentials: saveCredentials)
             user = response.user
+            APIClient.shared.cacheUser(response.user)
             authContext = try await APIClient.shared.context()
             discovery = try await APIClient.shared.discoveryHome()
         } catch {
