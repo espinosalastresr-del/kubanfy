@@ -83,3 +83,19 @@ async def test_corrupt_rejected(service: AudioValidationService, tmp_path: Path)
     bad.write_bytes(b"not-an-audio-file-at-all")
     with pytest.raises(ValidationError):
         await service.probe_file(bad)
+
+
+def test_seed_demo_audio_is_valid_wav() -> None:
+    """The staging bootstrap fixture must be a real playable WAV, not a URL stub."""
+    import io
+    import wave
+
+    from scripts.seed import _demo_wav_bytes
+
+    data = _demo_wav_bytes()
+    with wave.open(io.BytesIO(data), "rb") as wav:
+        assert wav.getnchannels() == 2
+        assert wav.getframerate() == 44100
+        assert wav.getsampwidth() == 2
+        assert wav.getnframes() == 352800
+        assert abs(wav.getnframes() / wav.getframerate() - 8.0) < 0.001
