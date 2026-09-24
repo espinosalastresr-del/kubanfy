@@ -64,3 +64,11 @@ def test_free_plan_quality_policy_is_low() -> None:
 
 def test_payment_idempotency_conflict_type_is_available() -> None:
     assert issubclass(ConflictError, Exception)
+
+
+def test_geo_uses_forwarded_for_only_from_trusted_proxy() -> None:
+    from app.core.config import Settings
+
+    geo = GeoService(Settings(trusted_proxy_ips="10.0.0.1"))
+    assert geo.resolve_client_ip("10.0.0.1", forwarded_for="8.8.8.8, 10.0.0.2") == "8.8.8.8"
+    assert geo.resolve_client_ip("8.8.8.8", forwarded_for="1.2.3.4") == "8.8.8.8"
