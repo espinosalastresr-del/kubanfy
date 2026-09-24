@@ -421,6 +421,8 @@ class MusicEngine:
             raise NotFoundError("Track has no first-party playable asset")
         if not asset.content_hash or not asset.storage_key:
             raise NotFoundError("Track asset is incomplete")
+        if not asset.storage_key.endswith(".kby"):
+            raise NotFoundError("Track asset is not in protected KBY format")
 
         signed = await self.storage.signed_url(
             asset.storage_key,
