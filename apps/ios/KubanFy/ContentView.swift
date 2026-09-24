@@ -350,15 +350,6 @@ private final class AudioPlayer: ObservableObject {
             return .success
         }
 
-        timeObserver = player?.addPeriodicTimeObserver(
-            forInterval: CMTime(seconds: 1, preferredTimescale: 600),
-            queue: .main
-        ) { [weak self] time in
-            Task { @MainActor in
-                self?.position = max(0, time.seconds.isFinite ? time.seconds : 0)
-                self?.updateNowPlaying()
-            }
-        }
     }
 
     func toggle(track: DiscoveryHome.Track) async {
@@ -408,6 +399,15 @@ private final class AudioPlayer: ObservableObject {
             player.replaceCurrentItem(with: item)
         } else {
             player = AVPlayer(playerItem: item)
+            timeObserver = player?.addPeriodicTimeObserver(
+                forInterval: CMTime(seconds: 1, preferredTimescale: 600),
+                queue: .main
+            ) { [weak self] time in
+                Task { @MainActor in
+                    self?.position = max(0, time.seconds.isFinite ? time.seconds : 0)
+                    self?.updateNowPlaying()
+                }
+            }
         }
         let target = max(0, position)
         if target > 0 {
