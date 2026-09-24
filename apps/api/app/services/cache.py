@@ -16,7 +16,9 @@ from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import Settings, get_settings
-from app.core.logging import get_logger\nfrom app.services.kby import pack
+from app.core.logging import get_logger
+from app.services.audio_validation import AudioValidationService
+from app.services.kby import pack\nfrom app.services.kby import pack
 from app.models.music import AudioQuality, CacheEntry, CacheEntryStatus
 from app.storage import StorageBucket, get_storage
 from app.storage.base import SignedUrl, StorageProvider
@@ -90,14 +92,35 @@ class CacheService:
         demand: str = "medium",
         content_hash: str | None = None,
     ) -> CacheEntry:
-        content_hash = content_hash or hashlib.sha256(body).hexdigest()
-        storage_key = f"cache/{provider}/{provider_track_id}/{quality.value}/{content_hash[:16]}"
+        suffix = {
+            "audio/flac": ".flac",
+            "audio/mp4": ".m4a",
+            "audio/mpeg": ".mp3",
+            "audio/ogg": ".ogg",
+            "audio/opus": ".opus",
+            "audio/wav": ".wav",
+        }.get(content_type.lower(), ".bin")
+        probe = await AudioValidationService(self.settings).validate_bytes(
+            bytes(body),
+            suffix=suffix,
+        )
+        if content_hash is not None and content_hash != probe.content_hash:
+            raise ValueError("Acquired audio content hash mismatch")
+        content_hash = probe.content_hash
+        kby_body = pack(
+            bytes(body),
+            content_hash=content_hash,
+            quality=quality.value,
+            content_type=content_type,
+            settings=self.settings,
+        )
+        storage_key = f"cache/{provider}/{provider_track_id}/{quality.value}/{content_hash[:16]}.kby"
 
         await self.storage.put(
             storage_key,
-            body,
+            kby_body,
             bucket=StorageBucket.CACHE,
-            content_type=content_type,
+            content_type="application/vnd.kubanfy.kby",
         )
 
         expires_at = datetime.now(UTC) + timedelta(hours=self._ttl_hours(demand))
@@ -138,7 +161,7 @@ class CacheService:
             provider=provider,
             provider_track_id=provider_track_id,
             quality=quality.value,
-            size=len(body),
+            size=len(kby_body),
         )
         return entry
 
