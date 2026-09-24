@@ -14,6 +14,7 @@ from app.schemas.music import (
     MusicDownloadResponse,
     MusicPreviewRequest,
     MusicPreviewResponse,
+    MusicPlaybackResponse,
     MusicUpdateRequest,
     MusicUpdateResponse,
     TrackSearchResult,
@@ -97,6 +98,39 @@ async def music_preview(
         expires_in_seconds=3600,
         duration_seconds=result.source.duration_seconds,
         codec=result.source.codec,
+    )
+
+
+@router.get("/play/{track_id}", response_model=MusicPlaybackResponse)
+async def music_play(
+    track_id: UUID,
+    request: Request,
+    session: DbSession,
+    user: CurrentUser,
+    quality: str = Query("low"),
+) -> MusicPlaybackResponse:
+    """Return a short-lived signed URL for authenticated streaming playback."""
+    ip = request.client.host if request.client else None
+    await AntiAbuseService().check_download(str(user.id), ip)
+    entitlement = EntitlementService(session)
+    await entitlement.require_track_access(user.id, track_id)
+    await entitlement.require_quality_access(user.id, quality)
+    engine = MusicEngine(session, provider_manager=_manager)
+    result = await engine.download_by_track_id(
+        track_id=track_id,
+        quality=quality,
+        user_id=user.id,
+    )
+    if result.signed_url is None:
+        from app.core.exceptions import NotFoundError
+
+        raise NotFoundError("Playable audio URL unavailable")
+    return MusicPlaybackResponse(
+        url=result.signed_url.url,
+        expires_in_seconds=result.signed_url.expires_in_seconds,
+        quality=result.quality,
+        track_id=track_id,
+        content_hash=result.content_hash,
     )
 
 
