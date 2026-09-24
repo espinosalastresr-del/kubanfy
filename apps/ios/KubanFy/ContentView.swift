@@ -202,6 +202,9 @@ private final class AudioPlayer: ObservableObject {
     private var heartbeatTask: Task<Void, Never>?
     private var renewalTask: Task<Void, Never>?
     private var notificationTokens: [NSObjectProtocol] = []
+    private var recoveryTask: Task<Void, Never>?
+    private var recoveryAttempts = 0
+    private var playbackGeneration = UUID()
 
     init() {
         let session = AVAudioSession.sharedInstance()
@@ -218,6 +221,17 @@ private final class AudioPlayer: ObservableObject {
             }
         }
         notificationTokens.append(interruption)
+
+        let failed = NotificationCenter.default.addObserver(
+            forName: .AVPlayerItemFailedToPlayToEndTime,
+            object: nil,
+            queue: .main
+        ) { [weak self] notification in
+            Task { @MainActor in
+                await self?.handlePlaybackFailure(notification)
+            }
+        }
+        notificationTokens.append(failed)
 
         let ended = NotificationCenter.default.addObserver(
             forName: .AVPlayerItemDidPlayToEndTime,
@@ -274,6 +288,10 @@ private final class AudioPlayer: ObservableObject {
         do {
             heartbeatTask?.cancel()
             renewalTask?.cancel()
+            recoveryTask?.cancel()
+            recoveryAttempts = 0
+            playbackGeneration = UUID()
+            let generation = playbackGeneration
             let session = try await APIClient.shared.startPlayback(
                 trackId: track.id,
                 quality: "low"
@@ -281,6 +299,7 @@ private final class AudioPlayer: ObservableObject {
             playbackToken = session.playbackToken
             playbackSessionID = session.playbackSessionId
             let playback = try await APIClient.shared.playback(trackId: track.id, quality: "low")
+            guard generation == playbackGeneration else { return }
             currentTrack = track
             currentTrackID = track.id
             currentPlayback = playback
@@ -359,6 +378,42 @@ private final class AudioPlayer: ObservableObject {
         }
     }
 
+    private func handlePlaybackFailure(_ notification: Notification) async {
+        guard currentTrackID != nil, currentTrack != nil else { return }
+        guard recoveryTask == nil else { return }
+        let generation = playbackGeneration
+        let savedPosition = position
+        recoveryTask = Task { [weak self] in
+            guard let self else { return }
+            for attempt in 0..<3 {
+                guard !Task.isCancelled, generation == self.playbackGeneration else { return }
+                self.recoveryAttempts = attempt + 1
+                let delay = UInt64(1 << attempt)
+                try? await Task.sleep(for: .seconds(delay))
+                guard !Task.isCancelled, generation == self.playbackGeneration,
+                      let track = self.currentTrack else { return }
+                do {
+                    let playback = try await APIClient.shared.playback(trackId: track.id, quality: "low")
+                    guard generation == self.playbackGeneration, self.currentTrackID == track.id else { return }
+                    self.currentPlayback = playback
+                    self.replaceItem(with: playback.url, position: savedPosition)
+                    self.isPlaying = true
+                    self.errorMessage = nil
+                    self.startRenewalLoop(expiresIn: playback.expiresInSeconds)
+                    return
+                } catch {
+                    continue
+                }
+            }
+            guard generation == self.playbackGeneration else { return }
+            self.isPlaying = false
+            self.errorMessage = "No se pudo recuperar la reproducción. Comprueba la conexión e inténtalo de nuevo."
+        }
+        await recoveryTask?.value
+        recoveryTask = nil
+        recoveryAttempts = 0
+    }
+
     private func sendHeartbeat(completed: Bool) async {
         guard let token = playbackToken else { return }
         do {
@@ -431,6 +486,7 @@ private final class AudioPlayer: ObservableObject {
     private func resetPlaybackState() {
         heartbeatTask?.cancel()
         renewalTask?.cancel()
+        recoveryTask?.cancel()
         heartbeatTask = nil
         renewalTask = nil
         playbackToken = nil
@@ -440,11 +496,13 @@ private final class AudioPlayer: ObservableObject {
         currentTrackID = nil
         position = 0
         isPlaying = false
+        playbackGeneration = UUID()
     }
 
     deinit {
         heartbeatTask?.cancel()
         renewalTask?.cancel()
+        recoveryTask?.cancel()
         if let timeObserver, let player {
             player.removeTimeObserver(timeObserver)
         }
