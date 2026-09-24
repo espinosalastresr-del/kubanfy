@@ -1,0 +1,26 @@
+// !$*UTF8*$!
+{
+ archiveVersion = 1;
+ objectVersion = 56;
+ objects = {
+ A1 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KubanFyApp.swift; sourceTree = "<group>";};
+ A2 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>";};
+ A3 = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>";};
+ A4 = {isa = PBXFileReference; explicitFileType = wrapper.application; path = KubanFy.app; sourceTree = BUILT_PRODUCTS_DIR;};
+ B1 = {isa = PBXBuildFile; fileRef = A1;};
+ B2 = {isa = PBXBuildFile; fileRef = A2;};
+ G1 = {isa = PBXGroup; children = (G2,G3); sourceTree = "<group>";};
+ G2 = {isa = PBXGroup; children = (A1,A2); path = KubanFy; sourceTree = "<group>";};
+ G3 = {isa = PBXGroup; children = (A4); name = Products; sourceTree = "<group>";};
+ S1 = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (B1,B2); runOnlyForDeploymentPostprocessing = 0;};
+ R1 = {isa = PBXResourcesBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0;};
+ F1 = {isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0;};
+ T1 = {isa = PBXNativeTarget; buildConfigurationList = C2; buildPhases = (S1,F1,R1); buildRules = (); dependencies = (); name = KubanFy; productName = KubanFy; productReference = A4; productType = "com.apple.product-type.application";};
+ P1 = {isa = PBXProject; buildConfigurationList = C1; compatibilityVersion = "Xcode 15.0"; developmentRegion = en; mainGroup = G1; productRefGroup = G3; projectDirPath = ""; projectRoot = ""; targets = (T1);};
+ C1 = {isa = XCConfigurationList; buildConfigurations = (D1,D2); defaultConfigurationName = Release;};
+ C2 = {isa = XCConfigurationList; buildConfigurations = (D1,D2); defaultConfigurationName = Release;};
+ D1 = {isa = XCBuildConfiguration; buildSettings = {PRODUCT_BUNDLE_IDENTIFIER = com.kubanfy.ios; SWIFT_VERSION = 5.0; INFOPLIST_FILE = KubanFy/Info.plist; IPHONEOS_DEPLOYMENT_TARGET = 16.0; TARGETED_DEVICE_FAMILY = "1,2";}; name = Debug;};
+ D2 = {isa = XCBuildConfiguration; buildSettings = {PRODUCT_BUNDLE_IDENTIFIER = com.kubanfy.ios; SWIFT_VERSION = 5.0; INFOPLIST_FILE = KubanFy/Info.plist; IPHONEOS_DEPLOYMENT_TARGET = 16.0; TARGETED_DEVICE_FAMILY = "1,2";}; name = Release;};
+ };
+ rootObject = P1;
+}
