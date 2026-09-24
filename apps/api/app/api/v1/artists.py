@@ -570,14 +570,11 @@ async def upload_track(
 ) -> TrackUploadResponse:
     if not file.filename:
         raise ValidationError("Filename required")
-    data = await file.read()
-    if not data:
-        raise ValidationError("Empty file")
     result = await ArtistUploadService(session).upload_track(
         user_id=user.id,
         artist_id=artist_id,
         title=title,
-        file_bytes=data,
+        file=file.file,
         filename=file.filename,
         accept_license=accept_license,
         explicit=explicit,
