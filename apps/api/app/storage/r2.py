@@ -12,6 +12,7 @@ from typing import Any, BinaryIO
 
 import aioboto3
 from botocore.config import Config
+from botocore.exceptions import ClientError
 
 from app.core.config import Settings, get_settings
 from app.core.exceptions import StorageError
@@ -117,8 +118,11 @@ class R2Storage(StorageProvider):
                 )
                 async with resp["Body"] as stream:
                     return await stream.read()
-        except client.exceptions.NoSuchKey:  # type: ignore[name-defined]
-            raise StorageError("Object not found", status_code=404) from None
+        except ClientError as exc:
+            if exc.response.get("Error", {}).get("Code") in {"NoSuchKey", "404", "NoSuchBucket"}:
+                raise StorageError("Object not found", status_code=404) from exc
+            logger.exception("r2_get_failed", key=key)
+            raise StorageError(f"Failed to get object: {type(exc).__name__}") from exc
         except Exception as exc:
             if "NoSuchKey" in type(exc).__name__ or "404" in str(exc):
                 raise StorageError("Object not found", status_code=404) from exc
