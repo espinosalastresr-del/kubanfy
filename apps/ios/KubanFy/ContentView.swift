@@ -76,7 +76,10 @@ struct ContentView: View {
                 }
             }
             Section("KubanFy") {
-                ForEach(["Inicio", "Buscar", "Biblioteca", "Playlists"], id: \.self) { Text($0) }
+                NavigationLink("Buscar") { SearchView() }
+                Text("Inicio")
+                Text("Biblioteca")
+                Text("Playlists")
                 if context?.isArtist == true { Text("Panel de artista") }
                 if context?.isAdmin == true { Text("Administración") }
             }
@@ -101,6 +104,66 @@ struct ContentView: View {
             discovery = try await APIClient.shared.discoveryHome()
         } catch {
             errorMessage = error.localizedDescription
+        }
+    }
+}
+
+
+private struct SearchView: View {
+    @State private var query = ""
+    @State private var results: [TrackSearchResult] = []
+    @State private var errorMessage: String?
+    @State private var isLoading = false
+
+    var body: some View {
+        List {
+            Section {
+                TextField("Canción o artista", text: $query)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+                Button(isLoading ? "Buscando…" : "Buscar") {
+                    Task { await performSearch() }
+                }
+                .disabled(isLoading || query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            }
+
+            if let errorMessage {
+                Section {
+                    Text(errorMessage).foregroundStyle(.red)
+                }
+            }
+
+            Section("Resultados") {
+                if results.isEmpty && !isLoading {
+                    Text("No hay resultados todavía.")
+                        .foregroundStyle(.secondary)
+                }
+                ForEach(results) { track in
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(track.title).font(.headline)
+                        Text(track.artists.joined(separator: ", "))
+                            .foregroundStyle(.secondary)
+                        if let album = track.album {
+                            Text(album)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                }
+            }
+        }
+        .navigationTitle("Buscar")
+    }
+
+    private func performSearch() async {
+        isLoading = true
+        errorMessage = nil
+        defer { isLoading = false }
+        do {
+            results = try await APIClient.shared.search(query: query)
+        } catch {
+            errorMessage = error.localizedDescription
+            results = []
         }
     }
 }
