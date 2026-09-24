@@ -130,6 +130,9 @@ class Settings(BaseSettings):
     rate_limit_download: int = 20
     rate_limit_preview: int = 30
     rate_limit_upload: int = 10
+    # If true, sensitive rate limits allow traffic when Redis is unavailable.
+    # Production forces fail-closed unless explicitly changed in a future policy.
+    rate_limit_fail_open: bool = True
 
     # -------------------------------------------------------------------------
     # Geo
@@ -194,6 +197,8 @@ class Settings(BaseSettings):
     @model_validator(mode="after")
     def production_guards(self) -> Settings:
         if self.environment == Environment.PRODUCTION:
+            # Redis-backed abuse controls must remain effective in production.
+            self.rate_limit_fail_open = False
             if self.debug:
                 raise ValueError("DEBUG must be false in production")
             if (
