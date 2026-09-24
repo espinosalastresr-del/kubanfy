@@ -376,10 +376,13 @@ class ArtistUploadService:
             derivative_assets: list[AudioAsset] = []
             for output in derivative_outputs:
                 key = f"artists/{artist_id}/tracks/{track_id}/{generation}/{output.quality.value}/{output.probe.content_hash[:16]}.m4a"
-                data = output.path.read_bytes()
-                await self.storage.put(
-                    key, data, bucket=StorageBucket.PERMANENT, content_type="audio/mp4"
-                )
+                with output.path.open("rb") as derivative_file:
+                    await self.storage.put(
+                        key,
+                        derivative_file,
+                        bucket=StorageBucket.PERMANENT,
+                        content_type="audio/mp4",
+                    )
                 written_keys.append(key)
                 asset = AudioAsset(
                     track_id=track_id,
