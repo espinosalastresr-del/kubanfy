@@ -18,7 +18,9 @@ from app.core.security import (
     hash_password,
     verify_password,
 )
+from app.models.artist_member import ArtistMember
 from app.models.device import SessionStatus
+from app.models.rbac import Role, UserRole
 from app.models.user import User, UserStatus
 from app.schemas.auth import LoginRequest, RegisterRequest, TokenResponse, UserResponse
 from app.services.session import SessionService
@@ -167,6 +169,22 @@ class AuthService:
 
     async def get_user_by_id(self, user_id: UUID) -> User | None:
         return await self.session.get(User, user_id)
+
+    async def get_access_context(self, user_id: UUID) -> tuple[list[str], list[UUID]]:
+        role_rows = await self.session.execute(
+            select(Role.name)
+            .join(UserRole, UserRole.role_id == Role.id)
+            .where(UserRole.user_id == user_id)
+            .order_by(Role.name)
+        )
+        roles = list(role_rows.scalars().all())
+        artist_rows = await self.session.execute(
+            select(ArtistMember.artist_id)
+            .where(ArtistMember.user_id == user_id)
+            .order_by(ArtistMember.artist_id)
+        )
+        artist_ids = list(artist_rows.scalars().all())
+        return roles, artist_ids
 
     @staticmethod
     def to_response(user: User) -> UserResponse:
