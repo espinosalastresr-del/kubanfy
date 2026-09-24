@@ -51,6 +51,14 @@ class MusicDownloadRequest(BaseModel):
     device_id: str | None = Field(default=None, max_length=128)
 
 
+class MusicPlaybackResponse(BaseModel):
+    url: str
+    expires_in_seconds: int
+    quality: str
+    track_id: UUID
+    content_hash: str | None = None
+
+
 class MusicDownloadResponse(BaseModel):
     url: str | None = None
     expires_in_seconds: int | None = None
