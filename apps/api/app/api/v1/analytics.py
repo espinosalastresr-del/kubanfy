@@ -205,6 +205,7 @@ async def issue_download_ticket(
 @router.post("/downloads/complete")
 async def complete_download(
     body: DownloadCompleteIn,
+    request: Request,
     session: DbSession,
     user: CurrentUser,
 ) -> dict[str, Any]:
@@ -212,6 +213,7 @@ async def complete_download(
         user_id=user.id,
         token=body.ticket,
         size_bytes=body.size_bytes,
+        device_id=body.device_id or request.headers.get("X-Device-ID"),
     )
     return {"qualified": row.completed_at is not None}
 
