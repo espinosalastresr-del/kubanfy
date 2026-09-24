@@ -29,7 +29,7 @@ Cliente (App móvil unificada: listener + artist + admin)
 
 ## Cliente móvil unificado
 
-Una sola app React Native CLI + TypeScript atiende:
+El cliente se implementa como aplicaciones nativas por plataforma: Kotlin en Android y Swift/SwiftUI en iOS. Ambas atienden:
 
 - **Listener** — todos los usuarios autenticados
 - **Artist** — roles ARTIST / ARTIST_MANAGER
@@ -38,7 +38,7 @@ Una sola app React Native CLI + TypeScript atiende:
 El conmutador de modo es solo UI. **La autorización real es del API** (JWT + RBAC + audit).
 No se confía en el cliente para roles, país ni entitlements.
 
-Builds de release: GitHub Actions → APK (Android) e IPA (iOS).
+Builds de release: GitHub Actions → APK (Android) e IPA (iOS), con CI separado por plataforma.
 
 ## Principios
 
