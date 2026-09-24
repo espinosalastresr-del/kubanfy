@@ -8,7 +8,9 @@ android {
         minSdk = 26
         targetSdk = 35
         versionCode = 1
-        versionName = "0.1.0"\n        buildConfigField("String", "KUBANFY_API_URL", "\"https://api.kubanfy.com/v1\"")\n
+        versionName = "0.1.0"
+        buildConfigField("String", "KUBANFY_API_URL", "\"https://api.kubanfy.com/v1\"")
+
     }
     buildTypes {
         release {
