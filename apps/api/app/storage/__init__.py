@@ -41,7 +41,6 @@ def get_storage() -> StorageProvider:
     if settings.environment in (Environment.DEVELOPMENT, Environment.TEST):
         logger.info("storage_backend", backend="local")
         return LocalStorage()
-    # Production without R2 is a misconfiguration — still return local
-    # but log loudly so ops notices.
+    # Production without R2 must never silently downgrade to local disk.
     logger.error("storage_r2_not_configured_in_non_dev")
-    return LocalStorage()
+    raise RuntimeError("R2 storage is required outside development/test")
