@@ -6,7 +6,7 @@ from typing import Any
 from uuid import UUID
 
 from fastapi import APIRouter, Request
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from app.api.deps import CurrentUser, DbSession, OptionalUser
 from app.services.analytics import AnalyticsService
@@ -29,6 +29,13 @@ class AnalyticsEventIn(BaseModel):
     platform: str | None = Field(default=None, max_length=32)
     metadata: dict[str, Any] | None = None
 
+
+    @field_validator("metadata")
+    @classmethod
+    def validate_metadata(cls, value: dict[str, Any] | None) -> dict[str, Any] | None:
+        if value is not None and len(value) > 32:
+            raise ValueError("metadata contains too many keys")
+        return value
 
 class AnalyticsBatchIn(BaseModel):
     events: list[AnalyticsEventIn] = Field(max_length=100)
@@ -81,6 +88,9 @@ async def ingest_event(
     forwarded_for = request.headers.get("x-forwarded-for")
     real_ip = geo.resolve_client_ip(ip, forwarded_for=forwarded_for)
     country = geo.resolve(ip=real_ip).country
+    await AntiAbuseService().check_analytics(
+        real_ip, str(user.id) if user else None
+    )
     await AnalyticsService(session).ingest(
         body.event_type,
         event_id=body.event_id,
@@ -111,6 +121,9 @@ async def ingest_batch(
     forwarded_for = request.headers.get("x-forwarded-for")
     real_ip = geo.resolve_client_ip(ip, forwarded_for=forwarded_for)
     country = geo.resolve(ip=real_ip).country
+    await AntiAbuseService().check_analytics(
+        real_ip, str(user.id) if user else None
+    )
     svc = AnalyticsService(session)
     raw = []
     for e in body.events:
@@ -146,6 +159,9 @@ async def start_playback(
     ip = request.client.host if request.client else None
     real_ip = geo.resolve_client_ip(ip, forwarded_for=request.headers.get("x-forwarded-for"))
     country = geo.resolve(ip=real_ip).country
+    await AntiAbuseService().check_analytics(
+        real_ip, str(user.id) if user else None
+    )
     row, token = await EngagementService(session).start_playback(
         user_id=user.id if user else None,
         device_id=body.device_id,
@@ -169,6 +185,7 @@ async def playback_heartbeat(
     body: PlaybackHeartbeatIn,
     session: DbSession,
 ) -> dict[str, Any]:
+    await AntiAbuseService().check_playback(body.token)
     row = await EngagementService(session).heartbeat(
         token=body.token,
         position_ms=body.position_ms,
@@ -224,6 +241,11 @@ async def create_share(
     session: DbSession,
     user: OptionalUser,
 ) -> dict[str, str]:
+    ip = request.client.host if request.client else None
+    real_ip = GeoService().resolve_client_ip(
+        ip, forwarded_for=request.headers.get("x-forwarded-for")
+    )
+    await AntiAbuseService().check_share(real_ip)
     _, token = await EngagementService(session).create_share(
         user_id=user.id if user else None,
         track_id=body.track_id,
