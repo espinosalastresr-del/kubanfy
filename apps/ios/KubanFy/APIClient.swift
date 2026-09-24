@@ -37,8 +37,19 @@ struct TrackSearchResult: Codable, Identifiable {
     enum CodingKeys: String, CodingKey { case provider, title, artists, album, duration, artwork, isrc; case providerTrackId = "provider_track_id" }
 }
 struct PlaybackResponse: Codable {
-    let url: URL; let expiresInSeconds: Int; let quality: String; let trackId: UUID; let contentHash: String?
-    enum CodingKeys: String, CodingKey { case url, quality; case expiresInSeconds = "expires_in_seconds"; case trackId = "track_id"; case contentHash = "content_hash" }
+    let url: URL
+    let expiresInSeconds: Int
+    let quality: String
+    let trackId: UUID
+    let contentHash: String?
+    let kbyKey: String
+    enum CodingKeys: String, CodingKey {
+        case url, quality
+        case expiresInSeconds = "expires_in_seconds"
+        case trackId = "track_id"
+        case contentHash = "content_hash"
+        case kbyKey = "kby_key"
+    }
 }
 struct PlaybackStartResponse: Codable {
     let playbackToken: String; let playbackSessionId: UUID; let heartbeatIntervalSeconds: Int; let qualifyingListenSeconds: Int; let assetVersion: Int; let contentHash: String
