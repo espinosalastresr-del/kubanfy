@@ -190,7 +190,7 @@ struct ContentView: View {
                 ToolbarItem(placement: .topBarTrailing) {
                     Menu {
                         Button("Cerrar sesión", role: .destructive) {
-                            APIClient.shared.logout(); self.user = nil; authContext = nil; discovery = nil
+                            APIClient.shared.logout(); self.user = nil; authContext = nil; self.discovery = nil
                         }
                     } label: { Image(systemName: "ellipsis") }
                 }
