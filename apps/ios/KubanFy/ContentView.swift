@@ -766,7 +766,7 @@ private final class AudioPlayer: ObservableObject {
         updateNowPlaying()
     }
 
-    private func seek(to seconds: Double) {
+    func seek(to seconds: Double) {
         guard seconds.isFinite, seconds >= 0 else { return }
         player?.seek(to: CMTime(seconds: seconds, preferredTimescale: 600))
         position = seconds
