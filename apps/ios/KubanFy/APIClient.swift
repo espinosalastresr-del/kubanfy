@@ -88,6 +88,21 @@ struct TrackSearchResult: Codable, Identifiable {
     }
 }
 
+struct PlaybackResponse: Codable {
+    let url: URL
+    let expiresInSeconds: Int
+    let quality: String
+    let trackId: UUID
+    let contentHash: String?
+
+    enum CodingKeys: String, CodingKey {
+        case url, quality
+        case expiresInSeconds = "expires_in_seconds"
+        case trackId = "track_id"
+        case contentHash = "content_hash"
+    }
+}
+
 struct LoginResponse: Codable {
     let user: UserResponse
     let tokens: TokenResponse
@@ -195,6 +210,14 @@ final class APIClient {
     func discoveryHome() async throws -> DiscoveryHome {
         let data = try await request(path: "/discovery/home")
         return try decoder.decode(DiscoveryHome.self, from: data)
+    }
+
+    func playback(trackId: UUID, quality: String = "low") async throws -> PlaybackResponse {
+        var components = URLComponents(url: baseURL.appendingPathComponent("music/play/(trackId.uuidString)"), resolvingAgainstBaseURL: false)
+        components?.queryItems = [URLQueryItem(name: "quality", value: quality)]
+        guard let url = components?.url else { throw APIError.invalidURL }
+        let data = try await request(url: url)
+        return try decoder.decode(PlaybackResponse.self, from: data)
     }
 
     func search(query: String, limit: Int = 20) async throws -> [TrackSearchResult] {
