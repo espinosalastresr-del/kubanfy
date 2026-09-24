@@ -186,6 +186,9 @@ class EngagementService:
         await ent.require_download_access(user_id)
         await ent.require_track_access(user_id, track_id)
         await ent.require_quality_access(user_id, quality)
+        track = await self.session.scalar(select(Track).where(Track.id == track_id))
+        if track is None or track.status != TrackStatus.PUBLISHED:
+            raise NotFoundError("Track not available")
         asset = await self._asset(track_id, quality)
 
         token = secrets.token_urlsafe(32)
