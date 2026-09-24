@@ -2,19 +2,15 @@ package com.kubanfy.android
 
 import android.app.Activity
 import android.os.Bundle
-import android.os.Handler
-import android.os.Looper
 import android.view.Gravity
 import android.widget.Button
 import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.TextView
-import androidx.media3.common.MediaItem
-import androidx.media3.common.PlaybackException
-import androidx.media3.common.Player
-import androidx.media3.exoplayer.ExoPlayer
 import android.widget.ProgressBar
 import java.util.concurrent.Executors
+import android.content.Intent
+import androidx.core.content.ContextCompat
 
 class MainActivity : Activity() {
     private val executor = Executors.newSingleThreadExecutor()
@@ -201,128 +197,24 @@ class MainActivity : Activity() {
     }
 
     private fun playTrack(trackId: String, title: String) {
-        currentTrackId = trackId
-        currentTitle = title
-        recoveryAttempts = 0
-        recoveryInProgress = false
-        executor.execute {
-            try {
-                val playback = api.playback(trackId, currentQuality)
-                runOnUiThread {
-                    val exo = ensurePlayer()
-                    replaceMediaItem(exo, playback.url, trackId, title, 0)
-                    exo.prepare()
-                    exo.play()
-                    status.text = "Reproduciendo: $title"
-                    scheduleRenewal(playback.expiresInSeconds)
-                }
-            } catch (e: Exception) {
-                runOnUiThread { status.text = e.message ?: "No se pudo reproducir" }
-            }
+        val intent = Intent(this, PlaybackService::class.java).apply {
+            action = PlaybackService.ACTION_PLAY
+            putExtra(PlaybackService.EXTRA_TRACK_ID, trackId)
+            putExtra(PlaybackService.EXTRA_TITLE, title)
+            putExtra(PlaybackService.EXTRA_QUALITY, "low")
         }
-    }
-
-    private fun ensurePlayer(): ExoPlayer {
-        return player ?: ExoPlayer.Builder(this).build().also { created ->
-            created.addListener(object : Player.Listener {
-                override fun onPlayerError(error: PlaybackException) {
-                    if (recoveryInProgress || recoveryAttempts >= 3) {
-                        status.text = error.message ?: "La reproducción se detuvo"
-                        return
-                    }
-                    recoverPlayback()
-                }
-            })
-            player = created
-        }
-    }
-
-    private fun recoverPlayback() {
-        val trackId = currentTrackId ?: return
-        val title = currentTitle ?: "Pista"
-        val position = player?.currentPosition ?: 0L
-        recoveryInProgress = true
-        recoveryAttempts += 1
-        val attempt = recoveryAttempts
-        val delayMs = minOf(8_000L, 1_000L * (1L shl (attempt - 1)))
-        executor.execute {
-            try {
-                Thread.sleep(delayMs)
-                val renewed = api.playback(trackId, currentQuality)
-                runOnUiThread {
-                    recoveryInProgress = false
-                    val exo = ensurePlayer()
-                    replaceMediaItem(exo, renewed.url, trackId, title, position)
-                    exo.prepare()
-                    exo.play()
-                    status.text = "Conexión renovada: $title"
-                    scheduleRenewal(renewed.expiresInSeconds)
-                }
-            } catch (e: Exception) {
-                runOnUiThread {
-                    recoveryInProgress = false
-                    status.text = e.message ?: "No se pudo renovar la reproducción"
-                }
-            }
-        }
-    }
-
-    private fun replaceMediaItem(exo: ExoPlayer, url: String, trackId: String, title: String, positionMs: Long) {
-        val item = MediaItem.Builder()
-            .setUri(url)
-            .setMediaId(trackId)
-            .setMediaMetadata(androidx.media3.common.MediaMetadata.Builder().setTitle(title).build())
-            .build()
-        exo.setMediaItem(item, positionMs)
-    }
-
-    private fun scheduleRenewal(expiresInSeconds: Long) {
-        renewalGeneration += 1
-        val generation = renewalGeneration
-        val delay = ((expiresInSeconds - 30L).coerceAtLeast(15L)) * 1000L
-        mainHandler.postDelayed({
-            if (generation != renewalGeneration) return@postDelayed
-            val trackId = currentTrackId ?: return@postDelayed
-            val title = currentTitle ?: return@postDelayed
-            val position = player?.currentPosition ?: 0L
-            executor.execute {
-                try {
-                    val renewed = api.playback(trackId, currentQuality)
-                    runOnUiThread {
-                        if (generation != renewalGeneration || currentTrackId != trackId) return@runOnUiThread
-                        val wasPlaying = player?.isPlaying == true
-                        replaceMediaItem(ensurePlayer(), renewed.url, trackId, title, position)
-                        player?.prepare()
-                        if (wasPlaying) player?.play()
-                        scheduleRenewal(renewed.expiresInSeconds)
-                    }
-                } catch (_: Exception) {
-                    runOnUiThread {
-                        if (generation == renewalGeneration) {
-                            scheduleRenewal(30L)
-                        }
-                    }
-                }
-            }
-        }, delay)
+        ContextCompat.startForegroundService(this, intent)
+        status.text = "Reproduciendo: $title"
     }
 
     private fun stopPlayback() {
-        renewalGeneration += 1
-        player?.stop()
-        player?.clearMediaItems()
-        currentTrackId = null
-        currentTitle = null
-        recoveryAttempts = 0
-        recoveryInProgress = false
+        startService(Intent(this, PlaybackService::class.java).apply {
+            action = PlaybackService.ACTION_STOP
+        })
     }
 
     override fun onDestroy() {
-        renewalGeneration += 1
-        mainHandler.removeCallbacksAndMessages(null)
         executor.shutdownNow()
-        player?.release()
-        player = null
         super.onDestroy()
     }
 }
