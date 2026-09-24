@@ -73,6 +73,20 @@ private final class KeychainStore {
         var query = base; query[kSecValueData as String] = data
         guard SecItemAdd(query as CFDictionary, nil) == errSecSuccess else { throw APIError.http(0, "No se pudo guardar la credencial") }
     }
+    func loadData(_ account: String) -> Data? {
+        let query: [String: Any] = [kSecClass as String: kSecClassGenericPassword, kSecAttrService as String: service, kSecAttrAccount as String: account, kSecReturnData as String: true, kSecMatchLimit as String: kSecMatchLimitOne]
+        var item: CFTypeRef?
+        guard SecItemCopyMatching(query as CFDictionary, &item) == errSecSuccess else { return nil }
+        return item as? Data
+    }
+    func saveData(_ data: Data, account: String) throws {
+        let base: [String: Any] = [kSecClass as String: kSecClassGenericPassword, kSecAttrService as String: service, kSecAttrAccount as String: account]
+        SecItemDelete(base as CFDictionary)
+        var query = base
+        query[kSecValueData as String] = data
+        guard SecItemAdd(query as CFDictionary, nil) == errSecSuccess else { throw APIError.http(0, "No se pudo guardar el estado local") }
+    }
+
     func load(_ account: String) -> String? {
         let query: [String: Any] = [kSecClass as String: kSecClassGenericPassword, kSecAttrService as String: service, kSecAttrAccount as String: account, kSecReturnData as String: true, kSecMatchLimit as String: kSecMatchLimitOne]
         var item: CFTypeRef?
@@ -187,7 +201,40 @@ final class APIClient {
         return try decoder.decode(UserResponse.self, from: try await performRequest(path: "/auth/me"))
     }
 
-    func logout() { keychain.remove("access"); keychain.remove("refresh") }
+    func logout() {
+        keychain.remove("access")
+        keychain.remove("refresh")
+    }
+
+    func cachedUser() -> UserResponse? {
+        guard let data = keychain.loadData("cached_user") else { return nil }
+        return try? decoder.decode(UserResponse.self, from: data)
+    }
+
+    func cacheUser(_ user: UserResponse) {
+        guard let data = try? JSONEncoder().encode(user) else { return }
+        try? keychain.saveData(data, account: "cached_user")
+    }
+
+    func refreshIfNeeded() async throws {
+        guard let access = keychain.load("access") else { throw APIError.missingSession }
+        let parts = access.split(separator: ".")
+        guard parts.count == 3 else {
+            try await refresh()
+            return
+        }
+        var encoded = String(parts[1])
+        encoded += String(repeating: "=", count: (4 - encoded.count % 4) % 4)
+        guard let data = Data(base64Encoded: encoded),
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let exp = json["exp"] as? TimeInterval else {
+            try await refresh()
+            return
+        }
+        if Date().timeIntervalSince1970 >= exp - 30 {
+            try await refresh()
+        }
+    }
 
     private func performRequest(path: String, method: String = "GET", body: Data? = nil, allowRefresh: Bool = true) async throws -> Data {
         let cleanPath = path.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
