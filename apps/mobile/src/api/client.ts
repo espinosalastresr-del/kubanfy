@@ -7,8 +7,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Keychain from 'react-native-keychain';
 
-const TOKEN_KEY = 'kubanfy.access_token';
-const REFRESH_KEY = 'kubanfy.refresh_token';
 const DEVICE_KEY = 'kubanfy.device_id';
 const AUTH_KEYCHAIN_SERVICE = 'com.kubanfy.auth';
 const DEVICE_KEYCHAIN_SERVICE = 'com.kubanfy.device';
