@@ -195,7 +195,7 @@ final class APIClient {
             "device_name": "iPhone",
             "platform": "ios"
         ]
-        let data = try await request(path: "/auth/login", method: "POST", body: JSONSerialization.data(withJSONObject: body))
+        let data = try await performRequest(path: "/auth/login", method: "POST", body: JSONSerialization.data(withJSONObject: body))
         let response = try decoder.decode(LoginResponse.self, from: data)
         try keychain.save(response.tokens.accessToken, account: "access")
         try keychain.save(response.tokens.refreshToken, account: "refresh")
@@ -230,7 +230,7 @@ final class APIClient {
         var components = URLComponents(url: baseURL.appendingPathComponent("music/play/\(trackId.uuidString)"), resolvingAgainstBaseURL: false)
         components?.queryItems = [URLQueryItem(name: "quality", value: quality)]
         guard let url = components?.url else { throw APIError.invalidURL }
-        let data = try await request(url: url)
+        let data = try await performRequest(url: url)
         return try decoder.decode(PlaybackResponse.self, from: data)
     }
 
@@ -247,7 +247,7 @@ final class APIClient {
 
     func me() async throws -> UserResponse {
         guard keychain.load("access") != nil else { throw APIError.missingSession }
-        let data = try await request(path: "/auth/me")
+        let data = try await performRequest(path: "/auth/me")
         return try decoder.decode(UserResponse.self, from: data)
     }
 
@@ -256,13 +256,13 @@ final class APIClient {
         keychain.remove("refresh")
     }
 
-    func request(path: String, method: String = "GET", body: Data? = nil) async throws -> Data {
+    private func performRequest(path: String, method: String = "GET", body: Data? = nil, allowRefresh: Bool = true) async throws -> Data {
         let cleanPath = path.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
         let url = baseURL.appendingPathComponent(cleanPath)
-        return try await request(url: url, method: method, body: body)
+        return try await performRequest(url: url, method: method, body: body, allowRefresh: allowRefresh)
     }
 
-    private func request(url: URL, method: String = "GET", body: Data? = nil, allowRefresh: Bool = true) async throws -> Data {
+    private func performRequest(url: URL, method: String = "GET", body: Data? = nil, allowRefresh: Bool = true) async throws -> Data {
         var request = URLRequest(url: url)
         request.httpMethod = method
         request.httpBody = body
@@ -279,7 +279,7 @@ final class APIClient {
             if http.statusCode == 401, allowRefresh, keychain.load("access") != nil, keychain.load("refresh") != nil {
                 do {
                     try await refresh()
-                    return try await request(url: url, method: method, body: body, allowRefresh: false)
+                    return try await performRequest(url: url, method: method, body: body, allowRefresh: false)
                 } catch {
                     logout()
                 }
