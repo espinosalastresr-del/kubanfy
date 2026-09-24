@@ -1,4 +1,5 @@
 import SwiftUI
+import AVFoundation
 
 struct ContentView: View {
     @State private var email = ""
@@ -8,6 +9,7 @@ struct ContentView: View {
     @State private var discovery: DiscoveryHome?
     @State private var errorMessage: String?
     @State private var isLoading = false
+    @StateObject private var audioPlayer = AudioPlayer()
 
     var body: some View {
         NavigationStack {
@@ -165,5 +167,44 @@ private struct SearchView: View {
             errorMessage = error.localizedDescription
             results = []
         }
+    }
+}
+
+
+@MainActor
+private final class AudioPlayer: ObservableObject {
+    @Published private(set) var currentTrackID: UUID?
+    @Published private(set) var errorMessage: String?
+    private var player: AVPlayer?
+
+    init() {
+        try? AVAudioSession.sharedInstance().setCategory(.playback, mode: .music, options: [])
+        try? AVAudioSession.sharedInstance().setActive(true)
+    }
+
+    func toggle(track: DiscoveryHome.Track) async {
+        errorMessage = nil
+        if currentTrackID == track.id {
+            if player?.timeControlStatus == .playing {
+                player?.pause()
+            } else {
+                player?.play()
+            }
+            return
+        }
+        do {
+            let playback = try await APIClient.shared.playback(trackId: track.id, quality: "low")
+            player?.pause()
+            player = AVPlayer(url: playback.url)
+            currentTrackID = track.id
+            player?.play()
+        } catch {
+            currentTrackID = nil
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    deinit {
+        player?.pause()
     }
 }
