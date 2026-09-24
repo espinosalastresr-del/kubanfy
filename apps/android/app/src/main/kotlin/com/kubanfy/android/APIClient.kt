@@ -13,12 +13,16 @@ data class AuthContext(
     val isAdmin: Boolean,
 )
 
+data class DiscoveryTrack(val id: String, val title: String, val duration: Double?)
+
+data class DiscoveryRanking(val trackId: String, val title: String?, val rank: Int)
+
 data class DiscoveryHome(
     val country: String,
     val localArtists: List<String>,
-    val topCountry: List<String>,
-    val topGlobal: List<String>,
-    val newReleases: List<String>,
+    val topCountry: List<DiscoveryRanking>,
+    val topGlobal: List<DiscoveryRanking>,
+    val newReleases: List<DiscoveryTrack>,
 )
 
 data class TrackSearchResult(
@@ -86,10 +90,16 @@ class APIClient(context: Context) {
         return DiscoveryHome(
             country = json.getString("country"),
             localArtists = json.getJSONArray("local_artists").getJSONObjectStrings("name"),
-            topCountry = json.getJSONArray("top_50_country").getJSONObjectStrings("title"),
-            topGlobal = json.getJSONArray("top_50_global").getJSONObjectStrings("title"),
-            newReleases = json.getJSONArray("new_releases").getJSONObjectStrings("title"),
+            topCountry = json.getJSONArray("top_50_country").getDiscoveryRankings(),
+            topGlobal = json.getJSONArray("top_50_global").getDiscoveryRankings(),
+            newReleases = json.getJSONArray("new_releases").getDiscoveryTracks(),
         )
+    }
+
+    fun playback(trackId: String, quality: String = "low"): String {
+        val token = store.get("access_token") ?: throw APIException(401, "No hay sesión")
+        val safeQuality = quality.lowercase().let { if (it in setOf("low", "medium", "lossless")) it else "low" }
+        return request("/music/play/$trackId?quality=$safeQuality", "GET", null, token).getString("url")
     }
 
     fun search(query: String, limit: Int = 20): List<TrackSearchResult> {
@@ -163,6 +173,22 @@ class APIClient(context: Context) {
 
 private fun org.json.JSONArray.toStringList(): List<String> =
     (0 until length()).map { getString(it) }
+
+private fun org.json.JSONArray.getDiscoveryTracks(): List<DiscoveryTrack> =
+    (0 until length()).mapNotNull { i ->
+        optJSONObject(i)?.let { item ->
+            val id = item.optString("id")
+            if (id.isBlank()) null else DiscoveryTrack(id, item.optString("title"), if (item.isNull("duration")) null else item.optDouble("duration"))
+        }
+    }
+
+private fun org.json.JSONArray.getDiscoveryRankings(): List<DiscoveryRanking> =
+    (0 until length()).mapNotNull { i ->
+        optJSONObject(i)?.let { item ->
+            val id = item.optString("track_id")
+            if (id.isBlank()) null else DiscoveryRanking(id, item.optString("title").takeIf { it.isNotBlank() }, item.optInt("rank"))
+        }
+    }
 
 private fun org.json.JSONArray.getJSONObjectStrings(key: String): List<String> =
     (0 until length()).mapNotNull { i -> optJSONObject(i)?.optString(key)?.takeIf { it.isNotBlank() } }
