@@ -1,3 +1,5 @@
+import pytest
+
 """Unit tests for payment statuses, geo defaults, analytics event catalog."""
 
 from __future__ import annotations
