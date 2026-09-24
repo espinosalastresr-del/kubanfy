@@ -5,6 +5,21 @@ import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.URL
 
+data class AuthContext(
+    val roles: List<String>,
+    val artistIds: List<String>,
+    val isArtist: Boolean,
+    val isAdmin: Boolean,
+)
+
+data class DiscoveryHome(
+    val country: String,
+    val localArtists: List<String>,
+    val topCountry: List<String>,
+    val topGlobal: List<String>,
+    val newReleases: List<String>,
+)
+
 data class AuthSession(
     val accessToken: String,
     val refreshToken: String,
@@ -41,6 +56,28 @@ class APIClient(context: Context) {
         store.put("access_token", session.accessToken)
         store.put("refresh_token", session.refreshToken)
         return session
+    }
+
+    fun context(): AuthContext {
+        val token = store.get("access_token") ?: throw APIException(401, "No hay sesión")
+        val json = request("/auth/context", "GET", null, token)
+        return AuthContext(
+            roles = json.getJSONArray("roles").toStringList(),
+            artistIds = json.getJSONArray("artist_ids").toStringList(),
+            isArtist = json.getBoolean("is_artist"),
+            isAdmin = json.getBoolean("is_admin"),
+        )
+    }
+
+    fun discoveryHome(): DiscoveryHome {
+        val json = request("/discovery/home", "GET", null, store.get("access_token"))
+        return DiscoveryHome(
+            country = json.getString("country"),
+            localArtists = json.getJSONArray("local_artists").getJSONObjectStrings("name"),
+            topCountry = json.getJSONArray("top_50_country").getJSONObjectStrings("title"),
+            topGlobal = json.getJSONArray("top_50_global").getJSONObjectStrings("title"),
+            newReleases = json.getJSONArray("new_releases").getJSONObjectStrings("title"),
+        )
     }
 
     fun me(): JSONObject {
@@ -83,3 +120,4 @@ class APIClient(context: Context) {
         }
     }
 }
+\n\nprivate fun org.json.JSONArray.toStringList(): List<String> =\n    (0 until length()).map { getString(it) }\n\nprivate fun org.json.JSONArray.getJSONObjectStrings(key: String): List<String> =\n    (0 until length()).mapNotNull { i -> optJSONObject(i)?.optString(key)?.takeIf { it.isNotBlank() } }\n
