@@ -102,6 +102,8 @@ final class APIClient {
     }
 
     var hasStoredSession: Bool { keychain.load("access") != nil && keychain.load("refresh") != nil }
+    var savedEmail: String? { keychain.load("saved_email") }
+    var savedPassword: String? { keychain.load("saved_password") }
 
     var deviceID: String {
         if let existing = keychain.load("device_id") { return existing }
@@ -110,13 +112,20 @@ final class APIClient {
         return value
     }
 
-    func login(email: String, password: String) async throws -> LoginResponse {
+    func login(email: String, password: String, saveCredentials: Bool = false) async throws -> LoginResponse {
         let body: [String: Any] = ["email": email.trimmingCharacters(in: .whitespacesAndNewlines), "password": password, "device_id": deviceID, "device_name": "iPhone", "platform": "ios"]
         do {
             let data = try await performRequest(path: "/auth/login", method: "POST", body: JSONSerialization.data(withJSONObject: body))
             let response = try decoder.decode(LoginResponse.self, from: data)
             try keychain.save(response.tokens.accessToken, account: "access")
             try keychain.save(response.tokens.refreshToken, account: "refresh")
+            if saveCredentials {
+                try keychain.save(email.trimmingCharacters(in: .whitespacesAndNewlines), account: "saved_email")
+                try keychain.save(password, account: "saved_password")
+            } else {
+                keychain.remove("saved_email")
+                keychain.remove("saved_password")
+            }
             return response
         } catch { throw mapNetworkError(error) }
     }
