@@ -11,7 +11,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 from uuid import UUID
 
-from sqlalchemy import or_, select, update
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import ConflictError, NotFoundError
@@ -61,11 +61,12 @@ class JobService:
         )
         self.session.add(job)
         try:
-            await self.session.flush()
+            # Keep an idempotency race from rolling back unrelated changes
+            # already staged in the caller transaction.
+            async with self.session.begin_nested():
+                await self.session.flush()
         except Exception:
-            # Unique constraint on idempotency_key under race
             if idempotency_key:
-                await self.session.rollback()
                 existing = await self.session.scalar(
                     select(Job).where(Job.idempotency_key == idempotency_key)
                 )
@@ -162,7 +163,9 @@ class JobService:
                 error=error[:200],
             )
         else:
-            job.status = JobStatus.DEAD_LETTER if job.attempts >= job.max_attempts else JobStatus.FAILED
+            job.status = (
+                JobStatus.DEAD_LETTER if job.attempts >= job.max_attempts else JobStatus.FAILED
+            )
             job.finished_at = datetime.now(UTC)
             logger.error(
                 "job_failed",

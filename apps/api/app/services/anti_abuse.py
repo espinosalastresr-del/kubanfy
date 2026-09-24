@@ -33,10 +33,13 @@ class AntiAbuseService:
         limit: int,
         window_seconds: int = 60,
     ) -> RateLimitResult:
-        """Sliding window counter via Redis. Fails open if Redis unavailable."""
+        """Sliding window counter via Redis with configurable failure semantics."""
         try:
             redis = get_redis()
-        except RuntimeError:
+        except RuntimeError as exc:
+            if not self.settings.rate_limit_fail_open:
+                logger.error("rate_limit_redis_unavailable", error=str(exc))
+                return RateLimitResult(allowed=False, remaining=0, reset_seconds=window_seconds)
             return RateLimitResult(allowed=True, remaining=limit, reset_seconds=window_seconds)
 
         redis_key = f"rl:{key}"
@@ -55,6 +58,8 @@ class AntiAbuseService:
             return RateLimitResult(allowed=True, remaining=remaining, reset_seconds=max(ttl, 1))
         except Exception as exc:
             logger.warning("rate_limit_redis_error", error=str(exc))
+            if not self.settings.rate_limit_fail_open:
+                return RateLimitResult(allowed=False, remaining=0, reset_seconds=window_seconds)
             return RateLimitResult(allowed=True, remaining=limit, reset_seconds=window_seconds)
 
     async def enforce_rate_limit(
@@ -110,6 +115,31 @@ class AntiAbuseService:
             await self.enforce_rate_limit(
                 f"search:ip:{ip}",
                 limit=self.settings.rate_limit_search,
+            )
+
+    async def check_analytics(self, ip: str | None, user_id: str | None = None) -> None:
+        if user_id:
+            await self.enforce_rate_limit(
+                f"analytics:user:{user_id}", limit=self.settings.rate_limit_analytics
+            )
+        elif ip:
+            await self.enforce_rate_limit(
+                f"analytics:ip:{ip}", limit=self.settings.rate_limit_analytics
+            )
+
+    async def check_playback(self, token: str, ip: str | None = None) -> None:
+        await self.enforce_rate_limit(
+            f"playback:token:{token}", limit=self.settings.rate_limit_playback
+        )
+        if ip:
+            await self.enforce_rate_limit(
+                f"playback:ip:{ip}", limit=self.settings.rate_limit_playback * 2
+            )
+
+    async def check_share(self, ip: str | None) -> None:
+        if ip:
+            await self.enforce_rate_limit(
+                f"share:ip:{ip}", limit=self.settings.rate_limit_share
             )
 
     async def flag_suspicious(

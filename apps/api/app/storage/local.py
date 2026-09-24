@@ -14,7 +14,7 @@ from urllib.parse import quote
 
 from app.core.exceptions import StorageError
 from app.core.logging import get_logger
-from app.storage.base import SignedUrl, StorageBucket, StoredObject, StorageProvider
+from app.storage.base import SignedUrl, StorageBucket, StorageProvider, StoredObject
 
 logger = get_logger(__name__)
 
@@ -47,20 +47,32 @@ class LocalStorage(StorageProvider):
         path.parent.mkdir(parents=True, exist_ok=True)
 
         if isinstance(data, bytes):
-            body = data
+            size = len(data)
+            def _write() -> None:
+                path.write_bytes(data)
         else:
-            body = data.read()
-            if isinstance(body, str):
-                body = body.encode()
-
-        def _write() -> None:
-            path.write_bytes(body)
+            if hasattr(data, "seek"):
+                data.seek(0)
+            def _write() -> None:
+                with path.open("wb") as out:
+                    while True:
+                        chunk = data.read(1024 * 1024)
+                        if not chunk:
+                            break
+                        out.write(chunk)
+            try:
+                current = data.tell()
+                data.seek(0, 2)
+                size = data.tell()
+                data.seek(current)
+            except (AttributeError, OSError):
+                size = 0
 
         await asyncio.to_thread(_write)
         return StoredObject(
             key=key,
             bucket=bucket,
-            size=len(body),
+            size=size,
             content_type=content_type,
         )
 
@@ -86,9 +98,19 @@ class LocalStorage(StorageProvider):
         bucket: StorageBucket = StorageBucket.CACHE,
         chunk_size: int = 65536,
     ) -> AsyncIterator[bytes]:
-        data = await self.get(key, bucket=bucket)
-        for i in range(0, len(data), chunk_size):
-            yield data[i : i + chunk_size]
+        path = self._path(key, bucket)
+        if not path.is_file():
+            raise StorageError("Object not found", status_code=404)
+
+        f = await asyncio.to_thread(path.open, "rb")
+        try:
+            while True:
+                chunk = await asyncio.to_thread(f.read, chunk_size)
+                if not chunk:
+                    break
+                yield chunk
+        finally:
+            await asyncio.to_thread(f.close)
 
     async def delete(
         self,
@@ -99,7 +121,6 @@ class LocalStorage(StorageProvider):
         path = self._path(key, bucket)
         if path.is_file():
             await asyncio.to_thread(path.unlink)
-
 
     async def get_range(
         self,

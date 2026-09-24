@@ -5,11 +5,13 @@ from __future__ import annotations
 from contextlib import asynccontextmanager
 from typing import Any
 
-from fastapi import FastAPI, Request, status
+from fastapi import FastAPI
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, ORJSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
+from starlette.responses import Request, status
+from starlette.responses import Response as StarletteResponse
 
 from app import __version__
 from app.core.config import get_settings
@@ -72,7 +74,7 @@ def create_app() -> FastAPI:
 
     # Request ID + metrics (order: last added = outermost for BaseHTTPMiddleware)
     from app.core.maintenance import MaintenanceMiddleware
-from app.core.middleware import (
+    from app.core.middleware import (
         RequestContextMiddleware,
         RequestIdHeaderMiddleware,
         SecurityHeadersMiddleware,
@@ -98,9 +100,7 @@ from app.core.middleware import (
         )
 
     @app.exception_handler(StarletteHTTPException)
-    async def http_exception_handler(
-        request: Request, exc: StarletteHTTPException
-    ) -> JSONResponse:
+    async def http_exception_handler(request: Request, exc: StarletteHTTPException) -> JSONResponse:
         return JSONResponse(
             status_code=exc.status_code,
             content={
@@ -157,8 +157,9 @@ from app.core.middleware import (
 
         # DB check
         try:
-            from app.core.database import engine
             from sqlalchemy import text
+
+            from app.core.database import engine
 
             if engine is None:
                 checks["database"] = "not_initialized"
@@ -213,9 +214,8 @@ from app.core.middleware import (
         }
 
     @app.get("/metrics", tags=["ops"], include_in_schema=False)
-    async def metrics() -> Response:
+    async def metrics() -> StarletteResponse:
         from app.core.metrics import metrics_payload
-        from starlette.responses import Response as StarletteResponse
 
         body, content_type = metrics_payload()
         return StarletteResponse(content=body, media_type=content_type)

@@ -12,11 +12,12 @@ from typing import Any, BinaryIO
 
 import aioboto3
 from botocore.config import Config
+from botocore.exceptions import ClientError
 
 from app.core.config import Settings, get_settings
 from app.core.exceptions import StorageError
 from app.core.logging import get_logger
-from app.storage.base import SignedUrl, StorageBucket, StoredObject, StorageProvider
+from app.storage.base import SignedUrl, StorageBucket, StorageProvider, StoredObject
 
 logger = get_logger(__name__)
 
@@ -59,13 +60,16 @@ class R2Storage(StorageProvider):
         content_type: str | None = None,
         metadata: dict[str, str] | None = None,
     ) -> StoredObject:
-        body: bytes
-        if isinstance(data, bytes):
-            body = data
-        else:
-            body = data.read()
-            if isinstance(body, str):
-                body = body.encode()
+        body = data
+        size = len(data) if isinstance(data, bytes) else None
+        if not isinstance(data, bytes):
+            try:
+                current = data.tell()
+                data.seek(0, 2)
+                size = data.tell()
+                data.seek(current)
+            except (AttributeError, OSError):
+                size = None
 
         extra: dict[str, Any] = {}
         if content_type:
@@ -75,18 +79,26 @@ class R2Storage(StorageProvider):
 
         try:
             async with self._client() as client:
-                resp = await client.put_object(
-                    Bucket=self._bucket_name(bucket),
-                    Key=key,
-                    Body=body,
-                    **extra,
-                )
+                if isinstance(body, bytes):
+                    resp = await client.put_object(
+                        Bucket=self._bucket_name(bucket),
+                        Key=key,
+                        Body=body,
+                        **extra,
+                    )
+                else:
+                    resp = await client.upload_fileobj(
+                        body,
+                        self._bucket_name(bucket),
+                        key,
+                        Extra=extra or None,
+                    )
             return StoredObject(
                 key=key,
                 bucket=bucket,
-                size=len(body),
+                size=size or 0,
                 content_type=content_type,
-                etag=resp.get("ETag"),
+                etag=resp.get("ETag") if isinstance(resp, dict) else None,
             )
         except Exception as exc:
             logger.exception("r2_put_failed", key=key, bucket=bucket.value)
@@ -106,8 +118,11 @@ class R2Storage(StorageProvider):
                 )
                 async with resp["Body"] as stream:
                     return await stream.read()
-        except client.exceptions.NoSuchKey:  # type: ignore[name-defined]
-            raise StorageError("Object not found", status_code=404) from None
+        except ClientError as exc:
+            if exc.response.get("Error", {}).get("Code") in {"NoSuchKey", "404", "NoSuchBucket"}:
+                raise StorageError("Object not found", status_code=404) from exc
+            logger.exception("r2_get_failed", key=key)
+            raise StorageError(f"Failed to get object: {type(exc).__name__}") from exc
         except Exception as exc:
             if "NoSuchKey" in type(exc).__name__ or "404" in str(exc):
                 raise StorageError("Object not found", status_code=404) from exc
@@ -138,6 +153,50 @@ class R2Storage(StorageProvider):
                 if not chunk:
                     break
                 yield chunk
+
+    async def size(
+        self,
+        key: str,
+        *,
+        bucket: StorageBucket = StorageBucket.CACHE,
+    ) -> int:
+        try:
+            async with self._client() as client:
+                resp = await client.head_object(
+                    Bucket=self._bucket_name(bucket),
+                    Key=key,
+                )
+            return int(resp["ContentLength"])
+        except Exception as exc:
+            if "404" in str(exc) or "NoSuchKey" in type(exc).__name__:
+                raise StorageError("Object not found", status_code=404) from exc
+            raise StorageError(f"Failed to stat object: {type(exc).__name__}") from exc
+
+    async def get_range(
+        self,
+        key: str,
+        start: int,
+        end: int,
+        *,
+        bucket: StorageBucket = StorageBucket.CACHE,
+    ) -> bytes:
+        if start < 0 or end < start:
+            raise StorageError("Invalid range", status_code=416)
+        try:
+            async with self._client() as client:
+                resp = await client.get_object(
+                    Bucket=self._bucket_name(bucket),
+                    Key=key,
+                    Range=f"bytes={start}-{end}",
+                )
+                async with resp["Body"] as stream:
+                    return await stream.read()
+        except Exception as exc:
+            if "404" in str(exc) or "NoSuchKey" in type(exc).__name__:
+                raise StorageError("Object not found", status_code=404) from exc
+            if "416" in str(exc):
+                raise StorageError("Invalid range", status_code=416) from exc
+            raise StorageError(f"Failed to read range: {type(exc).__name__}") from exc
 
     async def delete(
         self,
@@ -179,8 +238,17 @@ class R2Storage(StorageProvider):
         expires_in: int | None = None,
         method: str = "GET",
     ) -> SignedUrl:
-        expires = expires_in or self.settings.r2_signed_url_expiry_seconds
-        client_method = "get_object" if method.upper() == "GET" else "put_object"
+        normalized_method = method.upper()
+        if normalized_method not in {"GET", "PUT"}:
+            raise StorageError("Unsupported signed URL method", code="STORAGE_ERROR")
+        expires = (
+            self.settings.r2_signed_url_expiry_seconds
+            if expires_in is None
+            else expires_in
+        )
+        if expires < 1 or expires > self.settings.r2_signed_url_expiry_seconds:
+            raise StorageError("Invalid signed URL expiry", code="STORAGE_ERROR")
+        client_method = "get_object" if normalized_method == "GET" else "put_object"
         try:
             async with self._client() as client:
                 url = await client.generate_presigned_url(
@@ -191,7 +259,7 @@ class R2Storage(StorageProvider):
                     },
                     ExpiresIn=expires,
                 )
-            return SignedUrl(url=url, expires_in_seconds=expires, method=method.upper())
+            return SignedUrl(url=url, expires_in_seconds=expires, method=normalized_method)
         except Exception as exc:
             logger.exception("r2_signed_url_failed", key=key)
             raise StorageError(f"Failed to generate signed URL: {type(exc).__name__}") from exc

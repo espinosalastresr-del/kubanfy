@@ -146,7 +146,5 @@ class TranscodingService:
         qualities = qualities or [AudioQuality.LOW, AudioQuality.MEDIUM]
         results: list[TranscodeOutput] = []
         for q in qualities:
-            results.append(
-                await self.transcode_to_quality(master_path, q, output_dir=output_dir)
-            )
+            results.append(await self.transcode_to_quality(master_path, q, output_dir=output_dir))
         return results

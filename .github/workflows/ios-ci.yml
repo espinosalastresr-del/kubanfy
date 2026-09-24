@@ -1,0 +1,30 @@
+# Native iOS build: unsigned IPA container for CI validation.
+name: iOS Native CI
+on:
+  push:
+    branches: [main, "feat/**"]
+    paths: ["apps/ios/**", ".github/workflows/ios-ci.yml"]
+  pull_request:
+    paths: ["apps/ios/**", ".github/workflows/ios-ci.yml"]
+  workflow_dispatch:
+concurrency:
+  group: ios-native-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  build:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build unsigned iPhoneOS app
+        run: |
+          xcodebuild -project apps/ios/KubanFy.xcodeproj -scheme KubanFy -sdk iphoneos -configuration Release -derivedDataPath build/ios CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO build
+      - name: Package unsigned IPA container
+        run: |
+          mkdir -p build/ipa/Payload
+          cp -R build/ios/Build/Products/Release-iphoneos/KubanFy.app build/ipa/Payload/
+          cd build/ipa
+          zip -qry ../KubanFy-unsigned.ipa Payload
+      - uses: actions/upload-artifact@v4
+        with:
+          name: kubanfy-ios-unsigned-ipa
+          path: build/KubanFy-unsigned.ipa

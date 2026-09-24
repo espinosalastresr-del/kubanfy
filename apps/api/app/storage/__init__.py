@@ -12,8 +12,8 @@ from app.core.logging import get_logger
 from app.storage.base import (
     SignedUrl,
     StorageBucket,
-    StoredObject,
     StorageProvider,
+    StoredObject,
 )
 from app.storage.local import LocalStorage
 from app.storage.r2 import R2Storage
@@ -21,12 +21,12 @@ from app.storage.r2 import R2Storage
 logger = get_logger(__name__)
 
 __all__ = [
-    "StorageProvider",
-    "StorageBucket",
-    "StoredObject",
-    "SignedUrl",
     "LocalStorage",
     "R2Storage",
+    "SignedUrl",
+    "StorageBucket",
+    "StorageProvider",
+    "StoredObject",
     "get_storage",
 ]
 
@@ -41,7 +41,6 @@ def get_storage() -> StorageProvider:
     if settings.environment in (Environment.DEVELOPMENT, Environment.TEST):
         logger.info("storage_backend", backend="local")
         return LocalStorage()
-    # Production without R2 is a misconfiguration — still return local
-    # but log loudly so ops notices.
+    # Production without R2 must never silently downgrade to local disk.
     logger.error("storage_r2_not_configured_in_non_dev")
-    return LocalStorage()
+    raise RuntimeError("R2 storage is required outside development/test")

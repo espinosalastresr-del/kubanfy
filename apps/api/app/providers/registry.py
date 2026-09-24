@@ -55,9 +55,7 @@ class ProviderManager:
         """Search across providers. Returns (provider_name, metadata) pairs."""
         results: list[tuple[str, TrackMetadata]] = []
         providers = (
-            [self.registry.get(provider_name)]
-            if provider_name
-            else self.registry.available()
+            [self.registry.get(provider_name)] if provider_name else self.registry.available()
         )
         for provider in providers:
             if provider is None:

@@ -86,6 +86,11 @@ class Settings(BaseSettings):
         min_length=32,
     )
     jwt_algorithm: str = "HS256"
+    # Offline licenses use a separate asymmetric keypair. The private key is
+    # server-only; the public key may be embedded in the mobile client.
+    offline_license_algorithm: str = "RS256"
+    offline_license_private_key: str = ""
+    offline_license_public_key: str = ""
     access_token_expire_minutes: int = 30
     refresh_token_expire_days: int = 30
     password_reset_token_expire_minutes: int = 60
@@ -97,6 +102,7 @@ class Settings(BaseSettings):
     max_devices_per_user: int = 5
     max_concurrent_sessions: int = 3
     session_idle_timeout_minutes: int = 60
+    offline_license_expire_hours: int = 72
 
     # -------------------------------------------------------------------------
     # Cache / TTL (hours)
@@ -123,7 +129,13 @@ class Settings(BaseSettings):
     rate_limit_search: int = 60
     rate_limit_download: int = 20
     rate_limit_preview: int = 30
+    rate_limit_analytics: int = 120
+    rate_limit_playback: int = 120
+    rate_limit_share: int = 30
     rate_limit_upload: int = 10
+    # If true, sensitive rate limits allow traffic when Redis is unavailable.
+    # Production forces fail-closed unless explicitly changed in a future policy.
+    rate_limit_fail_open: bool = True
 
     # -------------------------------------------------------------------------
     # Geo
@@ -188,12 +200,31 @@ class Settings(BaseSettings):
     @model_validator(mode="after")
     def production_guards(self) -> Settings:
         if self.environment == Environment.PRODUCTION:
+            # Redis-backed abuse controls must remain effective in production.
+            self.rate_limit_fail_open = False
             if self.debug:
                 raise ValueError("DEBUG must be false in production")
-            if "change-me" in self.jwt_secret_key.lower() or "dev-only" in self.jwt_secret_key.lower():
+            if (
+                "change-me" in self.jwt_secret_key.lower()
+                or "dev-only" in self.jwt_secret_key.lower()
+            ):
                 raise ValueError("JWT_SECRET_KEY must be changed for production")
             if "change-me" in self.super_admin_password.lower():
                 raise ValueError("SUPER_ADMIN_PASSWORD must be changed for production")
+            if self.offline_license_algorithm != "RS256":
+                raise ValueError("OFFLINE_LICENSE_ALGORITHM must be RS256")
+            if not self.offline_license_private_key or not self.offline_license_public_key:
+                raise ValueError(
+                    "OFFLINE_LICENSE_PRIVATE_KEY and OFFLINE_LICENSE_PUBLIC_KEY are required"
+                )
+            if not self.r2_configured:
+                raise ValueError("R2_ENDPOINT, R2_ACCESS_KEY_ID and R2_SECRET_ACCESS_KEY are required in production")
+            if self.allowed_hosts.strip() == "*":
+                raise ValueError("ALLOWED_HOSTS must not be '*' in production")
+            if not self.cors_origins_list:
+                raise ValueError("CORS_ORIGINS must contain at least one explicit origin in production")
+            if not self.trusted_proxy_ip_list:
+                raise ValueError("TRUSTED_PROXY_IPS must be configured in production")
         return self
 
     # -------------------------------------------------------------------------

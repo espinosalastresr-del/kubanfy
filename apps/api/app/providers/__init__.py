@@ -14,16 +14,16 @@ from app.providers.mock import MockProvider
 from app.providers.registry import ProviderManager, ProviderRegistry, create_default_registry
 
 __all__ = [
+    "AuthType",
+    "MockProvider",
     "MusicProvider",
     "ProviderCapabilities",
     "ProviderHealth",
     "ProviderHealthStatus",
+    "ProviderManager",
+    "ProviderRegistry",
     "ResolvedSource",
     "SourceType",
     "TrackMetadata",
-    "AuthType",
-    "MockProvider",
-    "ProviderRegistry",
-    "ProviderManager",
     "create_default_registry",
 ]

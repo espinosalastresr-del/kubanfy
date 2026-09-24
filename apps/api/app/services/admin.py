@@ -6,11 +6,13 @@ from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.exceptions import NotFoundError, ValidationError
+from app.core.exceptions import NotFoundError
 from app.core.logging import get_logger
+from app.models.device import Session, SessionStatus
+from app.models.offline import OfflineLicense
 from app.models.admin import (
     AuditLog,
     FeatureFlag,
@@ -146,12 +148,31 @@ class AdminService:
 
     # --- Users ---
 
-    async def suspend_user(self, user_id: UUID, admin_id: UUID, *, reason: str | None = None) -> User:
+    async def suspend_user(
+        self, user_id: UUID, admin_id: UUID, *, reason: str | None = None
+    ) -> User:
         user = await self.session.get(User, user_id)
         if user is None:
             raise NotFoundError("User not found")
         before = {"status": user.status.value}
         user.status = UserStatus.SUSPENDED
+        now = datetime.now(UTC)
+        await self.session.execute(
+            update(Session)
+            .where(
+                Session.user_id == user_id,
+                Session.status == SessionStatus.ACTIVE,
+            )
+            .values(status=SessionStatus.REVOKED, revoked_at=now)
+        )
+        await self.session.execute(
+            update(OfflineLicense)
+            .where(
+                OfflineLicense.user_id == user_id,
+                OfflineLicense.revoked.is_(False),
+            )
+            .values(revoked=True, revoked_at=now)
+        )
         await self.audit(
             actor_id=admin_id,
             action="users.suspend",
@@ -183,22 +204,16 @@ class AdminService:
 
     async def ensure_default_flags(self) -> None:
         for key, enabled in DEFAULT_FLAGS.items():
-            existing = await self.session.scalar(
-                select(FeatureFlag).where(FeatureFlag.key == key)
-            )
+            existing = await self.session.scalar(select(FeatureFlag).where(FeatureFlag.key == key))
             if existing is None:
-                self.session.add(
-                    FeatureFlag(key=key, enabled=enabled, description=f"Flag: {key}")
-                )
+                self.session.add(FeatureFlag(key=key, enabled=enabled, description=f"Flag: {key}"))
         await self.session.flush()
 
     async def list_flags(self) -> list[FeatureFlag]:
         result = await self.session.execute(select(FeatureFlag).order_by(FeatureFlag.key))
         return list(result.scalars().all())
 
-    async def set_flag(
-        self, key: str, enabled: bool, admin_id: UUID
-    ) -> FeatureFlag:
+    async def set_flag(self, key: str, enabled: bool, admin_id: UUID) -> FeatureFlag:
         flag = await self.session.scalar(select(FeatureFlag).where(FeatureFlag.key == key))
         if flag is None:
             flag = FeatureFlag(key=key, enabled=enabled)
@@ -219,9 +234,7 @@ class AdminService:
         return flag
 
     async def get_setting(self, key: str) -> SystemSetting | None:
-        return await self.session.scalar(
-            select(SystemSetting).where(SystemSetting.key == key)
-        )
+        return await self.session.scalar(select(SystemSetting).where(SystemSetting.key == key))
 
     async def set_setting(
         self, key: str, value: dict[str, Any], admin_id: UUID, *, description: str | None = None

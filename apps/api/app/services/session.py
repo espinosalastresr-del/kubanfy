@@ -12,6 +12,8 @@ from app.core.config import Settings, get_settings
 from app.core.exceptions import AuthError, ForbiddenError, NotFoundError
 from app.core.logging import get_logger
 from app.models.device import Device, DeviceStatus, Session, SessionStatus
+from app.models.offline import OfflineLicense
+from app.models.user import User
 
 logger = get_logger(__name__)
 
@@ -32,6 +34,9 @@ class SessionService:
         app_version: str | None = None,
     ) -> Device:
         """Get or create device. Enforce max devices limit."""
+        # Serialize per-user device creation so concurrent registrations cannot
+        # bypass the configured device limit or create duplicate device identities.
+        await self.db.scalar(select(User).where(User.id == user_id).with_for_update())
         existing = await self.db.scalar(
             select(Device).where(
                 Device.user_id == user_id,
@@ -95,7 +100,9 @@ class SessionService:
         user_agent: str | None = None,
     ) -> Session:
         """Create a new session. Enforce concurrent session limit."""
-        # Count active sessions
+        # Serialize per-user session creation so concurrent logins cannot bypass
+        # the configured concurrent-session limit.
+        await self.db.scalar(select(User).where(User.id == user_id).with_for_update())
         active_count = await self.db.scalar(
             select(func.count())
             .select_from(Session)
@@ -138,10 +145,11 @@ class SessionService:
         await self.db.flush()
         return sess
 
-    async def get_session_by_jti(self, jti: str) -> Session | None:
-        return await self.db.scalar(
-            select(Session).where(Session.refresh_token_jti == jti)
-        )
+    async def get_session_by_jti(self, jti: str, *, for_update: bool = False) -> Session | None:
+        stmt = select(Session).where(Session.refresh_token_jti == jti)
+        if for_update:
+            stmt = stmt.with_for_update()
+        return await self.db.scalar(stmt)
 
     async def revoke_session(self, session_id: UUID, user_id: UUID) -> None:
         sess = await self.db.get(Session, session_id)
@@ -171,9 +179,7 @@ class SessionService:
 
     async def list_devices(self, user_id: UUID) -> list[Device]:
         result = await self.db.execute(
-            select(Device)
-            .where(Device.user_id == user_id)
-            .order_by(Device.last_seen_at.desc())
+            select(Device).where(Device.user_id == user_id).order_by(Device.last_seen_at.desc())
         )
         return list(result.scalars().all())
 
@@ -191,7 +197,7 @@ class SessionService:
             raise NotFoundError("Device not found")
         device.status = DeviceStatus.REVOKED
         device.revoked_at = datetime.now(UTC)
-        # Revoke all sessions on this device
+        # Revoke all sessions and offline licenses bound to this device.
         await self.db.execute(
             update(Session)
             .where(
@@ -200,20 +206,43 @@ class SessionService:
             )
             .values(status=SessionStatus.REVOKED, revoked_at=datetime.now(UTC))
         )
+        await self.db.execute(
+            update(OfflineLicense)
+            .where(
+                OfflineLicense.device_id == device.id,
+                OfflineLicense.revoked.is_(False),
+            )
+            .values(revoked=True, revoked_at=datetime.now(UTC))
+        )
         await self.db.flush()
         logger.info("device_revoked", device_id=str(device_db_id), user_id=str(user_id))
 
     async def validate_refresh_session(self, jti: str) -> Session:
         """Validate that a refresh token jti corresponds to an active, non-expired session."""
-        sess = await self.get_session_by_jti(jti)
+        sess = await self.get_session_by_jti(jti, for_update=True)
         if sess is None:
             raise AuthError("Invalid refresh token")
         if sess.status != SessionStatus.ACTIVE:
             raise AuthError("Session has been revoked")
-        if sess.expires_at.replace(tzinfo=UTC) < datetime.now(UTC):
+        now = datetime.now(UTC)
+        expires_at = (
+            sess.expires_at
+            if sess.expires_at.tzinfo is not None
+            else sess.expires_at.replace(tzinfo=UTC)
+        )
+        last_activity_at = (
+            sess.last_activity_at
+            if sess.last_activity_at.tzinfo is not None
+            else sess.last_activity_at.replace(tzinfo=UTC)
+        )
+        if expires_at <= now:
             sess.status = SessionStatus.EXPIRED
             await self.db.flush()
             raise AuthError("Session expired")
-        sess.last_activity_at = datetime.now(UTC)
+        if last_activity_at + timedelta(minutes=self.settings.session_idle_timeout_minutes) <= now:
+            sess.status = SessionStatus.EXPIRED
+            await self.db.flush()
+            raise AuthError("Session idle timeout")
+        sess.last_activity_at = now
         await self.db.flush()
         return sess

@@ -20,11 +20,13 @@ from app.core.config import Settings, get_settings
 from app.core.exceptions import NotFoundError, ProviderUnavailableError
 from app.core.logging import get_logger
 from app.models.music import (
+    AudioAsset,
     AudioQuality,
     CacheEntry,
     CacheEntryStatus,
     Provider,
     ProviderTrack,
+    SourceType,
     Track,
     TrackStatus,
 )
@@ -53,7 +55,7 @@ class TrackUpdateResult:
     provider_track_id: str
     quality_capabilities: list[str] = field(default_factory=list)
     preview_available: bool = False
-    resolution_ref: str | None = None  # internal ref e.g. "mock:mock-1"
+    resolution_ref: str | None = None
 
 
 @dataclass
@@ -72,6 +74,7 @@ class DownloadResult:
     track_id: UUID | None = None
     content_hash: str | None = None
     expires_at: datetime | None = None
+    storage_bucket: StorageBucket = StorageBucket.CACHE
 
 
 def _slugify(text: str) -> str:
@@ -105,7 +108,7 @@ class MusicEngine:
         provider_track_id: str | None = None,
         query: str | None = None,
     ) -> TrackUpdateResult:
-        """Resolve internal representation of content without mandatory full download."""
+        """Resolve external metadata without promoting it into the owned catalog."""
         meta: TrackMetadata | None = None
         provider_name = provider
 
@@ -124,11 +127,11 @@ class MusicEngine:
         if meta is None or provider_name is None or provider_track_id is None:
             raise NotFoundError("Track metadata not found")
 
-        # Ensure provider row exists
         db_provider = await self._ensure_provider(provider_name)
 
-        # Link or create internal track
-        track = await self._upsert_track_from_metadata(db_provider, meta)
+        # ProviderTrack is only a durable external reference. A Track is created
+        # exclusively by the artist catalog/upload workflow.
+        track = await self._ensure_provider_track(db_provider, meta)
 
         caps = []
         p = self.providers.registry.get(provider_name)
@@ -143,10 +146,6 @@ class MusicEngine:
             if c.hi_res:
                 caps.append("hi_res")
 
-        preview_available = False
-        if p and p.capabilities.preview:
-            preview_available = True
-
         return TrackUpdateResult(
             title=meta.title,
             artists=list(meta.artists),
@@ -159,7 +158,7 @@ class MusicEngine:
             provider=provider_name,
             provider_track_id=provider_track_id,
             quality_capabilities=caps,
-            preview_available=preview_available,
+            preview_available=bool(p and p.capabilities.preview),
             resolution_ref=f"{provider_name}:{provider_track_id}",
         )
 
@@ -172,10 +171,7 @@ class MusicEngine:
         """Prefer official provider preview; do not generate illegal samples."""
         source = await self.providers.preview(provider, provider_track_id)
         if source is None:
-            # Fallback: short resolve is not automatic sample generation —
-            # only return if provider itself offers preview.
             return PreviewResult(source=None)
-
         return PreviewResult(source=source, from_cache=False)
 
     async def download(
@@ -186,10 +182,7 @@ class MusicEngine:
         quality: str = "medium",
         user_id: UUID | None = None,
     ) -> DownloadResult:
-        """
-        Authorization/entitlement should be checked by the API layer before calling.
-        Flow: cache lookup → HIT signed URL | MISS → resolve → store (single-flight).
-        """
+        """Resolve, acquire, cache and return only our signed storage URL."""
         try:
             aq = AudioQuality(quality.lower())
         except ValueError:
@@ -235,21 +228,18 @@ class MusicEngine:
                 expires_at=entry.expires_at,
             )
 
-        # URL-based source: return temporary provider URL (never persist as truth).
-        from app.storage.base import SignedUrl as SU
+        from app.services.transfer import TransferManager
 
-        expires_in = 3600
-        if source.expiry:
-            remaining = int((source.expiry - datetime.now(UTC)).total_seconds())
-            expires_in = max(60, min(remaining, 3600))
-
-        signed = SU(
-            url=source.url or "",
-            expires_in_seconds=expires_in,
-            method="GET",
+        transfer = TransferManager()
+        entry, from_cache = await cache_svc.get_or_acquire(
+            provider=provider,
+            provider_track_id=provider_track_id,
+            quality=aq,
+            acquire_fn=lambda: transfer.acquire(source),
         )
+        signed = await cache_svc.signed_delivery(entry)
         logger.info(
-            "download_cache_miss_external_url",
+            "download_transferred_and_cached",
             provider=provider,
             provider_track_id=provider_track_id,
             quality=quality,
@@ -257,19 +247,13 @@ class MusicEngine:
         )
         return DownloadResult(
             signed_url=signed,
-            storage_key=None,
+            storage_key=entry.storage_key,
             quality=quality,
-            from_cache=False,
-            track_id=None,
+            from_cache=from_cache,
+            track_id=entry.track_id,
+            content_hash=entry.content_hash,
+            expires_at=entry.expires_at,
         )
-
-
-async def _async_const(value: bytes) -> bytes:
-    return value
-
-    # ------------------------------------------------------------------
-    # Internals
-    # ------------------------------------------------------------------
 
     async def _ensure_provider(self, name: str) -> Provider:
         existing = await self.session.scalar(select(Provider).where(Provider.name == name))
@@ -280,63 +264,47 @@ async def _async_const(value: bytes) -> bytes:
         await self.session.flush()
         return p
 
-    async def _upsert_track_from_metadata(
+    async def _ensure_provider_track(
         self, db_provider: Provider, meta: TrackMetadata
-    ) -> Track:
+    ) -> Track | None:
+        """Persist provider metadata without creating a first-party Track.
+
+        A ProviderTrack may point at a first-party Track later, after an artist
+        uploads/claims the corresponding content and the rights workflow accepts it.
+        """
         pt = await self.session.scalar(
             select(ProviderTrack).where(
                 ProviderTrack.provider_id == db_provider.id,
                 ProviderTrack.provider_track_id == meta.provider_track_id,
             )
         )
-        if pt and pt.track_id:
-            track = await self.session.get(Track, pt.track_id)
-            if track:
-                pt.metadata_snapshot = {
-                    "title": meta.title,
-                    "artists": meta.artists,
-                    "album": meta.album,
-                    "isrc": meta.isrc,
-                    "duration": meta.duration_seconds,
-                }
-                pt.last_resolved_at = datetime.now(UTC)
-                await self.session.flush()
-                return track
-
-        # Create track
-        slug_base = _slugify(meta.title)
-        track = Track(
-            title=meta.title,
-            slug=f"{slug_base}-{meta.provider_track_id}"[:255],
-            duration=meta.duration_seconds,
-            isrc=meta.isrc,
-            status=TrackStatus.PUBLISHED,
-            artwork_url=meta.artwork_url,
-        )
-        self.session.add(track)
-        await self.session.flush()
+        snapshot: dict[str, Any] = {
+            "title": meta.title,
+            "artists": meta.artists,
+            "album": meta.album,
+            "isrc": meta.isrc,
+            "duration": meta.duration_seconds,
+            "artwork_url": meta.artwork_url,
+            "release_date": meta.release_date,
+        }
 
         if pt is None:
             pt = ProviderTrack(
                 provider_id=db_provider.id,
                 provider_track_id=meta.provider_track_id,
-                track_id=track.id,
-                metadata_snapshot={
-                    "title": meta.title,
-                    "artists": meta.artists,
-                    "album": meta.album,
-                    "isrc": meta.isrc,
-                    "duration": meta.duration_seconds,
-                },
+                metadata_snapshot=snapshot,
                 last_resolved_at=datetime.now(UTC),
             )
             self.session.add(pt)
         else:
-            pt.track_id = track.id
+            pt.metadata_snapshot = snapshot
             pt.last_resolved_at = datetime.now(UTC)
 
         await self.session.flush()
-        return track
+
+        if pt.track_id is None:
+            return None
+        return await self.session.get(Track, pt.track_id)
 
     async def _find_cache(
         self, provider: str, provider_track_id: str, quality: AudioQuality
@@ -414,7 +382,7 @@ async def _async_const(value: bytes) -> bytes:
         quality: str = "medium",
         user_id: UUID | None = None,
     ) -> DownloadResult:
-        """Catalog track download — prefers permanent artist assets / cache by track_id."""
+        """Catalog track download — only for first-party published tracks."""
         try:
             aq = AudioQuality(quality.lower())
         except ValueError:
@@ -422,42 +390,47 @@ async def _async_const(value: bytes) -> bytes:
             quality = aq.value
 
         track = await self.session.get(Track, track_id)
-        if track is None or track.status not in (
-            TrackStatus.PUBLISHED,
-            TrackStatus.PROCESSING,
-            TrackStatus.DRAFT,
-        ):
-            # Still allow published primarily
-            if track is None:
-                raise NotFoundError("Track not found")
+        if track is None:
+            raise NotFoundError("Track not found")
+        if track.status != TrackStatus.PUBLISHED:
+            raise NotFoundError("Track is not published")
 
-        cache_svc = CacheService(self.session, storage=self.storage, settings=self.settings)
-        hit = await cache_svc.lookup_by_track(track_id=track_id, quality=aq)
-        if hit is not None:
-            signed = await cache_svc.signed_delivery(hit)
-            return DownloadResult(
-                signed_url=signed,
-                storage_key=hit.storage_key,
-                quality=quality,
-                from_cache=True,
-                track_id=track_id,
-                content_hash=hit.content_hash,
-                expires_at=hit.expires_at,
+        # First-party catalog playback must use its current owned permanent asset.
+        # Do not serve a provider/cache object here: a cached copy can outlive an
+        # asset replacement, rights change, takedown, or content-hash/version switch.
+        # The permanent asset is the source of truth for first-party tracks.
+        # ProviderTrack is metadata/reference only and must never replace it.
+        asset = await self.session.scalar(
+            select(AudioAsset)
+            .where(
+                AudioAsset.track_id == track_id,
+                AudioAsset.quality == aq,
+                AudioAsset.is_active.is_(True),
             )
-
-        # Fallback: provider mapping
-        pt = await self.session.scalar(
-            select(ProviderTrack).where(ProviderTrack.track_id == track_id).limit(1)
+            .order_by(AudioAsset.created_at.desc())
+            .limit(1)
         )
-        if pt is not None:
-            provider = await self.session.get(Provider, pt.provider_id)
-            if provider:
-                return await self.download(
-                    provider=provider.name,
-                    provider_track_id=pt.provider_track_id,
-                    quality=quality,
-                    user_id=user_id,
-                )
+        if asset is None:
+            raise NotFoundError(f"No published {aq.value} audio asset available for track")
+        if asset.source_type not in (SourceType.ARTIST_UPLOAD, SourceType.DERIVATIVE):
+            raise NotFoundError("Track has no first-party playable asset")
+        if not asset.content_hash or not asset.storage_key:
+            raise NotFoundError("Track asset is incomplete")
 
-        raise NotFoundError("No playable source for track")
+        signed = await self.storage.signed_url(
+            asset.storage_key,
+            bucket=StorageBucket.PERMANENT,
+        )
+        return DownloadResult(
+            signed_url=signed,
+            storage_key=asset.storage_key,
+            quality=quality,
+            from_cache=False,
+            track_id=track_id,
+            content_hash=asset.content_hash,
+            storage_bucket=StorageBucket.PERMANENT,
+        )
 
+
+async def _async_const(value: bytes) -> bytes:
+    return value

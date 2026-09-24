@@ -63,6 +63,14 @@ class LoginResponse(BaseModel):
     tokens: TokenResponse
 
 
+class AuthContextResponse(BaseModel):
+    user: UserResponse
+    roles: list[str]
+    artist_ids: list[UUID]
+    is_artist: bool
+    is_admin: bool
+
+
 class RefreshRequest(BaseModel):
     refresh_token: str
     device_id: str | None = Field(default=None, max_length=128)

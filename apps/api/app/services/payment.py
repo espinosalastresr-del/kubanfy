@@ -11,12 +11,13 @@ from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import Settings, get_settings
 from app.core.exceptions import ConflictError, ForbiddenError, NotFoundError, ValidationError
 from app.core.logging import get_logger
-from app.models.entitlement import EntitlementScope, EntitlementSource
+from app.models.entitlement import EntitlementScope, EntitlementSource, Plan, PlanPrice
 from app.models.payment import PaymentMethod, PaymentOrder, PaymentStatus
 from app.services.entitlement import EntitlementService
 
@@ -27,8 +28,7 @@ class PaymentProvider(ABC):
     name: str
 
     @abstractmethod
-    async def create_order(self, order: PaymentOrder) -> PaymentOrder:
-        ...
+    async def create_order(self, order: PaymentOrder) -> PaymentOrder: ...
 
 
 class ManualTransferProvider(PaymentProvider):
@@ -69,19 +69,24 @@ class PaymentService:
         reference: str | None = None,
         idempotency_key: str | None = None,
     ) -> PaymentOrder:
-        if not self.settings.feature_monetization:
-            # Still allow creating orders in pending state for ops testing,
-            # but document that monetization flag gates fulfillment.
-            pass
-
         if amount_cents <= 0:
             raise ValidationError("amount_cents must be positive")
+
+        if self.settings.feature_monetization:
+            await self._validate_plan_price(
+                plan_code=plan_code,
+                currency=currency,
+                amount_cents=amount_cents,
+            )
 
         if idempotency_key:
             existing = await self.session.scalar(
                 select(PaymentOrder).where(PaymentOrder.idempotency_key == idempotency_key)
             )
             if existing:
+                # Never let a caller replay another user's idempotency key.
+                if existing.user_id != user_id:
+                    raise ConflictError("Idempotency key already belongs to another user") from None
                 return existing
 
         provider = self._providers.get(method)
@@ -100,7 +105,21 @@ class PaymentService:
         )
         order = await provider.create_order(order)
         self.session.add(order)
-        await self.session.flush()
+        try:
+            async with self.session.begin_nested():
+                await self.session.flush()
+        except IntegrityError:
+            # A concurrent request may have won the unique idempotency key race.
+            if not idempotency_key:
+                raise
+            existing = await self.session.scalar(
+                select(PaymentOrder).where(PaymentOrder.idempotency_key == idempotency_key)
+            )
+            if existing is None:
+                raise
+            if existing.user_id != user_id:
+                raise ConflictError("Idempotency key already belongs to another user") from None
+            return existing
         logger.info(
             "payment_order_created",
             order_id=str(order.id),
@@ -117,6 +136,11 @@ class PaymentService:
         if order.status not in (PaymentStatus.PENDING, PaymentStatus.REJECTED):
             raise ConflictError(f"Cannot submit order in status {order.status.value}")
         if proof_storage_key:
+            self._validate_proof_storage_key(
+                order_id=order.id,
+                user_id=user_id,
+                proof_storage_key=proof_storage_key,
+            )
             order.proof_storage_key = proof_storage_key
         order.status = PaymentStatus.UNDER_REVIEW
         await self.session.flush()
@@ -129,25 +153,58 @@ class PaymentService:
         *,
         grant_premium: bool = True,
     ) -> PaymentOrder:
-        order = await self.session.get(PaymentOrder, order_id)
+        # Serialize approval for this order so concurrent admin retries cannot
+        # both fulfill the same payment.
+        order = await self.session.scalar(
+            select(PaymentOrder).where(PaymentOrder.id == order_id).with_for_update()
+        )
         if order is None:
             raise NotFoundError("Payment order not found")
+        # Approval is idempotent: a retried admin request must not grant
+        # another premium entitlement.
+        if order.status == PaymentStatus.APPROVED:
+            return order
         if order.status not in (PaymentStatus.UNDER_REVIEW, PaymentStatus.PENDING):
             raise ConflictError(f"Cannot approve order in status {order.status.value}")
+        if order.expires_at and order.expires_at.replace(tzinfo=UTC) <= datetime.now(UTC):
+            order.status = PaymentStatus.EXPIRED
+            await self.session.flush()
+            raise ConflictError("Payment order has expired")
+
+        plan_features: dict = {}
+        if grant_premium and order.plan_code:
+            if self.settings.feature_monetization:
+                price = await self._validate_plan_price(
+                    plan_code=order.plan_code,
+                    currency=order.currency,
+                    amount_cents=order.amount_cents,
+                )
+                plan_features = price.plan.features or {}
+                expires_at = self._plan_expiration(price.interval)
+            else:
+                expires_at = datetime.now(UTC) + timedelta(days=30)
+                plan_features = {"downloads": True, "quality_max": "lossless"}
+        else:
+            expires_at = None
 
         order.status = PaymentStatus.APPROVED
         order.verified_by = admin_user_id
         order.verified_at = datetime.now(UTC)
         await self.session.flush()
 
-        if grant_premium and order.plan_code in ("premium", "family", "student"):
+        if grant_premium and order.plan_code:
             ent_svc = EntitlementService(self.session)
-            await ent_svc.grant(
-                order.user_id,
-                EntitlementScope.USER_PREMIUM,
+            await ent_svc.grant_payment_entitlement(
+                user_id=order.user_id,
+                payment_order_id=order.id,
+                scope_type=EntitlementScope.USER_PREMIUM,
                 source=EntitlementSource.MANUAL,
-                expires_at=datetime.now(UTC) + timedelta(days=30),
-                metadata={"payment_order_id": str(order.id), "plan_code": order.plan_code},
+                expires_at=expires_at,
+                metadata={
+                    "plan_code": order.plan_code,
+                    "downloads": bool(plan_features.get("downloads", False)),
+                    "quality_max": str(plan_features.get("quality_max", "low")).lower(),
+                },
             )
 
         logger.info("payment_approved", order_id=str(order_id), by=str(admin_user_id))
@@ -156,9 +213,13 @@ class PaymentService:
     async def reject(
         self, order_id: UUID, admin_user_id: UUID, *, reason: str | None = None
     ) -> PaymentOrder:
-        order = await self.session.get(PaymentOrder, order_id)
+        order = await self.session.scalar(
+            select(PaymentOrder).where(PaymentOrder.id == order_id).with_for_update()
+        )
         if order is None:
             raise NotFoundError("Payment order not found")
+        if order.status not in (PaymentStatus.UNDER_REVIEW, PaymentStatus.PENDING):
+            raise ConflictError(f"Cannot reject order in status {order.status.value}")
         order.status = PaymentStatus.REJECTED
         order.verified_by = admin_user_id
         order.verified_at = datetime.now(UTC)
@@ -166,6 +227,23 @@ class PaymentService:
         await self.session.flush()
         logger.info("payment_rejected", order_id=str(order_id), by=str(admin_user_id))
         return order
+
+    @staticmethod
+    def _validate_proof_storage_key(
+        *,
+        order_id: UUID,
+        user_id: UUID,
+        proof_storage_key: str,
+    ) -> None:
+        """Constrain payment proofs to the submitting user's order namespace."""
+        prefix = f"payment-proofs/{user_id}/{order_id}/"
+        if (
+            not proof_storage_key.startswith(prefix)
+            or proof_storage_key == prefix
+            or "\\" in proof_storage_key
+            or any(part in {".", ".."} for part in proof_storage_key.split("/"))
+        ):
+            raise ValidationError("Invalid payment proof storage key")
 
     async def list_for_user(self, user_id: UUID) -> list[PaymentOrder]:
         result = await self.session.execute(
@@ -183,6 +261,41 @@ class PaymentService:
             .limit(limit)
         )
         return list(result.scalars().all())
+
+    async def _validate_plan_price(
+        self,
+        *,
+        plan_code: str | None,
+        currency: str,
+        amount_cents: int,
+    ) -> PlanPrice:
+        if not plan_code:
+            raise ValidationError("plan_code is required when monetization is enabled")
+        plan = await self.session.scalar(
+            select(Plan).where(Plan.code == plan_code, Plan.is_active.is_(True))
+        )
+        if plan is None:
+            raise ValidationError("Unknown or inactive plan")
+        price = await self.session.scalar(
+            select(PlanPrice).where(
+                PlanPrice.plan_id == plan.id,
+                PlanPrice.currency == currency.upper(),
+                PlanPrice.amount_cents == amount_cents,
+                PlanPrice.is_active.is_(True),
+            )
+        )
+        if price is None:
+            raise ValidationError("Payment amount does not match an active plan price")
+        return price
+
+    @staticmethod
+    def _plan_expiration(interval: str) -> datetime:
+        now = datetime.now(UTC)
+        if interval == "month":
+            return now + timedelta(days=30)
+        if interval == "year":
+            return now + timedelta(days=365)
+        raise ValidationError(f"Unsupported plan interval: {interval}")
 
     async def _get_owned(self, order_id: UUID, user_id: UUID) -> PaymentOrder:
         order = await self.session.get(PaymentOrder, order_id)

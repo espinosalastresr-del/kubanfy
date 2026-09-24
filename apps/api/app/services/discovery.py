@@ -18,19 +18,15 @@ from app.core.config import Settings, get_settings
 from app.core.logging import get_logger
 from app.models.analytics import AnalyticsEvent, RankingSnapshot
 from app.models.music import Artist, Track, TrackStatus
-from app.models.playlist import Favorite, FavoriteType
 
 logger = get_logger(__name__)
 
 # Configurable weights (can move to system_settings later)
 DEFAULT_WEIGHTS = {
-    "qualified_play": 3.0,
-    "play_start": 1.0,
-    "play_100": 2.0,
-    "favorite": 2.5,
-    "playlist_add": 2.0,
+    # Only server-qualified engagement is authoritative for discovery.
+    "play_qualified": 3.0,
     "download_complete": 1.5,
-    "skip": -0.5,
+    "share": 1.5,
 }
 
 
@@ -87,9 +83,10 @@ class DiscoveryService:
         for track_id, event_type, cnt in rows:
             if track_id is None:
                 continue
+            bounded = min(int(cnt), 1000)
             w = DEFAULT_WEIGHTS.get(event_type, 0.1)
-            scores[track_id] = scores.get(track_id, 0.0) + w * cnt
-            metrics.setdefault(track_id, {})[event_type] = cnt
+            scores[track_id] = scores.get(track_id, 0.0) + w * bounded
+            metrics.setdefault(track_id, {})[event_type] = bounded
 
         if not scores:
             # Fallback: newest published tracks
@@ -110,8 +107,14 @@ class DiscoveryService:
         track_map = {
             t.id: t
             for t in (
-                await self.session.execute(select(Track).where(Track.id.in_(track_ids)))
-            ).scalars().all()
+                await self.session.execute(
+                    select(Track).where(
+                        Track.id.in_(track_ids), Track.status == TrackStatus.PUBLISHED
+                    )
+                )
+            )
+            .scalars()
+            .all()
         }
 
         out: list[dict[str, Any]] = []
@@ -128,9 +131,7 @@ class DiscoveryService:
             )
         return out
 
-    async def home(
-        self, *, country: str | None = None
-    ) -> dict[str, Any]:
+    async def home(self, *, country: str | None = None) -> dict[str, Any]:
         country = (country or self.settings.default_country).upper()
         local = await self.local_artists(country, limit=10)
         top = await self.top_tracks(country=country, limit=20)
@@ -139,14 +140,11 @@ class DiscoveryService:
         return {
             "country": country,
             "local_artists": [
-                {"id": a.id, "name": a.name, "slug": a.slug, "verified": a.verified}
-                for a in local
+                {"id": a.id, "name": a.name, "slug": a.slug, "verified": a.verified} for a in local
             ],
             "top_50_country": top,
             "top_50_global": top_global,
-            "new_releases": [
-                {"id": t.id, "title": t.title, "duration": t.duration} for t in new
-            ],
+            "new_releases": [{"id": t.id, "title": t.title, "duration": t.duration} for t in new],
             "trending": top[:10],
             "viral_by_country": top[:10],
         }

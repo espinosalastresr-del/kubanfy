@@ -22,8 +22,7 @@ from app.models.entitlement import (
     Plan,
     PlanCode,
 )
-from app.models.music import SourceType, Track
-from app.models.music import AudioAsset
+from app.models.music import AudioAsset, SourceType
 
 logger = get_logger(__name__)
 
@@ -41,6 +40,7 @@ class EntitlementService:
         source: EntitlementSource = EntitlementSource.MANUAL,
         expires_at: datetime | None = None,
         metadata: dict | None = None,
+        payment_order_id: UUID | None = None,
     ) -> Entitlement:
         ent = Entitlement(
             user_id=user_id,
@@ -50,6 +50,7 @@ class EntitlementService:
             status=EntitlementStatus.ACTIVE,
             expires_at=expires_at,
             metadata_json=metadata or {},
+            payment_order_id=payment_order_id,
         )
         self.session.add(ent)
         await self.session.flush()
@@ -60,6 +61,38 @@ class EntitlementService:
             source=source.value,
         )
         return ent
+
+    async def grant_payment_entitlement(
+        self,
+        *,
+        user_id: UUID,
+        payment_order_id: UUID,
+        scope_type: EntitlementScope,
+        source: EntitlementSource,
+        expires_at: datetime | None = None,
+        metadata: dict | None = None,
+    ) -> Entitlement:
+        """Grant an entitlement once for a payment order."""
+        payment_ref = str(payment_order_id)
+        existing = await self.session.scalar(
+            select(Entitlement).where(
+                Entitlement.user_id == user_id,
+                Entitlement.scope_type == scope_type,
+                Entitlement.payment_order_id == payment_order_id,
+            )
+        )
+        if existing is not None:
+            return existing
+        payload = dict(metadata or {})
+        payload["payment_order_id"] = payment_ref
+        return await self.grant(
+            user_id,
+            scope_type,
+            source=source,
+            expires_at=expires_at,
+            metadata=payload,
+            payment_order_id=payment_order_id,
+        )
 
     async def revoke(self, entitlement_id: UUID) -> Entitlement:
         ent = await self.session.get(Entitlement, entitlement_id)
@@ -80,7 +113,7 @@ class EntitlementService:
         )
         active: list[Entitlement] = []
         for ent in result.scalars().all():
-            if ent.expires_at and ent.expires_at.replace(tzinfo=UTC) < now:
+            if ent.expires_at and ent.expires_at.replace(tzinfo=UTC) <= now:
                 ent.status = EntitlementStatus.EXPIRED
                 continue
             active.append(ent)
@@ -103,10 +136,7 @@ class EntitlementService:
         # Specific track entitlement
         if user_id:
             for ent in await self.list_active(user_id):
-                if (
-                    ent.scope_type == EntitlementScope.TRACK
-                    and ent.scope_id == track_id
-                ):
+                if ent.scope_type == EntitlementScope.TRACK and ent.scope_id == track_id:
                     return True
                 if ent.scope_type == EntitlementScope.USER_PREMIUM:
                     return True
@@ -128,12 +158,46 @@ class EntitlementService:
         if not await self.can_access_track(user_id, track_id):
             raise EntitlementRequiredError("Entitlement required for this track")
 
+    async def require_download_access(self, user_id: UUID) -> None:
+        """Persistent/download delivery is a premium entitlement, not free streaming."""
+        for ent in await self.list_active(user_id):
+            if ent.scope_type == EntitlementScope.USER_PREMIUM:
+                features = ent.metadata_json or {}
+                if bool(features.get("downloads", False)):
+                    return
+        raise EntitlementRequiredError("Premium entitlement required for downloads")
+
+    async def require_quality_access(self, user_id: UUID, quality: str) -> None:
+        """Enforce the maximum quality explicitly granted by the active entitlement."""
+        order = {"low": 0, "medium": 1, "lossless": 2}
+        requested = quality.lower()
+        if requested not in order:
+            raise EntitlementRequiredError("Unsupported audio quality")
+
+        max_quality = "low"
+        for ent in await self.list_active(user_id):
+            if ent.scope_type != EntitlementScope.USER_PREMIUM:
+                continue
+            features = ent.metadata_json or {}
+            granted = str(features.get("quality_max", "")).lower()
+            if granted in order and order[granted] > order[max_quality]:
+                max_quality = granted
+
+        if order[requested] > order[max_quality]:
+            raise EntitlementRequiredError(
+                f"Audio quality {requested} requires a higher entitlement"
+            )
+
     async def ensure_default_plans(self) -> None:
         """Idempotent seed of FREE/PREMIUM/FAMILY/STUDENT plans (no prices hardcoded as product truth)."""
         defaults = [
-            (PlanCode.FREE.value, "Free", {"downloads": False, "quality_max": "medium"}),
+            (PlanCode.FREE.value, "Free", {"downloads": False, "quality_max": "low"}),
             (PlanCode.PREMIUM.value, "Premium", {"downloads": True, "quality_max": "lossless"}),
-            (PlanCode.FAMILY.value, "Family", {"downloads": True, "quality_max": "lossless", "seats": 6}),
+            (
+                PlanCode.FAMILY.value,
+                "Family",
+                {"downloads": True, "quality_max": "lossless", "seats": 6},
+            ),
             (PlanCode.STUDENT.value, "Student", {"downloads": True, "quality_max": "lossless"}),
         ]
         for code, name, features in defaults:

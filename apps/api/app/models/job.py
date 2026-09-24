@@ -39,15 +39,14 @@ class JobType(str, enum.Enum):
     ARTWORK = "artwork"
     MODERATION = "moderation"
     NOTIFICATION = "notification"
+    PUBLICATION_SCHEDULE = "publication_schedule"
     GENERIC = "generic"
 
 
 class Job(Base):
     __tablename__ = "jobs"
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
-    )
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     type: Mapped[JobType] = mapped_column(
         Enum(JobType, name="job_type", values_callable=lambda x: [e.value for e in x]),
         nullable=False,

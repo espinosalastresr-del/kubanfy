@@ -26,7 +26,6 @@ from sqlalchemy.orm import selectinload
 from app.core.exceptions import ConflictError, NotFoundError
 from app.core.logging import get_logger
 from app.models.rbac import Permission, Role, SystemRole, UserRole
-from app.models.user import User
 
 logger = get_logger(__name__)
 
@@ -45,6 +44,8 @@ DEFAULT_PERMISSIONS: dict[str, str] = {
     "payments.read": "View payments",
     "payments.verify": "Verify payments",
     "payments.refund": "Refund payments",
+    "royalties.read": "View royalty accounting",
+    "royalties.write": "Write royalty accounting",
     "analytics.read": "View analytics",
     "analytics.export": "Export analytics",
     "providers.read": "View providers",
@@ -135,6 +136,8 @@ DEFAULT_ROLE_PERMISSIONS: dict[str, list[str]] = {
         "payments.read",
         "payments.verify",
         "payments.refund",
+        "royalties.read",
+        "royalties.write",
         "analytics.read",
         "audit_logs.read",
     ],
@@ -171,10 +174,7 @@ class RbacService:
         """Idempotently create default permissions and system roles."""
         # Permissions
         existing_perms = {
-            p.code: p
-            for p in (
-                await self.session.execute(select(Permission))
-            ).scalars().all()
+            p.code: p for p in (await self.session.execute(select(Permission))).scalars().all()
         }
         for code, desc in DEFAULT_PERMISSIONS.items():
             if code not in existing_perms:
@@ -187,10 +187,10 @@ class RbacService:
         existing_roles = {
             r.name: r
             for r in (
-                await self.session.execute(
-                    select(Role).options(selectinload(Role.permissions))
-                )
-            ).scalars().all()
+                await self.session.execute(select(Role).options(selectinload(Role.permissions)))
+            )
+            .scalars()
+            .all()
         }
         for role_name, perm_codes in DEFAULT_ROLE_PERMISSIONS.items():
             if role_name not in existing_roles:
@@ -211,7 +211,9 @@ class RbacService:
                     role.permissions.append(existing_perms[code])
 
         await self.session.flush()
-        logger.info("rbac_defaults_ensured", roles=len(existing_roles), permissions=len(existing_perms))
+        logger.info(
+            "rbac_defaults_ensured", roles=len(existing_roles), permissions=len(existing_perms)
+        )
 
     async def assign_role(
         self,

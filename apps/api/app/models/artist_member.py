@@ -22,13 +22,9 @@ class ArtistMemberRole(str, enum.Enum):
 
 class ArtistMember(Base):
     __tablename__ = "artist_members"
-    __table_args__ = (
-        UniqueConstraint("artist_id", "user_id", name="uq_artist_member"),
-    )
+    __table_args__ = (UniqueConstraint("artist_id", "user_id", name="uq_artist_member"),)
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
-    )
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     artist_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("artists.id", ondelete="CASCADE"), nullable=False, index=True
     )

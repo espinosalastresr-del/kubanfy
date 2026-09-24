@@ -1,0 +1,38 @@
+name: Android Native CI
+on:
+  push:
+    branches: [main, "feat/**"]
+    paths: ["apps/android/**", ".github/workflows/android-ci.yml"]
+  pull_request:
+    paths: ["apps/android/**", ".github/workflows/android-ci.yml"]
+  workflow_dispatch:
+
+concurrency:
+  group: android-native-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/android
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "9.1.0"
+      - name: Prepare Android SDK
+        run: |
+          yes | "${ANDROID_HOME}/cmdline-tools/latest/bin/sdkmanager" --licenses >/dev/null || true
+          "${ANDROID_HOME}/cmdline-tools/latest/bin/sdkmanager" "platform-tools" "platforms;android-36" "build-tools;36.0.0"
+      - name: Build and test
+        run: gradle test assembleDebug
+      - uses: actions/upload-artifact@v4
+        with:
+          name: kubanfy-android-debug-apk
+          path: apps/android/app/build/outputs/apk/debug/app-debug.apk

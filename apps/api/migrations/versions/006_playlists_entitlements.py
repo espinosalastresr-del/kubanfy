@@ -36,11 +36,6 @@ def upgrade() -> None:
     entitlement_status = sa.Enum(
         "active", "expired", "revoked", "pending", name="entitlement_status"
     )
-    playlist_visibility.create(op.get_bind(), checkfirst=True)
-    favorite_type.create(op.get_bind(), checkfirst=True)
-    entitlement_scope.create(op.get_bind(), checkfirst=True)
-    entitlement_source.create(op.get_bind(), checkfirst=True)
-    entitlement_status.create(op.get_bind(), checkfirst=True)
 
     op.create_table(
         "playlists",

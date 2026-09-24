@@ -173,9 +173,7 @@ class AudioValidationService:
         )
         _, stderr = await proc.communicate()
         if proc.returncode != 0:
-            raise TranscodeError(
-                f"Audio decode check failed: {stderr.decode()[:300]}"
-            )
+            raise TranscodeError(f"Audio decode check failed: {stderr.decode()[:300]}")
 
     async def _hash_file(self, path: Path) -> str:
         def _hash() -> str:

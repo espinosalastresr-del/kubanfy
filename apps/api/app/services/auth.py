@@ -18,7 +18,9 @@ from app.core.security import (
     hash_password,
     verify_password,
 )
+from app.models.artist_member import ArtistMember
 from app.models.device import SessionStatus
+from app.models.rbac import Role, UserRole
 from app.models.user import User, UserStatus
 from app.schemas.auth import LoginRequest, RegisterRequest, TokenResponse, UserResponse
 from app.services.session import SessionService
@@ -112,6 +114,11 @@ class AuthService:
             raise AuthError("Invalid refresh token")
 
         sess = await self.sessions.validate_refresh_session(jti)
+        token_device_id = payload.get("device_id")
+        if token_device_id and sess.device is not None and sess.device.device_id != token_device_id:
+            raise AuthError("Refresh token device mismatch")
+        if device_id and token_device_id and device_id != token_device_id:
+            raise AuthError("Refresh device mismatch")
         user = await self.session.get(User, sess.user_id)
         if user is None or user.status in (UserStatus.SUSPENDED, UserStatus.DELETED):
             raise AuthError("Account not available")
@@ -120,7 +127,10 @@ class AuthService:
         sess.status = SessionStatus.REVOKED
         sess.revoked_at = datetime.now(UTC)
 
-        tokens, new_jti = self._issue_tokens(user, device_id=device_id or payload.get("device_id"))
+        bound_device_id = token_device_id or (sess.device.device_id if sess.device else None)
+        if device_id and sess.device is not None and device_id != sess.device.device_id:
+            raise AuthError("Refresh device mismatch")
+        tokens, new_jti = self._issue_tokens(user, device_id=bound_device_id)
         await self.sessions.create_session(
             user.id,
             new_jti,
@@ -132,12 +142,14 @@ class AuthService:
         logger.info("token_refreshed", user_id=str(user.id))
         return tokens
 
-    def _issue_tokens(
-        self, user: User, device_id: str | None = None
-    ) -> tuple[TokenResponse, str]:
+    def _issue_tokens(self, user: User, device_id: str | None = None) -> tuple[TokenResponse, str]:
         access = create_access_token(
             str(user.id),
-            extra_claims={"email": user.email, "status": user.status.value},
+            extra_claims={
+                "email": user.email,
+                "status": user.status.value,
+                **({"device_id": device_id} if device_id else {}),
+            },
             settings=self.settings,
         )
         refresh = create_refresh_token(
@@ -157,6 +169,22 @@ class AuthService:
 
     async def get_user_by_id(self, user_id: UUID) -> User | None:
         return await self.session.get(User, user_id)
+
+    async def get_access_context(self, user_id: UUID) -> tuple[list[str], list[UUID]]:
+        role_rows = await self.session.execute(
+            select(Role.name)
+            .join(UserRole, UserRole.role_id == Role.id)
+            .where(UserRole.user_id == user_id)
+            .order_by(Role.name)
+        )
+        roles = list(role_rows.scalars().all())
+        artist_rows = await self.session.execute(
+            select(ArtistMember.artist_id)
+            .where(ArtistMember.user_id == user_id)
+            .order_by(ArtistMember.artist_id)
+        )
+        artist_ids = list(artist_rows.scalars().all())
+        return roles, artist_ids
 
     @staticmethod
     def to_response(user: User) -> UserResponse:

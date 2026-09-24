@@ -7,6 +7,7 @@ from app.models.admin import AuditLog, FeatureFlag, ModerationReport, SystemSett
 from app.models.analytics import AnalyticsDaily, AnalyticsEvent, RankingSnapshot
 from app.models.artist_member import ArtistMember
 from app.models.device import Device, Session
+from app.models.engagement import DownloadReceipt, PlaybackSession, ShareLink, ShareOpen
 from app.models.entitlement import Entitlement, Plan, PlanPrice, Subscription
 from app.models.job import Job
 from app.models.music import (
@@ -19,44 +20,60 @@ from app.models.music import (
     Track,
     TrackArtist,
 )
+from app.models.offline import OfflineLicense
 from app.models.payment import PaymentOrder
 from app.models.playlist import Favorite, Playlist, PlaylistTrack
 from app.models.rbac import Permission, Role, RolePermission, UserRole
-from app.models.rights import LicenseRecord
+from app.models.rights import (
+    CollaboratorSplit,
+    LicenseRecord,
+    RoyaltyAccount,
+    RoyaltyLedgerEntry,
+    RoyaltySettlement,
+)
 from app.models.user import User
 
 __all__ = [
-    "User",
-    "Role",
-    "Permission",
-    "RolePermission",
-    "UserRole",
-    "Device",
-    "Session",
-    "Job",
+    "AnalyticsDaily",
+    "AnalyticsEvent",
     "Artist",
-    "Release",
-    "Track",
-    "TrackArtist",
-    "Provider",
-    "ProviderTrack",
-    "AudioAsset",
-    "CacheEntry",
     "ArtistMember",
-    "LicenseRecord",
-    "Playlist",
-    "PlaylistTrack",
+    "AudioAsset",
+    "AuditLog",
+    "CacheEntry",
+    "CollaboratorSplit",
+    "Device",
+    "DownloadReceipt",
+    "Entitlement",
     "Favorite",
+    "FeatureFlag",
+    "Job",
+    "LicenseRecord",
+    "ModerationReport",
+    "OfflineLicense",
+    "PaymentOrder",
+    "Permission",
     "Plan",
     "PlanPrice",
-    "Subscription",
-    "Entitlement",
-    "PaymentOrder",
-    "AnalyticsEvent",
-    "AnalyticsDaily",
+    "PlaybackSession",
+    "Playlist",
+    "PlaylistTrack",
+    "Provider",
+    "ProviderTrack",
     "RankingSnapshot",
-    "ModerationReport",
-    "AuditLog",
-    "FeatureFlag",
+    "Release",
+    "Role",
+    "RolePermission",
+    "RoyaltyAccount",
+    "RoyaltyLedgerEntry",
+    "RoyaltySettlement",
+    "Session",
+    "ShareLink",
+    "ShareOpen",
+    "Subscription",
     "SystemSetting",
+    "Track",
+    "TrackArtist",
+    "User",
+    "UserRole",
 ]

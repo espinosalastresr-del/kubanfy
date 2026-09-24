@@ -1,5 +1,17 @@
 """Add durable payment order reference to entitlements.
 
+Revision ID: 011_entitlement_payment_idempotency
+Revises: 010_rights_royalties
+"""
+
+from alembic import op
+import sqlalchemy as sa
+from sqlalchemy.dialects import postgresql
+
+revision = "011"
+down_revision = "010"
+branch_labels = None
+depends_on = None
 Revision ID: 011
 Revises: 010
 """

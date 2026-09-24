@@ -13,6 +13,7 @@ import asyncio
 import signal
 import uuid
 from collections.abc import Awaitable, Callable
+from contextlib import suppress
 from typing import Any
 
 from app.core.config import get_settings
@@ -21,9 +22,6 @@ from app.core.logging import get_logger, setup_logging
 from app.core.redis import close_redis, init_redis
 from app.models.job import Job, JobType
 from app.services.job import JobService
-
-# Register built-in handlers
-import app.workers.handlers  # noqa: F401, E402
 
 logger = get_logger(__name__)
 
@@ -40,6 +38,10 @@ def register_handler(job_type: JobType):
         return fn
 
     return decorator
+
+
+# Register built-in handlers after the registry and decorator are defined.
+import app.workers.handlers  # noqa: E402,F401
 
 
 async def _default_handler(job: Job, session: Any) -> dict[str, Any] | None:
@@ -104,10 +106,8 @@ async def run_worker(
 
     loop = asyncio.get_running_loop()
     for sig in (signal.SIGINT, signal.SIGTERM):
-        try:
+        with suppress(NotImplementedError):
             loop.add_signal_handler(sig, _signal_handler)
-        except NotImplementedError:
-            pass
 
     try:
         while not stop.is_set():

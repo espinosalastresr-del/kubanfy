@@ -6,10 +6,9 @@ from uuid import UUID
 
 from fastapi import APIRouter, Request
 
-from app.services.anti_abuse import AntiAbuseService
-
 from app.api.deps import CurrentUser, DbSession
 from app.schemas.auth import (
+    AuthContextResponse,
     DeviceResponse,
     LoginRequest,
     LoginResponse,
@@ -19,8 +18,10 @@ from app.schemas.auth import (
     TokenResponse,
     UserResponse,
 )
+from app.services.anti_abuse import AntiAbuseService
 from app.services.auth import AuthService
 from app.services.session import SessionService
+from app.services.geo import GeoService
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -31,8 +32,10 @@ async def register(
     request: Request,
     session: DbSession,
 ) -> UserResponse:
+    geo = GeoService()
     ip = request.client.host if request.client else None
-    await AntiAbuseService().check_register(ip)
+    real_ip = geo.resolve_client_ip(ip, forwarded_for=request.headers.get("x-forwarded-for"))
+    await AntiAbuseService().check_register(real_ip)
     service = AuthService(session)
     user = await service.register(body)
     return AuthService.to_response(user)
@@ -44,11 +47,13 @@ async def login(
     request: Request,
     session: DbSession,
 ) -> LoginResponse:
+    geo = GeoService()
     ip = request.client.host if request.client else None
-    await AntiAbuseService().check_login(ip, body.email)
+    real_ip = geo.resolve_client_ip(ip, forwarded_for=request.headers.get("x-forwarded-for"))
+    await AntiAbuseService().check_login(real_ip, body.email)
     service = AuthService(session)
     user_agent = request.headers.get("user-agent")
-    user, tokens = await service.login(body, user_agent=user_agent)
+    user, tokens = await service.login(body, ip_country=geo.resolve(ip=real_ip).country, user_agent=user_agent)
     return LoginResponse(user=AuthService.to_response(user), tokens=tokens)
 
 
@@ -64,6 +69,19 @@ async def refresh(
 @router.get("/me", response_model=UserResponse)
 async def me(user: CurrentUser) -> UserResponse:
     return AuthService.to_response(user)
+
+
+@router.get("/context", response_model=AuthContextResponse)
+async def context(user: CurrentUser, session: DbSession) -> AuthContextResponse:
+    service = AuthService(session)
+    roles, artist_ids = await service.get_access_context(user.id)
+    return AuthContextResponse(
+        user=AuthService.to_response(user),
+        roles=roles,
+        artist_ids=artist_ids,
+        is_artist=bool(artist_ids),
+        is_admin=any(role in {"admin", "super_admin"} for role in roles),
+    )
 
 
 @router.get("/devices", response_model=list[DeviceResponse])

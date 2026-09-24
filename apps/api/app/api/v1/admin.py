@@ -54,10 +54,7 @@ async def list_flags(
     svc = AdminService(session)
     await svc.ensure_default_flags()
     flags = await svc.list_flags()
-    return [
-        {"key": f.key, "enabled": f.enabled, "description": f.description}
-        for f in flags
-    ]
+    return [{"key": f.key, "enabled": f.enabled, "description": f.description} for f in flags]
 
 
 @router.put("/feature-flags/{key}")

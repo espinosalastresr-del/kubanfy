@@ -91,9 +91,7 @@ class CacheService:
         content_hash: str | None = None,
     ) -> CacheEntry:
         content_hash = content_hash or hashlib.sha256(body).hexdigest()
-        storage_key = (
-            f"cache/{provider}/{provider_track_id}/{quality.value}/{content_hash[:16]}"
-        )
+        storage_key = f"cache/{provider}/{provider_track_id}/{quality.value}/{content_hash[:16]}"
 
         await self.storage.put(
             storage_key,
@@ -267,15 +265,14 @@ class CacheService:
             )
             return entry, False
 
-    async def lookup_by_track(
-        self, *, track_id: UUID, quality: AudioQuality
-    ) -> CacheEntry | None:
+    async def lookup_by_track(self, *, track_id: UUID, quality: AudioQuality) -> CacheEntry | None:
         result = await self.session.execute(
-            select(CacheEntry).where(
+            select(CacheEntry)
+            .where(
                 CacheEntry.track_id == track_id,
                 CacheEntry.quality == quality,
                 CacheEntry.status == CacheEntryStatus.READY,
-            ).limit(1)
+            )
+            .limit(1)
         )
         return result.scalar_one_or_none()
-

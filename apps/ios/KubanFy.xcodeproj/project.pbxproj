@@ -1,0 +1,31 @@
+// !$*UTF8*$!
+{
+ archiveVersion = 1;
+ objectVersion = 56;
+ objects = {
+  111111111111111111111111 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KubanFyApp.swift; sourceTree = "<group>";};
+  111111111111111111111112 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>";};
+  111111111111111111111113 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = APIClient.swift; sourceTree = "<group>";};
+  111111111111111111111114 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OfflineCrypto.swift; sourceTree = "<group>";};
+  111111111111111111111115 = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>";};
+  111111111111111111111116 = {isa = PBXFileReference; explicitFileType = wrapper.application; path = KubanFy.app; sourceTree = BUILT_PRODUCTS_DIR;};
+  222222222222222222222221 = {isa = PBXBuildFile; fileRef = 111111111111111111111111;};
+  222222222222222222222222 = {isa = PBXBuildFile; fileRef = 111111111111111111111112;};
+  222222222222222222222223 = {isa = PBXBuildFile; fileRef = 111111111111111111111113;};
+  222222222222222222222224 = {isa = PBXBuildFile; fileRef = 111111111111111111111114;};
+  333333333333333333333331 = {isa = PBXGroup; children = (333333333333333333333332,333333333333333333333333,333333333333333333333334); sourceTree = "<group>";};
+  333333333333333333333332 = {isa = PBXGroup; children = (111111111111111111111111,111111111111111111111112,111111111111111111111113,111111111111111111111114,111111111111111111111115); path = KubanFy; sourceTree = "<group>";};
+  333333333333333333333333 = {isa = PBXGroup; children = (111111111111111111111116); name = Products; sourceTree = "<group>";};
+  333333333333333333333334 = {isa = PBXGroup; children = (); name = Frameworks; sourceTree = "<group>";};
+  444444444444444444444441 = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (222222222222222222222221,222222222222222222222222,222222222222222222222223,222222222222222222222224); runOnlyForDeploymentPostprocessing = 0;};
+  444444444444444444444442 = {isa = PBXResourcesBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0;};
+  444444444444444444444443 = {isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0;};
+  555555555555555555555551 = {isa = PBXNativeTarget; buildConfigurationList = 666666666666666666666662; buildPhases = (444444444444444444444441,444444444444444444444443,444444444444444444444442); buildRules = (); dependencies = (); name = KubanFy; productName = KubanFy; productReference = 111111111111111111111116; productType = "com.apple.product-type.application";};
+  666666666666666666666661 = {isa = PBXProject; buildConfigurationList = 777777777777777777777771; compatibilityVersion = "Xcode 15.0"; developmentRegion = en; mainGroup = 333333333333333333333331; productRefGroup = 333333333333333333333333; projectDirPath = ""; projectRoot = ""; targets = (555555555555555555555551);};
+  777777777777777777777771 = {isa = XCConfigurationList; buildConfigurations = (888888888888888888888881,888888888888888888888882); defaultConfigurationName = Release;};
+  777777777777777777777772 = {isa = XCConfigurationList; buildConfigurations = (888888888888888888888881,888888888888888888888882); defaultConfigurationName = Release;};
+  888888888888888888888881 = {isa = XCBuildConfiguration; buildSettings = {PRODUCT_BUNDLE_IDENTIFIER = com.kubanfy.ios; SWIFT_VERSION = 5.0; INFOPLIST_FILE = KubanFy/Info.plist; IPHONEOS_DEPLOYMENT_TARGET = 16.0; TARGETED_DEVICE_FAMILY = "1,2"; CODE_SIGNING_ALLOWED = NO;}; name = Debug;};
+  888888888888888888888882 = {isa = XCBuildConfiguration; buildSettings = {PRODUCT_BUNDLE_IDENTIFIER = com.kubanfy.ios; SWIFT_VERSION = 5.0; INFOPLIST_FILE = KubanFy/Info.plist; IPHONEOS_DEPLOYMENT_TARGET = 16.0; TARGETED_DEVICE_FAMILY = "1,2"; CODE_SIGNING_ALLOWED = NO;}; name = Release;};
+ };
+ rootObject = 666666666666666666666661;
+}
