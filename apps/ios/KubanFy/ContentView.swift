@@ -513,6 +513,7 @@ private final class AudioPlayer: ObservableObject {
     private var timeObserver: Any?
     private var currentTrack: DiscoveryHome.Track?
     private var currentPlayback: PlaybackResponse?
+    private var currentLocalAudioURL: URL?
     private var playbackToken: String?
     private var playbackSessionID: UUID?
     private var heartbeatTask: Task<Void, Never>?
@@ -625,10 +626,12 @@ private final class AudioPlayer: ObservableObject {
             currentTrackID = track.id
             currentTitle = track.title
             currentPlayback = playback
+            let localURL = try await APIClient.shared.fetchAndDecryptKBY(playback)
+            guard generation == playbackGeneration else { return }
             duration = track.duration ?? 0
             position = 0
             try? AVAudioSession.sharedInstance().setActive(true)
-            replaceItem(with: playback.url, position: 0)
+            replaceItem(with: localURL, position: 0)
             isPlaying = true
             updateNowPlaying()
             player?.play()
@@ -641,6 +644,10 @@ private final class AudioPlayer: ObservableObject {
     }
 
     private func replaceItem(with url: URL, position: Double) {
+        if let previous = currentLocalAudioURL, previous != url {
+            try? FileManager.default.removeItem(at: previous)
+        }
+        currentLocalAudioURL = url
         let item = AVPlayerItem(url: url)
         if let itemDuration = item.asset.duration.seconds.isFinite ? item.asset.duration.seconds : nil, itemDuration > 0 { duration = itemDuration }
         if let player {
@@ -693,7 +700,9 @@ private final class AudioPlayer: ObservableObject {
             let playback = try await APIClient.shared.playback(trackId: track.id, quality: "low")
             guard currentTrackID == track.id else { return }
             currentPlayback = playback
-            replaceItem(with: playback.url, position: savedPosition)
+            let localURL = try await APIClient.shared.fetchAndDecryptKBY(playback)
+            guard currentTrackID == track.id else { return }
+            replaceItem(with: localURL, position: savedPosition)
             if !isPlaying { player?.pause() }
             startRenewalLoop(expiresIn: playback.expiresInSeconds)
         } catch {
@@ -720,7 +729,9 @@ private final class AudioPlayer: ObservableObject {
                     let playback = try await APIClient.shared.playback(trackId: track.id, quality: "low")
                     guard generation == self.playbackGeneration, self.currentTrackID == track.id else { return }
                     self.currentPlayback = playback
-                    self.replaceItem(with: playback.url, position: savedPosition)
+                    let localURL = try await APIClient.shared.fetchAndDecryptKBY(playback)
+                    guard generation == self.playbackGeneration, self.currentTrackID == track.id else { return }
+                    self.replaceItem(with: localURL, position: savedPosition)
                     self.isPlaying = true
                     self.errorMessage = nil
                     self.startRenewalLoop(expiresIn: playback.expiresInSeconds)
@@ -816,6 +827,10 @@ private final class AudioPlayer: ObservableObject {
         playbackToken = nil
         playbackSessionID = nil
         currentPlayback = nil
+        if let localURL = currentLocalAudioURL {
+            try? FileManager.default.removeItem(at: localURL)
+        }
+        currentLocalAudioURL = nil
         currentTrack = nil
         currentTrackID = nil
         currentTitle = nil
