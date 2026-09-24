@@ -1,0 +1,69 @@
+# Temporary Render-only staging environment for iOS integration testing.
+# This Blueprint manages the existing staging resources created in Render.
+services:
+  - type: web
+    name: kubanfy-api-staging
+    runtime: python
+    plan: free
+    region: oregon
+    repo: https://github.com/espinosalastresr-del/kubanfy
+    branch: feat/release-track-management
+    buildCommand: cd apps/api && pip install .
+    startCommand: cd apps/api && uvicorn app.main:app --host 0.0.0.0 --port $PORT --proxy-headers
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - key: ENVIRONMENT
+        value: development
+      - key: DEBUG
+        value: "true"
+      - key: DATABASE_URL
+        fromDatabase:
+          name: kubanfy-staging-db
+          property: connectionString
+      - key: DATABASE_URL_SYNC
+        fromDatabase:
+          name: kubanfy-staging-db
+          property: connectionString
+      - key: REDIS_URL
+        fromService:
+          name: kubanfy-staging-cache
+          type: keyvalue
+          property: connectionString
+      - key: JWT_SECRET_KEY
+        generateValue: true
+      - key: DEFAULT_COUNTRY
+        value: CU
+      - key: RATE_LIMIT_FAIL_OPEN
+        value: "true"
+      - key: CORS_ORIGINS
+        value: "*"
+      - key: ALLOWED_HOSTS
+        value: "*"
+      - key: LOG_LEVEL
+        value: INFO
+      - key: LOG_FORMAT
+        value: json
+      - key: FEATURE_MONETIZATION
+        value: "false"
+      - key: FEATURE_GOOGLE_PLAY
+        value: "false"
+      - key: FEATURE_PROVIDER_YOUTUBE
+        value: "false"
+      - key: SUPER_ADMIN_EMAIL
+        value: admin@kubanfy.staging
+      - key: SUPER_ADMIN_PASSWORD
+        generateValue: true
+
+  - type: keyvalue
+    name: kubanfy-staging-cache
+    plan: free
+    region: oregon
+    maxmemoryPolicy: allkeys-lru
+    persistenceMode: off
+
+databases:
+  - name: kubanfy-staging-db
+    plan: free
+    region: oregon
+    postgresMajorVersion: "18"
