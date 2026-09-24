@@ -7,7 +7,7 @@ import android.widget.Button
 import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.TextView
-import androidx.media3.common.MediaItem
+import androidx.media3.common.MediaItem\nimport androidx.media3.common.PlaybackException\nimport androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
 import android.widget.ProgressBar
 import java.util.concurrent.Executors
@@ -214,10 +214,33 @@ class MainActivity : Activity() {
     private fun playTrack(trackId: String, title: String) {
         executor.execute {
             try {
-                val url = api.playback(trackId, "low")
+                val playback = api.playback(trackId, "low")
                 runOnUiThread {
-                    val exo = player ?: ExoPlayer.Builder(this).build().also { player = it }
-                    exo.setMediaItem(MediaItem.fromUri(url))
+                    val exo = player ?: ExoPlayer.Builder(this).build().also { created ->
+                        created.addListener(object : Player.Listener {
+                            override fun onPlayerError(error: PlaybackException) {
+                                val currentId = trackId
+                                val position = created.currentPosition
+                                executor.execute {
+                                    try {
+                                        val renewed = api.playback(currentId, "low")
+                                        runOnUiThread {
+                                            created.setMediaItem(MediaItem.fromUri(renewed.url), position)
+                                            created.prepare()
+                                            created.play()
+                                            status.text = "Conexión renovada: $title"
+                                        }
+                                    } catch (renewError: Exception) {
+                                        runOnUiThread {
+                                            status.text = renewError.message ?: "No se pudo renovar la reproducción"
+                                        }
+                                    }
+                                }
+                            }
+                        })
+                        player = created
+                    }
+                    exo.setMediaItem(MediaItem.fromUri(playback.url))
                     exo.prepare()
                     exo.play()
                     status.text = "Reproduciendo: $title"
