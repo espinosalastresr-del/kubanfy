@@ -202,6 +202,20 @@ final class APIClient {
         return response
     }
 
+    func refresh() async throws {
+        guard let refreshToken = keychain.load("refresh") else { throw APIError.missingSession }
+        let body: [String: Any] = ["refresh_token": refreshToken, "device_id": deviceID]
+        let data = try await request(
+            path: "/auth/refresh",
+            method: "POST",
+            body: JSONSerialization.data(withJSONObject: body),
+            allowRefresh: false
+        )
+        let tokens = try decoder.decode(TokenResponse.self, from: data)
+        try keychain.save(tokens.accessToken, account: "access")
+        try keychain.save(tokens.refreshToken, account: "refresh")
+    }
+
     func context() async throws -> AuthContext {
         let data = try await request(path: "/auth/context")
         return try decoder.decode(AuthContext.self, from: data)
@@ -213,7 +227,7 @@ final class APIClient {
     }
 
     func playback(trackId: UUID, quality: String = "low") async throws -> PlaybackResponse {
-        var components = URLComponents(url: baseURL.appendingPathComponent("music/play/(trackId.uuidString)"), resolvingAgainstBaseURL: false)
+        var components = URLComponents(url: baseURL.appendingPathComponent("music/play/\(trackId.uuidString)"), resolvingAgainstBaseURL: false)
         components?.queryItems = [URLQueryItem(name: "quality", value: quality)]
         guard let url = components?.url else { throw APIError.invalidURL }
         let data = try await request(url: url)
@@ -248,7 +262,7 @@ final class APIClient {
         return try await request(url: url, method: method, body: body)
     }
 
-    private func request(url: URL, method: String = "GET", body: Data? = nil) async throws -> Data {
+    private func request(url: URL, method: String = "GET", body: Data? = nil, allowRefresh: Bool = true) async throws -> Data {
         var request = URLRequest(url: url)
         request.httpMethod = method
         request.httpBody = body
@@ -262,6 +276,14 @@ final class APIClient {
         let (data, response) = try await URLSession.shared.data(for: request)
         guard let http = response as? HTTPURLResponse else { throw APIError.invalidURL }
         guard (200..<300).contains(http.statusCode) else {
+            if http.statusCode == 401, allowRefresh, keychain.load("access") != nil, keychain.load("refresh") != nil {
+                do {
+                    try await refresh()
+                    return try await request(url: url, method: method, body: body, allowRefresh: false)
+                } catch {
+                    logout()
+                }
+            }
             let message = (try? JSONDecoder().decode(APIErrorEnvelope.self, from: data))?.error.message
                 ?? "Error HTTP \(http.statusCode)"
             throw APIError.http(http.statusCode, message)
