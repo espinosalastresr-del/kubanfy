@@ -41,28 +41,26 @@ struct PlaybackResponse: Codable {
     enum CodingKeys: String, CodingKey { case url, quality; case expiresInSeconds = "expires_in_seconds"; case trackId = "track_id"; case contentHash = "content_hash" }
 }
 struct PlaybackStartResponse: Codable {
-    let playbackToken: String
-    let playbackSessionId: UUID
-    let heartbeatIntervalSeconds: Int
-    let qualifyingListenSeconds: Int
-    let assetVersion: Int
-    let contentHash: String
-    enum CodingKeys: String, CodingKey {
-        case playbackToken = "playback_token"; case playbackSessionId = "playback_session_id"; case heartbeatIntervalSeconds = "heartbeat_interval_seconds"; case qualifyingListenSeconds = "qualifying_listen_seconds"; case assetVersion = "asset_version"; case contentHash = "content_hash"
-    }
+    let playbackToken: String; let playbackSessionId: UUID; let heartbeatIntervalSeconds: Int; let qualifyingListenSeconds: Int; let assetVersion: Int; let contentHash: String
+    enum CodingKeys: String, CodingKey { case playbackToken = "playback_token"; case playbackSessionId = "playback_session_id"; case heartbeatIntervalSeconds = "heartbeat_interval_seconds"; case qualifyingListenSeconds = "qualifying_listen_seconds"; case assetVersion = "asset_version"; case contentHash = "content_hash" }
 }
 struct PlaybackHeartbeatResponse: Codable {
-    let qualified: Bool
-    let listenedMs: Int
-    let suspiciousScore: Double
+    let qualified: Bool; let listenedMs: Int; let suspiciousScore: Double
     enum CodingKeys: String, CodingKey { case qualified; case listenedMs = "listened_ms"; case suspiciousScore = "suspicious_score" }
 }
 struct LoginResponse: Codable { let user: UserResponse; let tokens: TokenResponse }
 
 enum APIError: LocalizedError {
-    case invalidURL; case http(Int, String); case decoding; case missingSession
+    case invalidURL, decoding, missingSession, network
+    case http(Int, String)
     var errorDescription: String? {
-        switch self { case .invalidURL: return "URL de API inválida"; case let .http(code, message): return "(message) (HTTP (code))"; case .decoding: return "Respuesta inválida del servidor"; case .missingSession: return "No hay una sesión activa" }
+        switch self {
+        case .invalidURL: return "URL de API inválida"
+        case .decoding: return "Respuesta inválida del servidor"
+        case .missingSession: return "No hay una sesión activa"
+        case .network: return "No se pudo conectar con el servidor"
+        case let .http(code, message): return "\(message) (HTTP \(code))"
+        }
     }
 }
 
@@ -90,79 +88,128 @@ final class APIClient {
     private let keychain = KeychainStore()
     private let decoder: JSONDecoder
     private let session: URLSession
+
     private init() {
         let raw = ProcessInfo.processInfo.environment["KUBANFY_API_URL"] ?? "https://api.kubanfy.com/v1"
-        baseURL = URL(string: raw.trimmingCharacters(in: CharacterSet(charactersIn: "/")))!
+        baseURL = URL(string: raw.trimmingCharacters(in: CharacterSet(charactersIn: "/")))! 
         decoder = JSONDecoder(); decoder.dateDecodingStrategy = .iso8601
         let configuration = URLSessionConfiguration.default
-        configuration.waitsForConnectivity = true
-        configuration.timeoutIntervalForRequest = 30
-        configuration.timeoutIntervalForResource = 120
+        configuration.waitsForConnectivity = false
+        configuration.timeoutIntervalForRequest = 15
+        configuration.timeoutIntervalForResource = 30
         configuration.httpMaximumConnectionsPerHost = 4
         session = URLSession(configuration: configuration)
     }
+
+    var hasStoredSession: Bool { keychain.load("access") != nil && keychain.load("refresh") != nil }
+
     var deviceID: String {
         if let existing = keychain.load("device_id") { return existing }
-        let value = UUID().uuidString.lowercased(); try? keychain.save(value, account: "device_id"); return value
+        let value = UUID().uuidString.lowercased()
+        try? keychain.save(value, account: "device_id")
+        return value
     }
+
     func login(email: String, password: String) async throws -> LoginResponse {
         let body: [String: Any] = ["email": email.trimmingCharacters(in: .whitespacesAndNewlines), "password": password, "device_id": deviceID, "device_name": "iPhone", "platform": "ios"]
-        let data = try await performRequest(path: "/auth/login", method: "POST", body: JSONSerialization.data(withJSONObject: body))
-        let response = try decoder.decode(LoginResponse.self, from: data)
-        try keychain.save(response.tokens.accessToken, account: "access"); try keychain.save(response.tokens.refreshToken, account: "refresh"); return response
+        do {
+            let data = try await performRequest(path: "/auth/login", method: "POST", body: JSONSerialization.data(withJSONObject: body))
+            let response = try decoder.decode(LoginResponse.self, from: data)
+            try keychain.save(response.tokens.accessToken, account: "access")
+            try keychain.save(response.tokens.refreshToken, account: "refresh")
+            return response
+        } catch { throw mapNetworkError(error) }
     }
+
     func refresh() async throws {
         guard let refreshToken = keychain.load("refresh") else { throw APIError.missingSession }
         let body: [String: Any] = ["refresh_token": refreshToken, "device_id": deviceID]
         let data = try await performRequest(path: "/auth/refresh", method: "POST", body: JSONSerialization.data(withJSONObject: body), allowRefresh: false)
         let tokens = try decoder.decode(TokenResponse.self, from: data)
-        try keychain.save(tokens.accessToken, account: "access"); try keychain.save(tokens.refreshToken, account: "refresh")
+        try keychain.save(tokens.accessToken, account: "access")
+        try keychain.save(tokens.refreshToken, account: "refresh")
     }
+
     func context() async throws -> AuthContext { let data = try await performRequest(path: "/auth/context"); return try decoder.decode(AuthContext.self, from: data) }
     func discoveryHome() async throws -> DiscoveryHome { let data = try await performRequest(path: "/discovery/home"); return try decoder.decode(DiscoveryHome.self, from: data) }
+
     func playback(trackId: UUID, quality: String = "low") async throws -> PlaybackResponse {
-        var components = URLComponents(url: baseURL.appendingPathComponent("music/play/(trackId.uuidString)"), resolvingAgainstBaseURL: false)
-        components?.queryItems = [URLQueryItem(name: "quality", value: quality.lowercased() == "medium" || quality.lowercased() == "lossless" ? quality.lowercased() : "low")]
+        var components = URLComponents(url: baseURL.appendingPathComponent("music/play/\(trackId.uuidString)"), resolvingAgainstBaseURL: false)
+        let normalized = ["low", "medium", "lossless"].contains(quality.lowercased()) ? quality.lowercased() : "low"
+        components?.queryItems = [URLQueryItem(name: "quality", value: normalized)]
         guard let url = components?.url else { throw APIError.invalidURL }
         return try decoder.decode(PlaybackResponse.self, from: try await performRequest(url: url))
     }
+
     func startPlayback(trackId: UUID, quality: String = "low", sessionId: String? = nil) async throws -> PlaybackStartResponse {
         var body: [String: Any] = ["track_id": trackId.uuidString, "quality": quality, "device_id": deviceID]
         if let sessionId { body["session_id"] = sessionId }
         let data = try await performRequest(path: "/analytics/playback/start", method: "POST", body: JSONSerialization.data(withJSONObject: body))
         return try decoder.decode(PlaybackStartResponse.self, from: data)
     }
+
     func heartbeat(token: String, positionMs: Int, paused: Bool, completed: Bool) async throws -> PlaybackHeartbeatResponse {
         let body: [String: Any] = ["token": token, "position_ms": max(0, positionMs), "paused": paused, "completed": completed]
         let data = try await performRequest(path: "/analytics/playback/heartbeat", method: "POST", body: JSONSerialization.data(withJSONObject: body))
         return try decoder.decode(PlaybackHeartbeatResponse.self, from: data)
     }
+
     func search(query: String, limit: Int = 20) async throws -> [TrackSearchResult] {
         var components = URLComponents(url: baseURL.appendingPathComponent("music/search"), resolvingAgainstBaseURL: false)
         components?.queryItems = [URLQueryItem(name: "q", value: query.trimmingCharacters(in: .whitespacesAndNewlines)), URLQueryItem(name: "limit", value: String(min(max(limit, 1), 50)))]
         guard let url = components?.url else { throw APIError.invalidURL }
         return try decoder.decode([TrackSearchResult].self, from: try await performRequest(url: url))
     }
-    func me() async throws -> UserResponse { guard keychain.load("access") != nil else { throw APIError.missingSession }; return try decoder.decode(UserResponse.self, from: try await performRequest(path: "/auth/me")) }
-    func logout() { keychain.remove("access"); keychain.remove("refresh") }
-    private func performRequest(path: String, method: String = "GET", body: Data? = nil, allowRefresh: Bool = true) async throws -> Data {
-        let cleanPath = path.trimmingCharacters(in: CharacterSet(charactersIn: "/")); return try await performRequest(url: baseURL.appendingPathComponent(cleanPath), method: method, body: body, allowRefresh: allowRefresh)
+
+    func me() async throws -> UserResponse {
+        guard keychain.load("access") != nil else { throw APIError.missingSession }
+        return try decoder.decode(UserResponse.self, from: try await performRequest(path: "/auth/me"))
     }
+
+    func logout() { keychain.remove("access"); keychain.remove("refresh") }
+
+    private func performRequest(path: String, method: String = "GET", body: Data? = nil, allowRefresh: Bool = true) async throws -> Data {
+        let cleanPath = path.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+        return try await performRequest(url: baseURL.appendingPathComponent(cleanPath), method: method, body: body, allowRefresh: allowRefresh)
+    }
+
     private func performRequest(url: URL, method: String = "GET", body: Data? = nil, allowRefresh: Bool = true) async throws -> Data {
-        var request = URLRequest(url: url); request.httpMethod = method; request.httpBody = body
-        request.setValue("application/json", forHTTPHeaderField: "Accept"); request.setValue("application/json", forHTTPHeaderField: "Content-Type"); request.setValue(deviceID, forHTTPHeaderField: "X-Device-ID")
-        if let token = keychain.load("access") { request.setValue("Bearer (token)", forHTTPHeaderField: "Authorization") }
-        let (data, response) = try await session.data(for: request)
-        guard let http = response as? HTTPURLResponse else { throw APIError.invalidURL }
-        guard (200..<300).contains(http.statusCode) else {
-            if http.statusCode == 401, allowRefresh, keychain.load("access") != nil, keychain.load("refresh") != nil {
-                do { try await refresh(); return try await performRequest(url: url, method: method, body: body, allowRefresh: false) } catch { logout() }
+        var request = URLRequest(url: url)
+        request.httpMethod = method
+        request.httpBody = body
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue(deviceID, forHTTPHeaderField: "X-Device-ID")
+        if let token = keychain.load("access") { request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization") }
+
+        do {
+            let (data, response) = try await session.data(for: request)
+            guard let http = response as? HTTPURLResponse else { throw APIError.invalidURL }
+            guard (200..<300).contains(http.statusCode) else {
+                if http.statusCode == 401, allowRefresh, keychain.load("access") != nil, keychain.load("refresh") != nil {
+                    do {
+                        try await refresh()
+                        return try await performRequest(url: url, method: method, body: body, allowRefresh: false)
+                    } catch { logout() }
+                }
+                let message = (try? JSONDecoder().decode(APIErrorEnvelope.self, from: data))?.error.message ?? "Error HTTP \(http.statusCode)"
+                throw APIError.http(http.statusCode, message)
             }
-            let message = (try? JSONDecoder().decode(APIErrorEnvelope.self, from: data))?.error.message ?? "Error HTTP (http.statusCode)"
-            throw APIError.http(http.statusCode, message)
+            return data
+        } catch { throw mapNetworkError(error) }
+    }
+
+    private func mapNetworkError(_ error: Error) -> Error {
+        if error is APIError { return error }
+        guard let urlError = error as? URLError else { return error }
+        switch urlError.code {
+        case .timedOut, .cannotFindHost, .cannotConnectToHost, .networkConnectionLost, .notConnectedToInternet, .dnsLookupFailed, .resourceUnavailable:
+            return APIError.network
+        default:
+            return error
         }
-        return data
     }
 }
+
 private struct APIErrorEnvelope: Decodable { let error: APIErrorBody }
 private struct APIErrorBody: Decodable { let message: String }
