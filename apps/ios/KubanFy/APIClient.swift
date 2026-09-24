@@ -145,7 +145,7 @@ final class APIClient {
     }
 
     func request(path: String, method: String = "GET", body: Data? = nil) async throws -> Data {
-        guard let url = URL(string: path, relativeTo: baseURL)?.absoluteURL else {
+        let cleanPath = path.trimmingCharacters(in: CharacterSet(charactersIn: "/"))\n        let url = baseURL.appendingPathComponent(cleanPath)
             throw APIError.invalidURL
         }
         var request = URLRequest(url: url)
