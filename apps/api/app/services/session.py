@@ -13,6 +13,7 @@ from app.core.exceptions import AuthError, ForbiddenError, NotFoundError
 from app.core.logging import get_logger
 from app.models.device import Device, DeviceStatus, Session, SessionStatus
 from app.models.offline import OfflineLicense
+from app.models.user import User
 
 logger = get_logger(__name__)
 
@@ -33,6 +34,9 @@ class SessionService:
         app_version: str | None = None,
     ) -> Device:
         """Get or create device. Enforce max devices limit."""
+        # Serialize per-user device creation so concurrent registrations cannot
+        # bypass the configured device limit or create duplicate device identities.
+        await self.db.scalar(select(User).where(User.id == user_id).with_for_update())
         existing = await self.db.scalar(
             select(Device).where(
                 Device.user_id == user_id,
@@ -96,7 +100,9 @@ class SessionService:
         user_agent: str | None = None,
     ) -> Session:
         """Create a new session. Enforce concurrent session limit."""
-        # Count active sessions
+        # Serialize per-user session creation so concurrent logins cannot bypass
+        # the configured concurrent-session limit.
+        await self.db.scalar(select(User).where(User.id == user_id).with_for_update())
         active_count = await self.db.scalar(
             select(func.count())
             .select_from(Session)
