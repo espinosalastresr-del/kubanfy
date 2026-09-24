@@ -6,11 +6,13 @@ from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import NotFoundError
 from app.core.logging import get_logger
+from app.models.device import Session, SessionStatus
+from app.models.offline import OfflineLicense
 from app.models.admin import (
     AuditLog,
     FeatureFlag,
@@ -154,6 +156,23 @@ class AdminService:
             raise NotFoundError("User not found")
         before = {"status": user.status.value}
         user.status = UserStatus.SUSPENDED
+        now = datetime.now(UTC)
+        await self.session.execute(
+            update(Session)
+            .where(
+                Session.user_id == user_id,
+                Session.status == SessionStatus.ACTIVE,
+            )
+            .values(status=SessionStatus.REVOKED, revoked_at=now)
+        )
+        await self.session.execute(
+            update(OfflineLicense)
+            .where(
+                OfflineLicense.user_id == user_id,
+                OfflineLicense.revoked.is_(False),
+            )
+            .values(revoked=True, revoked_at=now)
+        )
         await self.audit(
             actor_id=admin_id,
             action="users.suspend",
