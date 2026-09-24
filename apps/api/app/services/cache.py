@@ -59,6 +59,7 @@ class CacheService:
                 CacheEntry.provider_track_id == provider_track_id,
                 CacheEntry.quality == quality,
                 CacheEntry.status == CacheEntryStatus.READY,
+                CacheEntry.storage_key.like("%.kby"),
                 CacheEntry.expires_at > now,
             )
         )
