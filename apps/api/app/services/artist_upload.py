@@ -238,7 +238,7 @@ class ArtistUploadService:
                 sample_rate=probe.sample_rate,
                 channels=probe.channels,
                 duration=probe.duration,
-                size=probe.size,
+                size=len(master_kby),
                 quality=AudioQuality.LOSSLESS
                 if (probe.codec or "").lower() in ("flac", "alac", "pcm_s16le", "pcm_s24le")
                 else AudioQuality.MEDIUM,
