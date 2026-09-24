@@ -1,5 +1,7 @@
 import SwiftUI
-import AVFoundation\nimport MediaPlayer\nimport UIKit
+import AVFoundation
+import MediaPlayer
+import UIKit
 
 struct ContentView: View {
     @State private var email = ""
