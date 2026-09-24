@@ -68,6 +68,7 @@ class MusicDownloadResponse(BaseModel):
     track_id: UUID | None = None
     storage_key: str | None = None
     content_hash: str | None = None
+    kby_key: str | None = None
     size_bytes: int | None = None
     download_ticket: str | None = None
     offline_license: str | None = None
