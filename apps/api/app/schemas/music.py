@@ -57,6 +57,7 @@ class MusicPlaybackResponse(BaseModel):
     quality: str
     track_id: UUID
     content_hash: str | None = None
+    kby_key: str
 
 
 class MusicDownloadResponse(BaseModel):
