@@ -9,6 +9,7 @@ from fastapi import APIRouter, Request
 from pydantic import BaseModel, Field, field_validator
 
 from app.api.deps import CurrentUser, DbSession, OptionalUser
+from app.services.anti_abuse import AntiAbuseService
 from app.services.analytics import AnalyticsService
 from app.services.engagement import EngagementService
 from app.services.geo import GeoService
