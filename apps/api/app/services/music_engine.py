@@ -350,7 +350,7 @@ class MusicEngine:
             provider_track_id=provider_track_id,
             quality=quality,
             body=body,
-            content_type=f"audio/{source.codec or "mpeg"}",
+            content_type=f"audio/{source.codec or 'mpeg'}",
         )
         signed = await cache_svc.signed_delivery(entry)
         return DownloadResult(
