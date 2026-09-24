@@ -44,7 +44,7 @@ def _audio_media_type(result) -> str:
     return "audio/mpeg"
 
 
-_manager = ProviderManager(create_default_registry(include_mock=True))
+_manager = ProviderManager(create_default_registry(include_mock=False))
 
 
 @router.post("/update", response_model=MusicUpdateResponse)
