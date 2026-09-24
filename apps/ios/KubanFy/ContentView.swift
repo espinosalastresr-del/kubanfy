@@ -284,6 +284,11 @@ struct ContentView: View {
 
 private struct RegisterView: View {
     @Environment(\.dismiss) private var dismiss
+    private let onRegistered: (String, String) -> Void
+
+    init(onRegistered: @escaping (String, String) -> Void) {
+        self.onRegistered = onRegistered
+    }
     @State private var displayName = ""
     @State private var email = ""
     @State private var password = ""
@@ -370,6 +375,7 @@ private struct RegisterView: View {
         do {
             _ = try await APIClient.shared.register(email: email, password: password, displayName: displayName)
             successMessage = "Cuenta creada correctamente. Ya puedes iniciar sesión."
+            onRegistered(email, password)
             password = ""; confirmPassword = ""
         } catch { errorMessage = registrationError(error) }
     }
