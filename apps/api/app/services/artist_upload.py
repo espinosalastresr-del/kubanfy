@@ -418,7 +418,7 @@ class ArtistUploadService:
                     sample_rate=output.probe.sample_rate,
                     channels=output.probe.channels,
                     duration=output.probe.duration,
-                    size=output.probe.size,
+                    size=len(derivative_kby),
                     quality=output.quality,
                     quality_confidence=QualityConfidence.VERIFIED,
                     source_type=SourceType.DERIVATIVE,
