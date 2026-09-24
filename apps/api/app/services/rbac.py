@@ -202,10 +202,13 @@ class RbacService:
                 self.session.add(role)
                 await self.session.flush()
                 existing_roles[role_name] = role
+                # A newly-created role has no loaded relationship yet. Do not
+                # read role.permissions here: with AsyncSession that would
+                # trigger an implicit lazy load and MissingGreenlet.
+                current_codes: set[str] = set()
             else:
                 role = existing_roles[role_name]
-
-            current_codes = {p.code for p in (role.permissions or [])}
+                current_codes = {p.code for p in (role.permissions or [])}
             for code in perm_codes:
                 if code not in current_codes and code in existing_perms:
                     role.permissions.append(existing_perms[code])
