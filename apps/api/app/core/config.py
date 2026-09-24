@@ -81,7 +81,7 @@ class Settings(BaseSettings):
     # -------------------------------------------------------------------------
     # Authentication
     # -------------------------------------------------------------------------
-    # Server-only secret used to derive per-asset .kby encryption keys.\n    kby_master_key: str = ""\n    jwt_secret_key: str = Field(
+    # Server-only secret used to derive per-asset .kby encryption keys.\n    kby_master_key: str = "dev-only-kby-master-key-change-in-production"\n    jwt_secret_key: str = Field(
         default="dev-only-change-me-in-production-use-a-long-random-string",
         min_length=32,
     )
