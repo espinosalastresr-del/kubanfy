@@ -121,6 +121,18 @@ final class APIClient {
         } catch { throw mapNetworkError(error) }
     }
 
+    func register(email: String, password: String, displayName: String) async throws -> UserResponse {
+        let body: [String: Any] = [
+            "email": email.trimmingCharacters(in: .whitespacesAndNewlines),
+            "password": password,
+            "display_name": displayName.trimmingCharacters(in: .whitespacesAndNewlines)
+        ]
+        do {
+            let data = try await performRequest(path: "/auth/register", method: "POST", body: JSONSerialization.data(withJSONObject: body), allowRefresh: false)
+            return try decoder.decode(UserResponse.self, from: data)
+        } catch { throw mapNetworkError(error) }
+    }
+
     func refresh() async throws {
         guard let refreshToken = keychain.load("refresh") else { throw APIError.missingSession }
         let body: [String: Any] = ["refresh_token": refreshToken, "device_id": deviceID]
