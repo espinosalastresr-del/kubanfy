@@ -57,6 +57,7 @@ class DownloadTicketIn(BaseModel):
 class DownloadCompleteIn(BaseModel):
     ticket: str = Field(min_length=20, max_length=256)
     size_bytes: int | None = Field(default=None, ge=0)
+    device_id: str | None = Field(default=None, max_length=128)
 
 
 class ShareCreateIn(BaseModel):
