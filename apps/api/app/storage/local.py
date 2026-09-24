@@ -47,20 +47,32 @@ class LocalStorage(StorageProvider):
         path.parent.mkdir(parents=True, exist_ok=True)
 
         if isinstance(data, bytes):
-            body = data
+            size = len(data)
+            def _write() -> None:
+                path.write_bytes(data)
         else:
-            body = data.read()
-            if isinstance(body, str):
-                body = body.encode()
-
-        def _write() -> None:
-            path.write_bytes(body)
+            if hasattr(data, "seek"):
+                data.seek(0)
+            def _write() -> None:
+                with path.open("wb") as out:
+                    while True:
+                        chunk = data.read(1024 * 1024)
+                        if not chunk:
+                            break
+                        out.write(chunk)
+            try:
+                current = data.tell()
+                data.seek(0, 2)
+                size = data.tell()
+                data.seek(current)
+            except (AttributeError, OSError):
+                size = 0
 
         await asyncio.to_thread(_write)
         return StoredObject(
             key=key,
             bucket=bucket,
-            size=len(body),
+            size=size,
             content_type=content_type,
         )
 
