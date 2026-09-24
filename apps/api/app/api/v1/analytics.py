@@ -239,6 +239,7 @@ async def complete_download(
 @router.post("/shares")
 async def create_share(
     body: ShareCreateIn,
+    request: Request,
     session: DbSession,
     user: OptionalUser,
 ) -> dict[str, str]:
