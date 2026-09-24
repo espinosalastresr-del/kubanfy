@@ -43,6 +43,7 @@ async def test_rate_limit_fails_closed_when_redis_is_unavailable(monkeypatch) ->
         environment=Environment.PRODUCTION,
         jwt_secret_key="ci-production-test-secret-that-is-long-enough",
         super_admin_password="StrongProductionTestPassword123!",
+        kby_master_key="ci-kby-test-master-key-7f3b9a2c",
         r2_endpoint="https://r2.example.test",
         r2_access_key_id="test-key",
         r2_secret_access_key="test-secret",
