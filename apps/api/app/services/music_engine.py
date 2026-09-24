@@ -99,7 +99,7 @@ class MusicEngine:
         self.session = session
         self.settings = settings or get_settings()
         self.providers = provider_manager or ProviderManager(
-            create_default_registry(include_mock=True)
+            create_default_registry(include_mock=self.settings.is_test)
         )
         self.storage = storage or get_storage()
 
@@ -321,6 +321,7 @@ class MusicEngine:
                 CacheEntry.provider_track_id == provider_track_id,
                 CacheEntry.quality == quality,
                 CacheEntry.status == CacheEntryStatus.READY,
+                CacheEntry.storage_key.like("%.kby"),
                 CacheEntry.expires_at > now,
             )
         )
