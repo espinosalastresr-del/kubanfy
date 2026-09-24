@@ -21,7 +21,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from sqlalchemy import select
 
 from app.core.config import get_settings
-from app.core.database import async_session_factory, close_db, init_db
+from app.core.database import close_db, init_db
+import app.core.database as database
 from app.core.logging import setup_logging
 from app.core.security import hash_password
 from app.models.artist_member import ArtistMember, ArtistMemberRole
@@ -122,10 +123,10 @@ async def seed() -> None:
     setup_logging(settings)
     init_db(settings)
 
-    if async_session_factory is None:
+    if database.async_session_factory is None:
         raise RuntimeError("DB not initialized")
 
-    async with async_session_factory() as session:
+    async with database.async_session_factory() as session:
         rbac = RbacService(session)
         await rbac.ensure_default_rbac()
 
