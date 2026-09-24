@@ -293,7 +293,9 @@ class ArtistUploadService:
         if not self.settings.feature_artist_publishing:
             raise ForbiddenError("Artist publishing is disabled")
         await self.assert_can_edit(user_id, artist_id)
-        track = await self.session.get(Track, track_id)
+        track = await self.session.scalar(
+            select(Track).where(Track.id == track_id).with_for_update()
+        )
         if track is None or track.release_id is None:
             raise NotFoundError("Track not found")
         release = await self.session.get(Release, track.release_id)
