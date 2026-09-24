@@ -139,8 +139,11 @@ class SessionService:
         await self.db.flush()
         return sess
 
-    async def get_session_by_jti(self, jti: str) -> Session | None:
-        return await self.db.scalar(select(Session).where(Session.refresh_token_jti == jti))
+    async def get_session_by_jti(self, jti: str, *, for_update: bool = False) -> Session | None:
+        stmt = select(Session).where(Session.refresh_token_jti == jti)
+        if for_update:
+            stmt = stmt.with_for_update()
+        return await self.db.scalar(stmt)
 
     async def revoke_session(self, session_id: UUID, user_id: UUID) -> None:
         sess = await self.db.get(Session, session_id)
@@ -210,7 +213,7 @@ class SessionService:
 
     async def validate_refresh_session(self, jti: str) -> Session:
         """Validate that a refresh token jti corresponds to an active, non-expired session."""
-        sess = await self.get_session_by_jti(jti)
+        sess = await self.get_session_by_jti(jti, for_update=True)
         if sess is None:
             raise AuthError("Invalid refresh token")
         if sess.status != SessionStatus.ACTIVE:
