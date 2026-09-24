@@ -217,7 +217,7 @@ class ArtistUploadService:
                     master_key,
                     master_file,
                     bucket=StorageBucket.PERMANENT,
-                content_type=f"audio/{probe.codec or ext or 'mpeg'}",
+                    content_type=f"audio/{probe.codec or ext or 'mpeg'}",
                 )
 
             master_asset = AudioAsset(
