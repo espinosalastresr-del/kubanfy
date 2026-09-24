@@ -4,6 +4,7 @@ import android.content.Context
 import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.URL
+import java.net.URLEncoder
 
 data class AuthContext(
     val roles: List<String>,
@@ -18,6 +19,17 @@ data class DiscoveryHome(
     val topCountry: List<String>,
     val topGlobal: List<String>,
     val newReleases: List<String>,
+)
+
+data class TrackSearchResult(
+    val provider: String,
+    val providerTrackId: String,
+    val title: String,
+    val artists: List<String>,
+    val album: String?,
+    val duration: Double?,
+    val artwork: String?,
+    val isrc: String?,
 )
 
 data class AuthSession(
@@ -80,6 +92,28 @@ class APIClient(context: Context) {
         )
     }
 
+    fun search(query: String, limit: Int = 20): List<TrackSearchResult> {
+        val encoded = URLEncoder.encode(query.trim(), Charsets.UTF_8.name())
+        val cappedLimit = limit.coerceIn(1, 50)
+        val jsonArray = org.json.JSONArray(
+            requestRaw("/music/search?q=$encoded&limit=$cappedLimit", "GET", null, null),
+        )
+        return (0 until jsonArray.length()).mapNotNull { index ->
+            jsonArray.optJSONObject(index)?.let { item ->
+                TrackSearchResult(
+                    provider = item.optString("provider"),
+                    providerTrackId = item.optString("provider_track_id"),
+                    title = item.optString("title"),
+                    artists = item.optJSONArray("artists")?.toStringList() ?: emptyList(),
+                    album = item.optString("album").takeIf { it.isNotBlank() },
+                    duration = if (item.isNull("duration")) null else item.optDouble("duration"),
+                    artwork = item.optString("artwork").takeIf { it.isNotBlank() },
+                    isrc = item.optString("isrc").takeIf { it.isNotBlank() },
+                )
+            }
+        }
+    }
+
     fun me(): JSONObject {
         val token = store.get("access_token") ?: throw APIException(401, "No hay sesión")
         return request("/auth/me", "GET", null, token)
@@ -91,6 +125,11 @@ class APIClient(context: Context) {
     }
 
     private fun request(path: String, method: String, body: String?, token: String? = null): JSONObject {
+        val text = requestRaw(path, method, body, token)
+        return if (text.isBlank()) JSONObject() else JSONObject(text)
+    }
+
+    private fun requestRaw(path: String, method: String, body: String?, token: String? = null): String {
         val connection = (URL(baseUrl + path).openConnection() as HttpURLConnection).apply {
             requestMethod = method
             connectTimeout = 15_000
@@ -114,7 +153,7 @@ class APIClient(context: Context) {
                 }.getOrDefault("Error HTTP $code")
                 throw APIException(code, message)
             }
-            if (text.isBlank()) JSONObject() else JSONObject(text)
+            text
         } finally {
             connection.disconnect()
         }
