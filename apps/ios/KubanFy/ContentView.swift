@@ -150,7 +150,7 @@ struct ContentView: View {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 22) {
                         HStack(spacing: 10) {
-                            NavigationLink { SearchView() } label: {
+                            NavigationLink { SearchView(audioPlayer: audioPlayer) } label: {
                                 topAction("magnifyingglass", "Buscar")
                             }
                             quickTopLink("Biblioteca", "rectangle.stack")
@@ -680,6 +680,7 @@ private struct PlayerView: View {
 }
 
 private struct SearchView: View {
+    @ObservedObject var audioPlayer: AudioPlayer
     @State private var query = ""
     @State private var results: [TrackSearchResult] = []
     @State private var errorMessage: String?
@@ -805,7 +806,7 @@ private struct SearchView: View {
                 Button {
                     guard let trackId = result.trackId else { return }
                     let track = DiscoveryHome.Track(id: trackId, title: result.title, duration: result.duration)
-                    Task { await AudioPlayer.sharedlessPlay(track) }
+                    Task { await audioPlayer.toggle(track: track) }
                 } label: {
                     Image(systemName: "play.fill")
                         .font(.subheadline.weight(.bold))
@@ -819,7 +820,7 @@ private struct SearchView: View {
 
         if let trackId = result.trackId {
             NavigationLink {
-                TrackDetailView(track: .init(id: trackId, title: result.title, duration: result.duration), audioPlayer: AudioPlayer.shared)
+                TrackDetailView(track: .init(id: trackId, title: result.title, duration: result.duration), audioPlayer: audioPlayer)
             } label: { row }
             .buttonStyle(.plain)
         } else {
