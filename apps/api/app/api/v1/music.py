@@ -5,7 +5,7 @@ from __future__ import annotations
 from uuid import UUID
 
 from fastapi import APIRouter, HTTPException, Query, Request
-from sqlalchemy import select
+from sqlalchemy import func, or_, select
 
 from app.api.deps import CurrentUser, DbSession, OptionalUser
 from app.core.exceptions import AuthError
@@ -26,7 +26,7 @@ from app.services.entitlement import EntitlementService
 from app.services.geo import GeoService
 from app.services.music_engine import MusicEngine
 from app.services.offline_license import OfflineLicenseService
-from app.models.music import Artist, Track, TrackArtist
+from app.models.music import Artist, Release, Track, TrackArtist
 
 router = APIRouter(prefix="/music", tags=["music"])
 
@@ -280,6 +280,7 @@ async def music_download(
 @router.get("/search", response_model=list[TrackSearchResult])
 async def music_search(
     request: Request,
+    session: DbSession,
     q: str = Query(..., min_length=1, max_length=500),
     limit: int = Query(20, ge=1, le=50),
 ) -> list[TrackSearchResult]:
@@ -287,8 +288,10 @@ async def music_search(
     ip = request.client.host if request.client else None
     real_ip = geo.resolve_client_ip(ip, forwarded_for=request.headers.get("x-forwarded-for"))
     await AntiAbuseService().check_search(real_ip)
-    results = await _manager.search(q, limit=limit)
-    return [
+
+    normalized = q.strip()
+    provider_results = await _manager.search(normalized, limit=limit)
+    results = [
         TrackSearchResult(
             provider=name,
             provider_track_id=meta.provider_track_id,
@@ -299,8 +302,62 @@ async def music_search(
             artwork=meta.artwork_url,
             isrc=meta.isrc,
         )
-        for name, meta in results
+        for name, meta in provider_results
     ]
+
+    remaining = max(0, limit - len(results))
+    if remaining:
+        pattern = f"%{normalized.lower()}%"
+        rows = (
+            await session.execute(
+                select(Track, Release)
+                .outerjoin(Release, Release.id == Track.release_id)
+                .where(
+                    Track.status == "published",
+                    or_(
+                        func.lower(Track.title).like(pattern),
+                        Track.id.in_(
+                            select(TrackArtist.track_id)
+                            .join(Artist, Artist.id == TrackArtist.artist_id)
+                            .where(
+                                Artist.status == "active",
+                                func.lower(Artist.name).like(pattern),
+                            )
+                        ),
+                    ),
+                )
+                .order_by(Track.title)
+                .limit(remaining)
+            )
+        ).all()
+
+        for track, release in rows:
+            artist_rows = (
+                await session.execute(
+                    select(Artist)
+                    .join(TrackArtist, TrackArtist.artist_id == Artist.id)
+                    .where(
+                        TrackArtist.track_id == track.id,
+                        Artist.status == "active",
+                    )
+                    .order_by(TrackArtist.display_order, Artist.name)
+                )
+            ).scalars().all()
+            results.append(
+                TrackSearchResult(
+                    provider="kubanfy",
+                    provider_track_id=str(track.id),
+                    track_id=track.id,
+                    title=track.title,
+                    artists=[artist.name for artist in artist_rows],
+                    album=release.title if release else None,
+                    duration=track.duration,
+                    artwork=track.artwork_url,
+                    isrc=track.isrc,
+                )
+            )
+
+    return results[:limit]
 
 
 @router.get("/content/{track_id}")
