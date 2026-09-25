@@ -1,6 +1,6 @@
 import SwiftUI
 
-private struct PlaylistPicker: View {
+struct PlaylistPicker: View {
     let trackID: UUID?
     @Environment(\.dismiss) private var dismiss
     @State private var playlists: [PlaylistResponse] = []
