@@ -196,7 +196,8 @@ struct ContentView: View {
                             }
                             Text("Tendencias").font(.title3.weight(.bold)).padding(.top, 2)
                             ForEach(discovery.trending.prefix(5), id: \.rank) { item in
-                                if let trackID = item.trackId, let title = item.title {
+                                let trackID = item.trackId
+                                if let title = item.title {
                                     NavigationLink {
                                         TrackDetailView(track: .init(id: trackID, title: title, duration: nil), audioPlayer: audioPlayer)
                                     } label: {
