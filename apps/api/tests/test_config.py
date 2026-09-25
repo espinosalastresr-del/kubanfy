@@ -88,3 +88,23 @@ def test_production_forces_rate_limit_fail_closed() -> None:
         rate_limit_fail_open=True,
     )
     assert s.rate_limit_fail_open is False
+
+
+def test_staging_local_storage_requires_https() -> None:
+    import pytest
+
+    with pytest.raises(ValueError, match="PUBLIC_BASE_URL"):
+        Settings(
+            environment=Environment.STAGING,
+            staging_use_local_storage=True,
+            public_base_url="http://staging.example.test",
+        )
+
+
+def test_staging_local_storage_accepts_https() -> None:
+    s = Settings(
+        environment=Environment.STAGING,
+        staging_use_local_storage=True,
+        public_base_url="https://staging.example.test",
+    )
+    assert s.staging_use_local_storage is True
