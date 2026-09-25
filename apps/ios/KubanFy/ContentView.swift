@@ -629,21 +629,27 @@ private struct MiniPlayer: View {
     let onTap: () -> Void
 
     var body: some View {
-        Button(action: onTap) {
-            HStack(spacing: 12) {
-                RoundedRectangle(cornerRadius: 8).fill(Color.green.opacity(0.22)).frame(width: 44, height: 44)
-                    .overlay(Image(systemName: "music.note").foregroundStyle(.green))
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(audioPlayer.currentTitle ?? "Reproduciendo").font(.subheadline.weight(.semibold)).lineLimit(1)
-                    Text(audioPlayer.isPlaying ? "Reproduciendo" : "Pausado").font(.caption).foregroundStyle(.white.opacity(0.45))
+        HStack(spacing: 12) {
+            Button(action: onTap) {
+                HStack(spacing: 12) {
+                    RoundedRectangle(cornerRadius: 8).fill(Color.green.opacity(0.22)).frame(width: 44, height: 44)
+                        .overlay(Image(systemName: "music.note").foregroundStyle(.green))
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text(audioPlayer.currentTitle ?? "Reproduciendo").font(.subheadline.weight(.semibold)).lineLimit(1)
+                        Text(audioPlayer.isPlaying ? "Reproduciendo" : "Pausado").font(.caption).foregroundStyle(.white.opacity(0.45))
+                    }
                 }
-                Spacer()
-                Button { Task { await audioPlayer.toggleCurrent() } } label: {
-                    Image(systemName: audioPlayer.isPlaying ? "pause.fill" : "play.fill").font(.headline).frame(width: 40, height: 40)
-                }
-                .buttonStyle(.plain)
-            }.padding(8).background(.ultraThinMaterial).clipShape(RoundedRectangle(cornerRadius: 14))
-        }.buttonStyle(.plain)
+            }
+            .buttonStyle(.plain)
+            Spacer()
+            Button { Task { await audioPlayer.toggleCurrent() } } label: {
+                Image(systemName: audioPlayer.isPlaying ? "pause.fill" : "play.fill").font(.headline).frame(width: 40, height: 40)
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(8)
+        .background(.ultraThinMaterial)
+        .clipShape(RoundedRectangle(cornerRadius: 14))
     }
 }
 
@@ -686,6 +692,8 @@ private struct SearchView: View {
     @State private var errorMessage: String?
     @State private var isLoading = false
     @FocusState private var searchFocused: Bool
+    @Environment(\\.dismiss) private var dismiss
+    @State private var selectedTrack: DiscoveryHome.Track?
 
     var body: some View {
         ZStack {
@@ -766,12 +774,18 @@ private struct SearchView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
-                Button("Cancelar") { searchFocused = false }
-                    .foregroundStyle(.green)
+                Button("Cancelar") {
+                    searchFocused = false
+                    dismiss()
+                }
+                .foregroundStyle(.green)
             }
         }
         .task {
             searchFocused = true
+        }
+        .navigationDestination(item: $selectedTrack) { track in
+            TrackDetailView(track: track, audioPlayer: audioPlayer)
         }
         .preferredColorScheme(.dark)
     }
@@ -780,19 +794,22 @@ private struct SearchView: View {
     private func searchRow(_ result: TrackSearchResult) -> some View {
         HStack(spacing: 12) {
             if let trackId = result.trackId {
-                NavigationLink {
-                    TrackDetailView(
-                        track: .init(id: trackId, title: result.title, duration: result.duration),
-                        audioPlayer: audioPlayer
-                    )
+                Button {
+                    selectedTrack = .init(id: trackId, title: result.title, duration: result.duration)
+                    searchFocused = false
                 } label: {
-                    searchArtwork(result)
-                    searchText(result)
+                    HStack(spacing: 12) {
+                        searchArtwork(result)
+                        searchText(result)
+                    }
+                    .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
             } else {
-                searchArtwork(result)
-                searchText(result)
+                HStack(spacing: 12) {
+                    searchArtwork(result)
+                    searchText(result)
+                }
             }
 
             Spacer(minLength: 4)
@@ -979,6 +996,10 @@ private final class AudioPlayer: ObservableObject {
 
     private func start(track: DiscoveryHome.Track) async {
         isLoading = true
+        errorMessage = nil
+        currentTrack = track
+        currentTrackID = track.id
+        currentTitle = track.title
         defer { isLoading = false }
         do {
             heartbeatTask?.cancel()
@@ -995,9 +1016,6 @@ private final class AudioPlayer: ObservableObject {
             playbackSessionID = session.playbackSessionId
             let playback = try await APIClient.shared.playback(trackId: track.id, quality: "low")
             guard generation == playbackGeneration else { return }
-            currentTrack = track
-            currentTrackID = track.id
-            currentTitle = track.title
             currentPlayback = playback
             let localURL = try await APIClient.shared.fetchAndDecryptKBY(playback)
             guard generation == playbackGeneration else { return }
@@ -1011,8 +1029,10 @@ private final class AudioPlayer: ObservableObject {
             startHeartbeatLoop(interval: session.heartbeatIntervalSeconds)
             startRenewalLoop(expiresIn: playback.expiresInSeconds)
         } catch {
-            resetPlaybackState()
+            stopPlaybackResources()
+            isPlaying = false
             errorMessage = error.localizedDescription
+            updateNowPlaying()
         }
     }
 
@@ -1191,26 +1211,33 @@ private final class AudioPlayer: ObservableObject {
         updateNowPlaying()
     }
 
-    private func resetPlaybackState() {
+    private func stopPlaybackResources() {
         heartbeatTask?.cancel()
         renewalTask?.cancel()
         recoveryTask?.cancel()
         heartbeatTask = nil
         renewalTask = nil
+        recoveryTask = nil
         playbackToken = nil
         playbackSessionID = nil
         currentPlayback = nil
+        player?.pause()
         if let localURL = currentLocalAudioURL {
             try? FileManager.default.removeItem(at: localURL)
         }
         currentLocalAudioURL = nil
-        currentTrack = nil
-        currentTrackID = nil
-        currentTitle = nil
         duration = 0
         position = 0
         isPlaying = false
         playbackGeneration = UUID()
+    }
+
+    private func resetPlaybackState() {
+        stopPlaybackResources()
+        currentTrack = nil
+        currentTrackID = nil
+        currentTitle = nil
+        errorMessage = nil
     }
 
     deinit {
