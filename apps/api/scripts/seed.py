@@ -45,7 +45,6 @@ def _demo_wav_bytes(*, duration_seconds: float = 8.0, sample_rate: int = 44100) 
         wav.setframerate(sample_rate)
         for i in range(frames):
             t = i / sample_rate
-            # Two simple tones make seeking/pause/resume audibly verifiable.
             freq = 440.0 if t < duration_seconds / 2 else 660.0
             sample = int(0.18 * 32767 * math.sin(2 * math.pi * freq * t))
             wav.writeframes(struct.pack("<hh", sample, sample))
@@ -136,7 +135,6 @@ async def seed() -> None:
         ent = EntitlementService(session)
         await ent.ensure_default_plans()
 
-        # Super admin
         admin_email = settings.super_admin_email.lower()
         admin = await session.scalar(select(User).where(User.email == admin_email))
         if admin is None:
@@ -155,7 +153,6 @@ async def seed() -> None:
         else:
             print(f"Super admin exists: {admin_email}")
 
-        # Demo user
         demo = await session.scalar(select(User).where(User.email == "demo@kubanfy.local"))
         if demo is None:
             demo = User(
@@ -170,7 +167,6 @@ async def seed() -> None:
             await session.flush()
             print("Created demo user: demo@kubanfy.local / DemoPass123!")
 
-        # Demo artist
         artist = await session.scalar(select(Artist).where(Artist.slug == "buena-vista-demo"))
         if artist is None:
             artist = Artist(
@@ -204,6 +200,11 @@ async def seed() -> None:
                 TrackArtist(track_id=track.id, artist_id=artist.id, role="main", display_order=0)
             )
             print("Created demo artist + track")
+
+        # The connectivity fixture is intentionally created as plaintext only
+        # during staging setup; entrypoint immediately converts it to KBY before
+        # the API starts. This keeps fixture preparation separate from playback.
+        await _ensure_demo_playable_track(session)
 
         await session.commit()
         print("Seed complete.")
