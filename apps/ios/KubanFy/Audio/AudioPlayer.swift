@@ -254,13 +254,15 @@ final class AudioPlayer: ObservableObject {
         }
 
         currentLocalAudioURL = url
-        duration = max(
-            duration,
-            item.asset.duration.seconds.isFinite ? item.asset.duration.seconds : 0
-        )
+        if let loadedDuration = try? await item.asset.load(.duration) {
+            let seconds = loadedDuration.seconds
+            if seconds.isFinite && seconds > 0 {
+                duration = max(duration, seconds)
+            }
+        }
 
         if position > 0 {
-            player?.seek(
+            await player?.seek(
                 to: CMTime(seconds: position, preferredTimescale: 600),
                 toleranceBefore: .zero,
                 toleranceAfter: .zero
@@ -464,7 +466,7 @@ final class AudioPlayer: ObservableObject {
         }
 
         if repeatMode == .one {
-            player?.seek(to: .zero)
+            await player?.seek(to: .zero)
             position = 0
             isPlaying = true
             player?.play()
