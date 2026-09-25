@@ -28,8 +28,6 @@ alembic upgrade head
 if [ "${KUBANFY_SEED_DEMO_AUDIO:-false}" = "true" ]; then
   echo "[kubanfy] seeding development demo fixture..."
   PYTHONPATH=. python -m scripts.seed
-  echo "[kubanfy] normalizing demo fixture to KBY..."
-  PYTHONPATH=. python -m scripts.normalize_demo_kby
 fi
 
 
