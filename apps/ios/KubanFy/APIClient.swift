@@ -298,6 +298,59 @@ final class APIClient {
         return try materializeDecryptedAudio(data, contentType: contentType)
     }
 
+    func cacheAuthorizedPlaybackKBY(_ playback: PlaybackResponse) async throws -> URL {
+        if let cached = try cachedAuthorizedPlaybackURL(
+            trackId: playback.trackId,
+            quality: playback.quality,
+            expectedHash: playback.contentHash,
+            kbyKey: playback.kbyKey
+        ) {
+            return cached
+        }
+
+        let (container, contentType) = try await downloadAndValidateKBY(
+            url: playback.url,
+            base64Key: playback.kbyKey,
+            expectedHash: playback.contentHash
+        )
+
+        let existing = loadOfflineCacheIndex().first {
+            $0.trackId == playback.trackId && $0.quality == playback.quality
+        }
+        let preserveOfflineAuthorization: (String?, Date?) = {
+            guard let existing,
+                  existing.contentHash.caseInsensitiveCompare(playback.contentHash ?? "") == .orderedSame,
+                  existing.kbyKey == playback.kbyKey,
+                  existing.offlineLicense != nil,
+                  let expiry = existing.offlineLicenseExpiresAt,
+                  expiry > Date()
+            else {
+                return (nil, nil)
+            }
+            return (existing.offlineLicense, existing.offlineLicenseExpiresAt)
+        }()
+
+        try saveOfflineKBY(
+            container,
+            trackId: playback.trackId,
+            quality: playback.quality,
+            contentHash: playback.contentHash ?? "",
+            assetVersion: existing?.assetVersion,
+            kbyKey: playback.kbyKey,
+            contentType: contentType,
+            offlineLicense: preserveOfflineAuthorization.0,
+            offlineLicenseExpiresAt: preserveOfflineAuthorization.1
+        )
+        return try materializeDecryptedAudio(
+            try OfflineCrypto.decryptKBY(
+                container,
+                base64Key: playback.kbyKey,
+                expectedHash: playback.contentHash
+            ).data,
+            contentType: contentType
+        )
+    }
+
     func cachedAuthorizedPlaybackURL(
         trackId: UUID,
         quality: String,
