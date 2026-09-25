@@ -2,7 +2,7 @@ import SwiftUI
 import AVFoundation
 import MediaPlayer
 
-private enum RepeatMode { case off, all, one }
+enum RepeatMode { case off, all, one }
 
 @MainActor
 
