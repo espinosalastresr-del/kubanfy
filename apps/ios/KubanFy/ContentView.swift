@@ -669,32 +669,95 @@ private struct MiniPlayer: View {
 
 private struct PlayerView: View {
     @ObservedObject var audioPlayer: AudioPlayer
+    @Environment(\.dismiss) private var dismiss
+    @State private var isLiked = false
+    @State private var showPlaylists = false
+    @State private var showMore = false
+    @State private var isDownloading = false
+    @State private var actionMessage: String?
 
     var body: some View {
         NavigationStack {
-            VStack(spacing: 24) {
-                Spacer()
-                RoundedRectangle(cornerRadius: 28).fill(LinearGradient(colors: [Color.green.opacity(0.72), Color.white.opacity(0.08)], startPoint: .topLeading, endPoint: .bottomTrailing))
-                    .frame(width: 280, height: 280)
-                    .overlay(Image(systemName: "music.note").font(.system(size: 72)).foregroundStyle(.white.opacity(0.9)))
-                VStack(spacing: 6) {
-                    Text(audioPlayer.currentTitle ?? "Sin reproducción").font(.title2.weight(.bold)).lineLimit(2).multilineTextAlignment(.center)
-                    Text("KubanFy").foregroundStyle(.white.opacity(0.45))
-                }
-                VStack(spacing: 8) {
-                    Slider(value: Binding(get: { audioPlayer.position }, set: { audioPlayer.seek(to: $0) }), in: 0...max(audioPlayer.duration, 1))
-                    HStack { Text(formatDuration(audioPlayer.position)); Spacer(); Text(formatDuration(audioPlayer.duration)) }.font(.caption).foregroundStyle(.white.opacity(0.4))
-                }
-                HStack(spacing: 42) {
-                    Button { audioPlayer.seek(to: max(0, audioPlayer.position - 10)) } label: { Image(systemName: "gobackward.10").font(.title2) }
-                    Button { Task { await audioPlayer.toggleCurrent() } } label: { Image(systemName: audioPlayer.isPlaying ? "pause.circle.fill" : "play.circle.fill").font(.system(size: 62)) }
-                    Button { audioPlayer.seek(to: audioPlayer.position + 10) } label: { Image(systemName: "goforward.10").font(.title2) }
-                }
-                if let error = audioPlayer.errorMessage { Text(error).font(.caption).foregroundStyle(.red).multilineTextAlignment(.center) }
-                Spacer()
-            }.padding(24).background(Color.black.ignoresSafeArea())
-            .navigationTitle("Reproduciendo")
+            ScrollView {
+                VStack(spacing: 22) {
+                    RoundedRectangle(cornerRadius: 28)
+                        .fill(LinearGradient(colors: [Color.green.opacity(0.72), Color.white.opacity(0.08)], startPoint: .topLeading, endPoint: .bottomTrailing))
+                        .frame(maxWidth: 330).aspectRatio(1, contentMode: .fit)
+                        .overlay(Image(systemName: "music.note").font(.system(size: 72)).foregroundStyle(.white.opacity(0.9)))
+                        .padding(.top, 8)
+                    VStack(spacing: 6) {
+                        Text(audioPlayer.currentTitle ?? "Sin reproducción").font(.title2.weight(.bold)).lineLimit(2).multilineTextAlignment(.center)
+                        Text("KubanFy").foregroundStyle(.white.opacity(0.45))
+                    }
+                    VStack(spacing: 8) {
+                        Slider(value: Binding(get: { audioPlayer.position }, set: { audioPlayer.seek(to: $0) }), in: 0...max(audioPlayer.duration, 1))
+                        HStack { Text(formatDuration(audioPlayer.position)); Spacer(); Text(formatDuration(audioPlayer.duration)) }.font(.caption).foregroundStyle(.white.opacity(0.4))
+                    }
+                    HStack(spacing: 34) {
+                        Button { audioPlayer.toggleShuffle() } label: {
+                            Image(systemName: "shuffle").font(.title3).foregroundStyle(audioPlayer.isShuffled ? .green : .white)
+                        }
+                        Button { audioPlayer.seek(to: max(0, audioPlayer.position - 10)) } label: { Image(systemName: "gobackward.10").font(.title2) }
+                        Button { Task { await audioPlayer.toggleCurrent() } } label: { Image(systemName: audioPlayer.isPlaying ? "pause.circle.fill" : "play.circle.fill").font(.system(size: 62)) }
+                        Button { audioPlayer.seek(to: audioPlayer.position + 10) } label: { Image(systemName: "goforward.10").font(.title2) }
+                        Button { audioPlayer.cycleRepeat() } label: {
+                            Image(systemName: audioPlayer.repeatMode == .one ? "repeat.1" : "repeat").font(.title3).foregroundStyle(audioPlayer.repeatMode == .off ? .white : .green)
+                        }
+                    }
+                    HStack(spacing: 30) {
+                        Button {
+                            Task {
+                                guard let id = audioPlayer.currentTrackID else { return }
+                                do {
+                                    if isLiked { try await APIClient.shared.removeFavorite(trackId: id) }
+                                    else { _ = try await APIClient.shared.addFavorite(trackId: id) }
+                                    isLiked.toggle()
+                                    actionMessage = isLiked ? "Añadida a Me gusta" : "Eliminada de Me gusta"
+                                } catch { actionMessage = error.localizedDescription }
+                            }
+                        } label: { Image(systemName: isLiked ? "heart.fill" : "heart").font(.title2).foregroundStyle(isLiked ? .green : .white) }
+                        Button { showPlaylists = true } label: { Image(systemName: "plus.circle").font(.title2) }
+                        Button {
+                            Task {
+                                guard let id = audioPlayer.currentTrackID else { return }
+                                isDownloading = true
+                                defer { isDownloading = false }
+                                do {
+                                    let ticket = try await APIClient.shared.issueDownloadTicket(trackId: id)
+                                    let playback = try await APIClient.shared.playback(trackId: id, quality: "low")
+                                    let localURL = try await APIClient.shared.fetchAndDecryptKBY(playback)
+                                    let downloads = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0].appendingPathComponent("Downloads", isDirectory: true)
+                                    try FileManager.default.createDirectory(at: downloads, withIntermediateDirectories: true)
+                                    let destination = downloads.appendingPathComponent("\(id.uuidString).kby")
+                                    try? FileManager.default.removeItem(at: destination)
+                                    try FileManager.default.copyItem(at: localURL, to: destination)
+                                    let size = (try FileManager.default.attributesOfItem(atPath: destination.path)[.size] as? NSNumber)?.intValue ?? 0
+                                    try await APIClient.shared.completeDownload(ticket: ticket.downloadTicket, sizeBytes: size)
+                                    actionMessage = "Descarga completada"
+                                } catch { actionMessage = error.localizedDescription }
+                            }
+                        } label: {
+                            if isDownloading { ProgressView().tint(.green) } else { Image(systemName: "arrow.down.circle").font(.title2) }
+                        }
+                        Button { showMore = true } label: { Image(systemName: "ellipsis.circle").font(.title2) }
+                    }
+                    if let message = actionMessage { Text(message).font(.footnote).foregroundStyle(.white.opacity(0.65)).multilineTextAlignment(.center) }
+                    if let error = audioPlayer.errorMessage { Text(error).font(.caption).foregroundStyle(.red).multilineTextAlignment(.center) }
+                }.padding(24)
+            }
+            .background(Color.black.ignoresSafeArea())
+            .navigationTitle(audioPlayer.currentTitle ?? "Reproduciendo")
             .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button { dismiss() } label: { Image(systemName: "chevron.down") }
+                }
+            }
+            .sheet(isPresented: $showPlaylists) { PlaylistPicker(trackID: audioPlayer.currentTrackID) }
+            .confirmationDialog("Más opciones", isPresented: $showMore, titleVisibility: .visible) {
+                Button("Compartir") { }
+                Button("Cancelar", role: .cancel) { }
+            }
         }.preferredColorScheme(.dark)
     }
 }
@@ -936,6 +999,8 @@ private struct SearchView: View {
     }
 }
 
+private enum RepeatMode { case off, all, one }
+
 @MainActor
 private final class AudioPlayer: ObservableObject {
     @Published private(set) var currentTrackID: UUID?
@@ -1023,6 +1088,1320 @@ private final class AudioPlayer: ObservableObject {
             return .success
         }
 
+    }
+
+    func toggleShuffle() { isShuffled.toggle() }
+
+    func cycleRepeat() {
+        switch repeatMode { case .off: repeatMode = .all; case .all: repeatMode = .one; case .one: repeatMode = .off }
+    }
+
+    func toggle(track: DiscoveryHome.Track) async {
+        errorMessage = nil
+        if currentTrackID == track.id {
+            if isPlaying {
+                await pause()
+            } else {
+                resume()
+            }
+            return
+        }
+        await start(track: track)
+    }
+
+    func toggleCurrent() async {
+        guard currentTrack != nil else { return }
+        if isPlaying { await pause() } else { resume() }
+    }
+
+    private func start(track: DiscoveryHome.Track) async {
+        isLoading = true
+        errorMessage = nil
+        currentTrack = track
+        currentTrackID = track.id
+        currentTitle = track.title
+        defer { isLoading = false }
+        do {
+            heartbeatTask?.cancel()
+            renewalTask?.cancel()
+            recoveryTask?.cancel()
+            recoveryAttempts = 0
+            playbackGeneration = UUID()
+            let generation = playbackGeneration
+            let session = try await APIClient.shared.startPlayback(
+                trackId: track.id,
+                quality: "low"
+            )
+            playbackToken = session.playbackToken
+            playbackSessionID = session.playbackSessionId
+            let playback = try await APIClient.shared.playback(trackId: track.id, quality: "low")
+            guard generation == playbackGeneration else { return }
+            currentPlayback = playback
+            let localURL = try await APIClient.shared.fetchAndDecryptKBY(playback)
+            guard generation == playbackGeneration else { return }
+            duration = track.duration ?? 0
+            position = 0
+            try? AVAudioSession.sharedInstance().setActive(true)
+            replaceItem(with: localURL, position: 0)
+            isPlaying = true
+            updateNowPlaying()
+            player?.play()
+            startHeartbeatLoop(interval: session.heartbeatIntervalSeconds)
+            startRenewalLoop(expiresIn: playback.expiresInSeconds)
+        } catch {
+            stopPlaybackResources()
+            isPlaying = false
+            errorMessage = error.localizedDescription
+            updateNowPlaying()
+        }
+    }
+
+    private func replaceItem(with url: URL, position: Double) {
+        if let previous = currentLocalAudioURL, previous != url {
+            try? FileManager.default.removeItem(at: previous)
+        }
+        currentLocalAudioURL = url
+        let item = AVPlayerItem(url: url)
+        if let itemDuration = item.asset.duration.seconds.isFinite ? item.asset.duration.seconds : nil, itemDuration > 0 { duration = itemDuration }
+        if let player {
+            player.replaceCurrentItem(with: item)
+        } else {
+            player = AVPlayer(playerItem: item)
+            timeObserver = player?.addPeriodicTimeObserver(
+                forInterval: CMTime(seconds: 1, preferredTimescale: 600),
+                queue: .main
+            ) { [weak self] time in
+                Task { @MainActor in
+                    self?.position = max(0, time.seconds.isFinite ? time.seconds : 0)
+                    self?.updateNowPlaying()
+                }
+            }
+        }
+        let target = max(0, position)
+        if target > 0 {
+            player?.seek(to: CMTime(seconds: target, preferredTimescale: 600))
+        }
+        player?.playImmediately(atRate: 1)
+    }
+
+    private func startHeartbeatLoop(interval: Int) {
+        heartbeatTask?.cancel()
+        let seconds = max(5, interval)
+        heartbeatTask = Task { [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(seconds))
+                guard !Task.isCancelled else { return }
+                await self?.sendHeartbeat(completed: false)
+            }
+        }
+    }
+
+    private func startRenewalLoop(expiresIn: Int) {
+        renewalTask?.cancel()
+        let delay = max(15, expiresIn - 30)
+        renewalTask = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(delay))
+            guard !Task.isCancelled else { return }
+            await self?.renewSignedURL()
+        }
+    }
+
+    private func renewSignedURL() async {
+        guard let track = currentTrack else { return }
+        let savedPosition = position
+        do {
+            let playback = try await APIClient.shared.playback(trackId: track.id, quality: "low")
+            guard currentTrackID == track.id else { return }
+            currentPlayback = playback
+            let localURL = try await APIClient.shared.fetchAndDecryptKBY(playback)
+            guard currentTrackID == track.id else { return }
+            replaceItem(with: localURL, position: savedPosition)
+            if !isPlaying { player?.pause() }
+            startRenewalLoop(expiresIn: playback.expiresInSeconds)
+        } catch {
+            // Keep the current item alive; the next playback error will retry renewal.
+            startRenewalLoop(expiresIn: max(15, currentPlayback?.expiresInSeconds ?? 30))
+        }
+    }
+
+    private func handlePlaybackFailure(_ notification: Notification) async {
+        guard currentTrackID != nil, currentTrack != nil else { return }
+        guard recoveryTask == nil else { return }
+        let generation = playbackGeneration
+        let savedPosition = position
+        recoveryTask = Task { [weak self] in
+            guard let self else { return }
+            for attempt in 0..<3 {
+                guard !Task.isCancelled, generation == self.playbackGeneration else { return }
+                self.recoveryAttempts = attempt + 1
+                let delay = UInt64(1 << attempt)
+                try? await Task.sleep(for: .seconds(delay))
+                guard !Task.isCancelled, generation == self.playbackGeneration,
+                      let track = self.currentTrack else { return }
+                do {
+                    let playback = try await APIClient.shared.playback(trackId: track.id, quality: "low")
+                    guard generation == self.playbackGeneration, self.currentTrackID == track.id else { return }
+                    self.currentPlayback = playback
+                    let localURL = try await APIClient.shared.fetchAndDecryptKBY(playback)
+                    guard generation == self.playbackGeneration, self.currentTrackID == track.id else { return }
+                    self.replaceItem(with: localURL, position: savedPosition)
+                    self.isPlaying = true
+                    self.errorMessage = nil
+                    self.startRenewalLoop(expiresIn: playback.expiresInSeconds)
+                    return
+                } catch {
+                    continue
+                }
+            }
+            guard generation == self.playbackGeneration else { return }
+            self.isPlaying = false
+            self.errorMessage = "No se pudo recuperar la reproducción. Comprueba la conexión e inténtalo de nuevo."
+        }
+        await recoveryTask?.value
+        recoveryTask = nil
+        recoveryAttempts = 0
+    }
+
+    private func sendHeartbeat(completed: Bool) async {
+        guard let token = playbackToken else { return }
+        do {
+            _ = try await APIClient.shared.heartbeat(
+                token: token,
+                positionMs: Int(max(0, position) * 1000),
+                paused: !isPlaying,
+                completed: completed
+            )
+        } catch {
+            // Connectivity loss must not stop local playback.
+        }
+    }
+
+    private func pause() async {
+        player?.pause()
+        isPlaying = false
+        updateNowPlaying()
+        await sendHeartbeat(completed: false)
+    }
+
+    private func resume() {
+        try? AVAudioSession.sharedInstance().setActive(true)
+        player?.play()
+        isPlaying = true
+        updateNowPlaying()
+    }
+
+    func seek(to seconds: Double) {
+        guard seconds.isFinite, seconds >= 0 else { return }
+        player?.seek(to: CMTime(seconds: seconds, preferredTimescale: 600))
+        position = seconds
+        updateNowPlaying()
+    }
+
+    private func handlePlaybackEnded() async {
+        if repeatMode == .one, let track = currentTrack {
+            await start(track: track)
+            return
+        }
+        isPlaying = false
+        position = duration
+        await sendHeartbeat(completed: true)
+        updateNowPlaying()
+    }t SwiftUI
+import AVFoundation
+import MediaPlayer
+import UIKit
+
+struct ContentView: View {
+    @State private var email = ""
+    @State private var password = ""
+    @State private var showPassword = false
+    @State private var user: UserResponse?
+    @State private var authContext: AuthContext?
+    @State private var discovery: DiscoveryHome?
+    @State private var errorMessage: String?
+    @State private var isLoading = false
+    @State private var saveCredentials = false
+    @State private var showRecoveryInfo = false
+    @State private var showRegister = false
+    @StateObject private var audioPlayer = AudioPlayer()
+    @State private var showPlayer = false
+    @State private var isRefreshing = false
+
+    var body: some View {
+        ZStack {
+            if let user {
+                home(user, context: authContext, discovery: discovery)
+            } else {
+                login
+            }
+        }
+        .preferredColorScheme(.dark)
+        .task {
+            if let savedEmail = APIClient.shared.savedEmail { email = savedEmail }
+            if let savedPassword = APIClient.shared.savedPassword {
+                password = savedPassword
+                saveCredentials = true
+            }
+            await restoreSession()
+        }
+        .alert("Recuperar contraseña", isPresented: $showRecoveryInfo) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text("La recuperación todavía no está habilitada por el servidor. El enlace ya está preparado en la app y se conectará al endpoint cuando esté disponible.")
+        }
+    }
+
+    private var login: some View {
+        ZStack {
+            LinearGradient(colors: [Color(red: 0.025, green: 0.045, blue: 0.035), .black], startPoint: .topLeading, endPoint: .bottomTrailing)
+                .ignoresSafeArea()
+            Circle().fill(Color.green.opacity(0.16)).frame(width: 280, height: 280).blur(radius: 70).offset(x: 150, y: -330)
+
+            ScrollView {
+                VStack(alignment: .leading, spacing: 0) {
+                    Spacer(minLength: 54)
+                    HStack(spacing: 10) {
+                        ZStack {
+                            RoundedRectangle(cornerRadius: 13).fill(Color.green).frame(width: 48, height: 48)
+                            Image(systemName: "music.note").font(.system(size: 24, weight: .bold)).foregroundStyle(.black)
+                        }
+                        Text("KubanFy").font(.system(size: 30, weight: .bold, design: .rounded))
+                    }
+                    Text("Tu música. Tu isla. Tu ritmo.").font(.title3.weight(.semibold)).foregroundStyle(.white.opacity(0.72)).padding(.top, 12)
+                    Text("Inicia sesión para continuar").font(.subheadline).foregroundStyle(.white.opacity(0.48)).padding(.top, 5)
+                    Toggle(isOn: $saveCredentials) { Text("Guardar credenciales").font(.subheadline) }
+                        .tint(.green).padding(.top, 16)
+
+                    VStack(spacing: 14) {
+                        loginField("Correo electrónico", "envelope", $email)
+                            .textInputAutocapitalization(.never).keyboardType(.emailAddress).autocorrectionDisabled()
+                        HStack(spacing: 12) {
+                            Image(systemName: "lock").foregroundStyle(.white.opacity(0.45)).frame(width: 20)
+                            Group {
+                                if showPassword { TextField("Contraseña", text: $password) }
+                                else { SecureField("Contraseña", text: $password) }
+                            }
+                            .textInputAutocapitalization(.never).autocorrectionDisabled().disabled(isLoading)
+                            Button { showPassword.toggle() } label: {
+                                Image(systemName: showPassword ? "eye.slash" : "eye").foregroundStyle(.white.opacity(0.55)).frame(width: 32, height: 32)
+                            }.disabled(isLoading)
+                        }
+                        .padding(.horizontal, 15).frame(height: 56).background(Color.white.opacity(0.075))
+                        .overlay(RoundedRectangle(cornerRadius: 15).stroke(Color.white.opacity(0.08), lineWidth: 1))
+                        .clipShape(RoundedRectangle(cornerRadius: 15))
+                    }.padding(.top, 30)
+
+                    HStack {
+                        Button("Crear cuenta") { showRegister = true }
+                            .font(.subheadline.weight(.bold)).foregroundStyle(Color.green).disabled(isLoading)
+                        Spacer()
+                        Button("¿Olvidaste tu contraseña?") { showRecoveryInfo = true }
+                            .font(.subheadline.weight(.semibold)).foregroundStyle(Color.green).disabled(isLoading)
+                    }.padding(.top, 14)
+
+                    if let errorMessage {
+                        HStack(alignment: .top, spacing: 10) {
+                            Image(systemName: "exclamationmark.triangle.fill")
+                            Text(errorMessage).font(.subheadline)
+                        }
+                        .foregroundStyle(.red.opacity(0.95)).padding(14).frame(maxWidth: .infinity, alignment: .leading)
+                        .background(Color.red.opacity(0.10)).clipShape(RoundedRectangle(cornerRadius: 14)).padding(.top, 18)
+                    }
+
+                    Button { hideKeyboard(); Task { await performLogin() } } label: {
+                        HStack(spacing: 10) {
+                            if isLoading { ProgressView().tint(.black); Text("Conectando…") }
+                            else { Text("Iniciar sesión"); Image(systemName: "arrow.right").font(.system(size: 15, weight: .bold)) }
+                        }
+                        .font(.headline.weight(.bold)).foregroundStyle(.black).frame(maxWidth: .infinity).frame(height: 56)
+                        .background(canSubmit ? Color.green : Color.white.opacity(0.16)).clipShape(RoundedRectangle(cornerRadius: 17))
+                    }
+                    .disabled(!canSubmit || isLoading).padding(.top, 24)
+
+                    Text("La conexión al servidor es necesaria para autenticarte y cargar tu contenido.")
+                        .font(.caption).foregroundStyle(.white.opacity(0.35)).multilineTextAlignment(.center)
+                        .frame(maxWidth: .infinity).padding(.top, 20)
+                    Spacer(minLength: 30)
+                }
+                .padding(.horizontal, 24).frame(maxWidth: 560).frame(maxWidth: .infinity)
+            }
+            .scrollDismissesKeyboard(.interactively).scrollIndicators(.hidden)
+        }
+        .ignoresSafeArea(.keyboard, edges: .bottom)
+        .sheet(isPresented: $showRegister) {
+            RegisterView { registeredEmail, registeredPassword in
+                email = registeredEmail
+                password = registeredPassword
+                saveCredentials = true
+            }
+        }
+    }
+
+    private var canSubmit: Bool {
+        !email.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && !password.isEmpty
+    }
+
+    private func loginField(_ title: String, _ icon: String, _ text: Binding<String>) -> some View {
+        HStack(spacing: 12) {
+            Image(systemName: icon).foregroundStyle(.white.opacity(0.45)).frame(width: 20)
+            TextField(title, text: text).disabled(isLoading)
+        }
+        .padding(.horizontal, 15).frame(height: 56).background(Color.white.opacity(0.075))
+        .overlay(RoundedRectangle(cornerRadius: 15).stroke(Color.white.opacity(0.08), lineWidth: 1))
+        .clipShape(RoundedRectangle(cornerRadius: 15))
+    }
+
+    private func home(_ user: UserResponse, context: AuthContext?, discovery: DiscoveryHome?) -> some View {
+        NavigationStack {
+            ZStack {
+                Color.black.ignoresSafeArea()
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 22) {
+                        HStack(spacing: 10) {
+                            NavigationLink { SearchView(audioPlayer: audioPlayer) } label: {
+                                topAction("magnifyingglass", "Buscar")
+                            }
+                            quickTopLink("Biblioteca", "rectangle.stack")
+                            quickTopLink("Playlists", "music.note.list")
+                            Spacer()
+                        }
+                        HStack {
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text("Hola, \(user.displayName)").font(.title2.weight(.bold))
+                                Text(discovery.map { "Descubre música en \($0.country)" } ?? "Descubre tu música")
+                                    .foregroundStyle(.white.opacity(0.5))
+                            }
+                            Spacer()
+                            Circle().fill(Color.white.opacity(0.10)).frame(width: 44, height: 44).overlay(Image(systemName: "person.fill"))
+                        }
+                        if let discovery {
+                            Text("Nuevos lanzamientos").font(.title3.weight(.bold))
+                            ScrollView(.horizontal, showsIndicators: false) {
+                                HStack(spacing: 14) {
+                                    ForEach(discovery.newReleases.prefix(12), id: \.id) { track in
+                                        HStack(alignment: .top, spacing: 8) {
+                                            NavigationLink {
+                                                TrackDetailView(track: track, audioPlayer: audioPlayer)
+                                            } label: {
+                                                VStack(alignment: .leading, spacing: 8) {
+                                                    RoundedRectangle(cornerRadius: 14)
+                                                        .fill(LinearGradient(colors: [Color.green.opacity(0.75), Color.white.opacity(0.08)], startPoint: .topLeading, endPoint: .bottomTrailing))
+                                                        .frame(width: 150, height: 150)
+                                                        .overlay(Image(systemName: "music.note").font(.system(size: 42)).foregroundStyle(.white.opacity(0.9)))
+                                                    Text(track.title).font(.subheadline.weight(.semibold)).lineLimit(2).frame(width: 150, alignment: .leading)
+                                                    if let duration = track.duration { Text(formatDuration(duration)).font(.caption).foregroundStyle(.white.opacity(0.4)) }
+                                                }
+                                            }
+                                            .buttonStyle(.plain)
+                                            Button { Task { await audioPlayer.toggle(track: track) } } label: {
+                                                ZStack {
+                                                    Circle().fill(Color.green)
+                                                    if audioPlayer.isLoading && audioPlayer.currentTrackID == track.id {
+                                                        ProgressView().tint(.black)
+                                                    } else {
+                                                        Image(systemName: audioPlayer.currentTrackID == track.id && audioPlayer.isPlaying ? "pause.fill" : "play.fill")
+                                                            .font(.system(size: 17, weight: .bold)).foregroundStyle(.black)
+                                                    }
+                                                }
+                                                .frame(width: 42, height: 42)
+                                            }
+                                            .buttonStyle(.plain)
+                                            .padding(.top, 142)
+                                        }
+                                    }
+                                }
+                            }
+                            Text("Tendencias").font(.title3.weight(.bold)).padding(.top, 2)
+                            ForEach(discovery.trending.prefix(5), id: \.rank) { item in
+                                let trackID = item.trackId
+                                if let title = item.title {
+                                    NavigationLink {
+                                        TrackDetailView(track: .init(id: trackID, title: title, duration: nil), audioPlayer: audioPlayer)
+                                    } label: {
+                                        HStack(spacing: 14) {
+                                            Text(String(item.rank)).font(.headline.monospacedDigit()).foregroundStyle(.white.opacity(0.35)).frame(width: 24)
+                                            VStack(alignment: .leading) {
+                                                Text(title).font(.subheadline.weight(.semibold))
+                                                Text("\(item.metrics["plays"] ?? 0) reproducciones").font(.caption).foregroundStyle(.white.opacity(0.4))
+                                            }
+                                            Spacer()
+                                            Image(systemName: "chevron.right").foregroundStyle(.white.opacity(0.25))
+                                        }.padding(.vertical, 7)
+                                    }.buttonStyle(.plain)
+                                }
+                            }
+                        } else {
+                            ProgressView("Cargando tu inicio…").tint(.green).frame(maxWidth: .infinity).padding(.vertical, 50)
+                        }
+
+                        if audioPlayer.currentTrackID != nil {
+                            MiniPlayer(audioPlayer: audioPlayer) { showPlayer = true }
+                        }
+
+                        if let playbackError = audioPlayer.errorMessage {
+                            HStack(alignment: .top, spacing: 10) {
+                                Image(systemName: "exclamationmark.triangle.fill")
+                                Text(playbackError)
+                                    .font(.footnote)
+                                    .foregroundStyle(.white.opacity(0.85))
+                            }
+                            .foregroundStyle(.red)
+                            .padding(12)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .background(Color.red.opacity(0.10))
+                            .clipShape(RoundedRectangle(cornerRadius: 12))
+                        }
+
+                        if context?.isArtist == true {
+                            quickAction("person.crop.rectangle.stack", "Panel de artista")
+                        }
+                    }.padding(20)
+                }
+                .refreshable {
+                    await refreshDiscovery()
+                }
+            }
+            .navigationBarTitleDisplayMode(.inline)
+            .sheet(isPresented: $showPlayer) {
+                PlayerView(audioPlayer: audioPlayer)
+            }
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) { Text("KubanFy").font(.headline.weight(.bold)) }
+                ToolbarItem(placement: .topBarTrailing) {
+                    Menu {
+                        Button("Cerrar sesión", role: .destructive) {
+                            APIClient.shared.logout(); self.user = nil; authContext = nil; self.discovery = nil
+                        }
+                    } label: { Image(systemName: "ellipsis") }
+                }
+            }
+        }
+    }
+
+    private func refreshDiscovery() async {
+        guard !isRefreshing else { return }
+        isRefreshing = true
+        defer { isRefreshing = false }
+        do {
+            try await APIClient.shared.refreshIfNeeded()
+            discovery = try await APIClient.shared.discoveryHome()
+        } catch {
+            errorMessage = userFacingError(error)
+        }
+    }
+
+    private func topAction(_ icon: String, _ title: String) -> some View {
+        HStack(spacing: 7) {
+            Image(systemName: icon).font(.subheadline.weight(.bold))
+            Text(title).font(.subheadline.weight(.semibold))
+        }
+        .foregroundStyle(.white)
+        .padding(.horizontal, 14)
+        .frame(height: 40)
+        .background(Color.white.opacity(0.10))
+        .clipShape(Capsule())
+    }
+
+    private func quickTopLink(_ title: String, _ icon: String) -> some View {
+        Button {} label: { topAction(icon, title) }
+            .buttonStyle(.plain)
+    }
+
+    private func quickAction(_ icon: String, _ title: String) -> some View {
+        HStack(spacing: 8) { Image(systemName: icon); Text(title).font(.subheadline.weight(.semibold)) }
+            .foregroundStyle(.white).padding(.horizontal, 13).frame(height: 40)
+            .background(Color.white.opacity(0.08)).clipShape(Capsule())
+    }
+
+    private func restoreSession() async {
+        guard APIClient.shared.hasStoredSession else { return }
+        if let cachedUser = APIClient.shared.cachedUser() {
+            user = cachedUser
+        }
+        do {
+            try await APIClient.shared.refreshIfNeeded()
+            let restoredUser = try await APIClient.shared.me()
+            user = restoredUser
+            APIClient.shared.cacheUser(restoredUser)
+            authContext = try await APIClient.shared.context()
+            discovery = try await APIClient.shared.discoveryHome()
+        } catch {
+            // Network failure must not erase the local authenticated shell.
+        }
+    }
+
+    private func performLogin() async {
+        hideKeyboard()
+        isLoading = true; errorMessage = nil
+        defer { isLoading = false }
+        do {
+            let response = try await APIClient.shared.login(email: email, password: password, saveCredentials: saveCredentials)
+            user = response.user
+            APIClient.shared.cacheUser(response.user)
+            authContext = try await APIClient.shared.context()
+            discovery = try await APIClient.shared.discoveryHome()
+        } catch {
+            errorMessage = userFacingError(error)
+        }
+    }
+
+    private func userFacingError(_ error: Error) -> String {
+        if let apiError = error as? APIError {
+            switch apiError {
+            case .network: return "No se pudo conectar con KubanFy. El servidor puede estar apagado o no disponible. Comprueba tu conexión e inténtalo de nuevo."
+            case let .http(code, message):
+                if code == 401 { return "Correo o contraseña incorrectos." }
+                if code == 429 { return "Demasiados intentos. Espera un momento y vuelve a intentarlo." }
+                return "\(message) (HTTP \(code))"
+            default: return apiError.localizedDescription
+            }
+        }
+        if let urlError = error as? URLError {
+            switch urlError.code {
+            case .timedOut, .cannotFindHost, .cannotConnectToHost, .networkConnectionLost, .notConnectedToInternet:
+                return "No se pudo conectar con KubanFy. El servidor puede estar apagado o no disponible."
+            default: break
+            }
+        }
+        return error.localizedDescription
+    }
+
+    private func hideKeyboard() {
+        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+    }
+}
+
+private struct RegisterView: View {
+    @Environment(\.dismiss) private var dismiss
+    private let onRegistered: (String, String) -> Void
+
+    init(onRegistered: @escaping (String, String) -> Void) {
+        self.onRegistered = onRegistered
+    }
+    @State private var displayName = ""
+    @State private var email = ""
+    @State private var password = ""
+    @State private var confirmPassword = ""
+    @State private var showPassword = false
+    @State private var showConfirmPassword = false
+    @State private var errorMessage: String?
+    @State private var successMessage: String?
+    @State private var isLoading = false
+
+    var body: some View {
+        NavigationStack {
+            ZStack {
+                LinearGradient(colors: [Color(red: 0.025, green: 0.045, blue: 0.035), .black], startPoint: .topLeading, endPoint: .bottomTrailing).ignoresSafeArea()
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 0) {
+                        HStack(spacing: 10) {
+                            ZStack {
+                                RoundedRectangle(cornerRadius: 13).fill(Color.green).frame(width: 48, height: 48)
+                                Image(systemName: "person.badge.plus").font(.system(size: 23, weight: .bold)).foregroundStyle(.black)
+                            }
+                            Text("Crear cuenta").font(.system(size: 30, weight: .bold, design: .rounded))
+                        }
+                        Text("Únete a KubanFy").font(.title3.weight(.semibold)).foregroundStyle(.white.opacity(0.72)).padding(.top, 12)
+                        Text("Crea tu cuenta para descubrir y escuchar música.").font(.subheadline).foregroundStyle(.white.opacity(0.48)).padding(.top, 5)
+                        VStack(spacing: 14) {
+                            registerField("Nombre", "person", $displayName)
+                            registerField("Correo electrónico", "envelope", $email).textInputAutocapitalization(.never).keyboardType(.emailAddress).autocorrectionDisabled()
+                            passwordField("Contraseña", $password, show: $showPassword)
+                            passwordField("Repite la contraseña", $confirmPassword, show: $showConfirmPassword)
+                        }.padding(.top, 30)
+                        Text("Mínimo 8 caracteres e incluye letras y números o símbolos.").font(.caption).foregroundStyle(.white.opacity(0.38)).padding(.top, 12)
+                        if let errorMessage {
+                            HStack(alignment: .top, spacing: 10) { Image(systemName: "exclamationmark.triangle.fill"); Text(errorMessage).font(.subheadline) }
+                                .foregroundStyle(.red.opacity(0.95)).padding(14).frame(maxWidth: .infinity, alignment: .leading)
+                                .background(Color.red.opacity(0.10)).clipShape(RoundedRectangle(cornerRadius: 14)).padding(.top, 18)
+                        }
+                        if let successMessage {
+                            HStack(alignment: .top, spacing: 10) { Image(systemName: "checkmark.circle.fill"); Text(successMessage).font(.subheadline) }
+                                .foregroundStyle(Color.green).padding(14).frame(maxWidth: .infinity, alignment: .leading)
+                                .background(Color.green.opacity(0.10)).clipShape(RoundedRectangle(cornerRadius: 14)).padding(.top, 18)
+                        }
+                        Button { hideKeyboard(); Task { await performRegister() } } label: {
+                            HStack(spacing: 10) {
+                                if isLoading { ProgressView().tint(.black); Text("Creando cuenta…") }
+                                else { Text("Crear cuenta"); Image(systemName: "arrow.right").font(.system(size: 15, weight: .bold)) }
+                            }.font(.headline.weight(.bold)).foregroundStyle(.black).frame(maxWidth: .infinity).frame(height: 56)
+                                .background(canSubmit ? Color.green : Color.white.opacity(0.16)).clipShape(RoundedRectangle(cornerRadius: 17))
+                        }.disabled(!canSubmit || isLoading).padding(.top, 24)
+                        Text("El país y el idioma usan los valores predeterminados del servidor cuando no se especifican.")
+                            .font(.caption).foregroundStyle(.white.opacity(0.30)).multilineTextAlignment(.center).frame(maxWidth: .infinity).padding(.top, 20)
+                    }.padding(.horizontal, 24).padding(.bottom, 30).frame(maxWidth: 560).frame(maxWidth: .infinity)
+                }.scrollDismissesKeyboard(.interactively).scrollIndicators(.hidden)
+            }
+            .toolbar { ToolbarItem(placement: .topBarLeading) { Button("Cancelar") { hideKeyboard(); dismiss() }.disabled(isLoading) } }
+        }.preferredColorScheme(.dark)
+    }
+
+    private var canSubmit: Bool {
+        let name = displayName.trimmingCharacters(in: .whitespacesAndNewlines)
+        let mail = email.trimmingCharacters(in: .whitespacesAndNewlines)
+        return name.count >= 1 && name.count <= 120 && mail.contains("@") && password.count >= 8 && password == confirmPassword
+    }
+
+    private func registerField(_ title: String, _ icon: String, _ text: Binding<String>) -> some View {
+        HStack(spacing: 12) { Image(systemName: icon).foregroundStyle(.white.opacity(0.45)).frame(width: 20); TextField(title, text: text).disabled(isLoading) }
+            .padding(.horizontal, 15).frame(height: 56).background(Color.white.opacity(0.075))
+            .overlay(RoundedRectangle(cornerRadius: 15).stroke(Color.white.opacity(0.08), lineWidth: 1)).clipShape(RoundedRectangle(cornerRadius: 15))
+    }
+
+    private func passwordField(_ title: String, _ text: Binding<String>, show: Binding<Bool>) -> some View {
+        HStack(spacing: 12) {
+            Image(systemName: "lock").foregroundStyle(.white.opacity(0.45)).frame(width: 20)
+            Group { if show.wrappedValue { TextField(title, text: text) } else { SecureField(title, text: text) } }
+                .textInputAutocapitalization(.never).autocorrectionDisabled().disabled(isLoading)
+            Button { show.wrappedValue.toggle() } label: { Image(systemName: show.wrappedValue ? "eye.slash" : "eye").foregroundStyle(.white.opacity(0.55)).frame(width: 32, height: 32) }.disabled(isLoading)
+        }.padding(.horizontal, 15).frame(height: 56).background(Color.white.opacity(0.075))
+            .overlay(RoundedRectangle(cornerRadius: 15).stroke(Color.white.opacity(0.08), lineWidth: 1)).clipShape(RoundedRectangle(cornerRadius: 15))
+    }
+
+    private func performRegister() async {
+        hideKeyboard(); isLoading = true; errorMessage = nil; successMessage = nil
+        defer { isLoading = false }
+        do {
+            _ = try await APIClient.shared.register(email: email, password: password, displayName: displayName)
+            successMessage = "Cuenta creada correctamente. Ya puedes iniciar sesión."
+            onRegistered(email, password)
+            password = ""; confirmPassword = ""
+        } catch { errorMessage = registrationError(error) }
+    }
+
+    private func registrationError(_ error: Error) -> String {
+        if let apiError = error as? APIError {
+            switch apiError {
+            case .network: return "No se pudo conectar con KubanFy. El servidor puede estar apagado o no disponible."
+            case let .http(code, message):
+                if code == 409 { return "Ese correo ya está registrado." }
+                if code == 422 { return "Revisa el correo, el nombre y los requisitos de la contraseña." }
+                if code == 429 { return "Demasiados intentos. Espera un momento y vuelve a intentarlo." }
+                return "\(message) (HTTP \(code))"
+            default: return apiError.localizedDescription
+            }
+        }
+        return error.localizedDescription
+    }
+
+    private func hideKeyboard() { UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil) }
+}
+
+private struct TrackDetailView: View {
+    let track: DiscoveryHome.Track
+    @ObservedObject var audioPlayer: AudioPlayer
+    @State private var detail: TrackDetail?
+    @State private var isLoading = true
+    @State private var errorMessage: String?
+
+    private var artistsText: String {
+        detail?.artists.map(\.name).joined(separator: ", ") ?? "KubanFy"
+    }
+
+    private var isCurrentTrack: Bool {
+        audioPlayer.currentTrackID == track.id
+    }
+
+    var body: some View {
+        ZStack {
+            Color.black.ignoresSafeArea()
+            ScrollView {
+                VStack(spacing: 0) {
+                    artwork
+                    VStack(alignment: .leading, spacing: 14) {
+                        Text(detail?.title ?? track.title)
+                            .font(.system(size: 28, weight: .bold))
+                            .lineLimit(3)
+                        HStack(spacing: 5) {
+                            if detail?.artists.contains(where: { $0.verified }) == true {
+                                Image(systemName: "checkmark.seal.fill").foregroundStyle(.green)
+                            }
+                            Text(artistsText)
+                                .font(.headline)
+                                .foregroundStyle(.white.opacity(0.68))
+                                .lineLimit(2)
+                        }
+                        if let detail {
+                            HStack(spacing: 8) {
+                                if detail.explicit {
+                                    Text("E").font(.caption.weight(.bold)).padding(4).background(Color.white.opacity(0.16)).clipShape(RoundedRectangle(cornerRadius: 4))
+                                }
+                                if let duration = detail.duration ?? track.duration {
+                                    Text(formatDuration(duration))
+                                }
+                                if let date = detail.releaseDate {
+                                    Text("•")
+                                    Text(date.formatted(.dateTime.year().month(.abbreviated).day()))
+                                }
+                            }
+                            .font(.caption)
+                            .foregroundStyle(.white.opacity(0.45))
+                        }
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.top, 24)
+
+                    HStack(spacing: 18) {
+                        Button { Task { await audioPlayer.toggle(track: track) } } label: {
+                            ZStack {
+                                Circle().fill(Color.green).frame(width: 62, height: 62)
+                                if audioPlayer.isLoading && isCurrentTrack {
+                                    ProgressView().tint(.black)
+                                } else {
+                                    Image(systemName: isCurrentTrack && audioPlayer.isPlaying ? "pause.fill" : "play.fill")
+                                        .font(.title2.weight(.bold)).foregroundStyle(.black)
+                                }
+                            }
+                        }
+                        .buttonStyle(.plain)
+                        Button { } label: {
+                            Image(systemName: "plus.circle").font(.system(size: 30))
+                        }
+                        Button { } label: {
+                            Image(systemName: "arrow.down.circle").font(.system(size: 30))
+                        }
+                        Spacer()
+                        Button { } label: {
+                            Image(systemName: "ellipsis").font(.title2.weight(.bold))
+                        }
+                    }
+                    .padding(.top, 24)
+
+                    if let errorMessage {
+                        Text(errorMessage)
+                            .font(.footnote)
+                            .foregroundStyle(.red)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(.top, 14)
+                    }
+                    if audioPlayer.currentTrackID == track.id, let error = audioPlayer.errorMessage {
+                        Text(error)
+                            .font(.footnote)
+                            .foregroundStyle(.red)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(.top, 8)
+                    }
+
+                    VStack(alignment: .leading, spacing: 14) {
+                        Text("Más información").font(.title3.weight(.bold))
+                        infoRow("Artista", artistsText)
+                        if let isrc = detail?.isrc, !isrc.isEmpty { infoRow("ISRC", isrc) }
+                        if let language = detail?.language, !language.isEmpty { infoRow("Idioma", language.uppercased()) }
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.top, 34)
+                }
+                .padding(.horizontal, 20)
+                .padding(.bottom, 32)
+            }
+        }
+        .navigationTitle("")
+        .navigationBarTitleDisplayMode(.inline)
+        .task { await loadDetail() }
+        .animation(.easeInOut(duration: 0.25), value: detail != nil)
+        .preferredColorScheme(.dark)
+    }
+
+    private var artwork: some View {
+        Group {
+            if let artworkURL = detail?.artworkURL, let url = URL(string: artworkURL) {
+                AsyncImage(url: url) { phase in
+                    switch phase {
+                    case .success(let image): image.resizable().scaledToFill()
+                    default: placeholderArtwork
+                    }
+                }
+            } else {
+                placeholderArtwork
+            }
+        }
+        .frame(maxWidth: 360)
+        .aspectRatio(1, contentMode: .fit)
+        .clipShape(RoundedRectangle(cornerRadius: 18))
+        .shadow(radius: 18)
+        .padding(.top, 20)
+    }
+
+    private var placeholderArtwork: some View {
+        RoundedRectangle(cornerRadius: 18)
+            .fill(LinearGradient(colors: [Color.green.opacity(0.72), Color.white.opacity(0.08)], startPoint: .topLeading, endPoint: .bottomTrailing))
+            .overlay(Image(systemName: "music.note").font(.system(size: 70)).foregroundStyle(.white.opacity(0.88)))
+    }
+
+    private func infoRow(_ label: String, _ value: String) -> some View {
+        HStack {
+            Text(label).foregroundStyle(.white.opacity(0.45))
+            Spacer()
+            Text(value).fontWeight(.semibold).multilineTextAlignment(.trailing)
+        }
+    }
+
+    private func loadDetail() async {
+        do {
+            detail = try await APIClient.shared.trackDetail(trackId: track.id)
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+        isLoading = false
+    }
+}
+
+private struct MiniPlayer: View {
+    @ObservedObject var audioPlayer: AudioPlayer
+    let onTap: () -> Void
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Button(action: onTap) {
+                HStack(spacing: 12) {
+                    RoundedRectangle(cornerRadius: 8).fill(Color.green.opacity(0.22)).frame(width: 44, height: 44)
+                        .overlay(Image(systemName: "music.note").foregroundStyle(.green))
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text(audioPlayer.currentTitle ?? "Reproduciendo").font(.subheadline.weight(.semibold)).lineLimit(1)
+                        Text(audioPlayer.isPlaying ? "Reproduciendo" : "Pausado").font(.caption).foregroundStyle(.white.opacity(0.45))
+                    }
+                }
+            }
+            .buttonStyle(.plain)
+            Spacer()
+            Button { Task { await audioPlayer.toggleCurrent() } } label: {
+                Image(systemName: audioPlayer.isPlaying ? "pause.fill" : "play.fill").font(.headline).frame(width: 40, height: 40)
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(8)
+        .background(.ultraThinMaterial)
+        .clipShape(RoundedRectangle(cornerRadius: 14))
+    }
+}
+
+private struct PlayerView: View {
+    @ObservedObject var audioPlayer: AudioPlayer
+    @Environment(\.dismiss) private var dismiss
+    @State private var isLiked = false
+    @State private var showPlaylists = false
+    @State private var showMore = false
+    @State private var isDownloading = false
+    @State private var actionMessage: String?
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(spacing: 22) {
+                    RoundedRectangle(cornerRadius: 28)
+                        .fill(LinearGradient(colors: [Color.green.opacity(0.72), Color.white.opacity(0.08)], startPoint: .topLeading, endPoint: .bottomTrailing))
+                        .frame(maxWidth: 330).aspectRatio(1, contentMode: .fit)
+                        .overlay(Image(systemName: "music.note").font(.system(size: 72)).foregroundStyle(.white.opacity(0.9)))
+                        .padding(.top, 8)
+                    VStack(spacing: 6) {
+                        Text(audioPlayer.currentTitle ?? "Sin reproducción").font(.title2.weight(.bold)).lineLimit(2).multilineTextAlignment(.center)
+                        Text("KubanFy").foregroundStyle(.white.opacity(0.45))
+                    }
+                    VStack(spacing: 8) {
+                        Slider(value: Binding(get: { audioPlayer.position }, set: { audioPlayer.seek(to: $0) }), in: 0...max(audioPlayer.duration, 1))
+                        HStack { Text(formatDuration(audioPlayer.position)); Spacer(); Text(formatDuration(audioPlayer.duration)) }.font(.caption).foregroundStyle(.white.opacity(0.4))
+                    }
+                    HStack(spacing: 34) {
+                        Button { audioPlayer.toggleShuffle() } label: {
+                            Image(systemName: "shuffle").font(.title3).foregroundStyle(audioPlayer.isShuffled ? .green : .white)
+                        }
+                        Button { audioPlayer.seek(to: max(0, audioPlayer.position - 10)) } label: { Image(systemName: "gobackward.10").font(.title2) }
+                        Button { Task { await audioPlayer.toggleCurrent() } } label: { Image(systemName: audioPlayer.isPlaying ? "pause.circle.fill" : "play.circle.fill").font(.system(size: 62)) }
+                        Button { audioPlayer.seek(to: audioPlayer.position + 10) } label: { Image(systemName: "goforward.10").font(.title2) }
+                        Button { audioPlayer.cycleRepeat() } label: {
+                            Image(systemName: audioPlayer.repeatMode == .one ? "repeat.1" : "repeat").font(.title3).foregroundStyle(audioPlayer.repeatMode == .off ? .white : .green)
+                        }
+                    }
+                    HStack(spacing: 30) {
+                        Button {
+                            Task {
+                                guard let id = audioPlayer.currentTrackID else { return }
+                                do {
+                                    if isLiked { try await APIClient.shared.removeFavorite(trackId: id) }
+                                    else { _ = try await APIClient.shared.addFavorite(trackId: id) }
+                                    isLiked.toggle()
+                                    actionMessage = isLiked ? "Añadida a Me gusta" : "Eliminada de Me gusta"
+                                } catch { actionMessage = error.localizedDescription }
+                            }
+                        } label: { Image(systemName: isLiked ? "heart.fill" : "heart").font(.title2).foregroundStyle(isLiked ? .green : .white) }
+                        Button { showPlaylists = true } label: { Image(systemName: "plus.circle").font(.title2) }
+                        Button {
+                            Task {
+                                guard let id = audioPlayer.currentTrackID else { return }
+                                isDownloading = true
+                                defer { isDownloading = false }
+                                do {
+                                    let ticket = try await APIClient.shared.issueDownloadTicket(trackId: id)
+                                    let playback = try await APIClient.shared.playback(trackId: id, quality: "low")
+                                    let localURL = try await APIClient.shared.fetchAndDecryptKBY(playback)
+                                    let downloads = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0].appendingPathComponent("Downloads", isDirectory: true)
+                                    try FileManager.default.createDirectory(at: downloads, withIntermediateDirectories: true)
+                                    let destination = downloads.appendingPathComponent("\(id.uuidString).kby")
+                                    try? FileManager.default.removeItem(at: destination)
+                                    try FileManager.default.copyItem(at: localURL, to: destination)
+                                    let size = (try FileManager.default.attributesOfItem(atPath: destination.path)[.size] as? NSNumber)?.intValue ?? 0
+                                    try await APIClient.shared.completeDownload(ticket: ticket.downloadTicket, sizeBytes: size)
+                                    actionMessage = "Descarga completada"
+                                } catch { actionMessage = error.localizedDescription }
+                            }
+                        } label: {
+                            if isDownloading { ProgressView().tint(.green) } else { Image(systemName: "arrow.down.circle").font(.title2) }
+                        }
+                        Button { showMore = true } label: { Image(systemName: "ellipsis.circle").font(.title2) }
+                    }
+                    if let message = actionMessage { Text(message).font(.footnote).foregroundStyle(.white.opacity(0.65)).multilineTextAlignment(.center) }
+                    if let error = audioPlayer.errorMessage { Text(error).font(.caption).foregroundStyle(.red).multilineTextAlignment(.center) }
+                }.padding(24)
+            }
+            .background(Color.black.ignoresSafeArea())
+            .navigationTitle(audioPlayer.currentTitle ?? "Reproduciendo")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button { dismiss() } label: { Image(systemName: "chevron.down") }
+                }
+            }
+            .sheet(isPresented: $showPlaylists) { PlaylistPicker(trackID: audioPlayer.currentTrackID) }
+            .confirmationDialog("Más opciones", isPresented: $showMore, titleVisibility: .visible) {
+                Button("Compartir") { }
+                Button("Cancelar", role: .cancel) { }
+            }
+        }.preferredColorScheme(.dark)
+    }
+}
+
+private struct SearchView: View {
+    @ObservedObject var audioPlayer: AudioPlayer
+    @State private var query = ""
+    @State private var results: [TrackSearchResult] = []
+    @State private var errorMessage: String?
+    @State private var isLoading = false
+    @FocusState private var searchFocused: Bool
+    @Environment(\.dismiss) private var dismiss
+    @State private var selectedTrack: DiscoveryHome.Track?
+    @State private var recentSearches: [String] = UserDefaults.standard.stringArray(forKey: "kubanfy.search.history") ?? []
+
+    var body: some View {
+        ZStack {
+            Color.black.ignoresSafeArea()
+            ScrollView {
+                VStack(alignment: .leading, spacing: 22) {
+                    Text("Buscar")
+                        .font(.system(size: 34, weight: .bold, design: .rounded))
+
+                    HStack(spacing: 10) {
+                        Image(systemName: "magnifyingglass")
+                            .foregroundStyle(.secondary)
+                        TextField("Artistas, canciones o álbumes", text: $query)
+                            .focused($searchFocused)
+                            .textInputAutocapitalization(.never)
+                            .autocorrectionDisabled()
+                            .submitLabel(.search)
+                            .onSubmit { Task { await performSearch() } }
+                        if !query.isEmpty {
+                            Button {
+                                query = ""
+                                results = []
+                                errorMessage = nil
+                                searchFocused = true
+                            } label: {
+                                Image(systemName: "xmark.circle.fill").foregroundStyle(.secondary)
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                    .padding(.horizontal, 14)
+                    .frame(height: 48)
+                    .background(Color.white.opacity(0.11))
+                    .clipShape(RoundedRectangle(cornerRadius: 12))
+
+                    if !recentSearches.isEmpty && results.isEmpty && !isLoading {
+                        HStack {
+                            Text("Historial").font(.title3.weight(.bold))
+                            Spacer()
+                            Button("Borrar") {
+                                recentSearches.removeAll()
+                                UserDefaults.standard.removeObject(forKey: "kubanfy.search.history")
+                            }
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(.green)
+                        }
+                        LazyVStack(spacing: 0) {
+                            ForEach(recentSearches, id: \.self) { item in
+                                Button {
+                                    query = item
+                                    searchFocused = false
+                                    Task { await performSearch() }
+                                } label: {
+                                    HStack(spacing: 12) {
+                                        Image(systemName: "clock.arrow.circlepath").foregroundStyle(.white.opacity(0.45))
+                                        Text(item).font(.body).lineLimit(1)
+                                        Spacer()
+                                        Image(systemName: "arrow.up.left").foregroundStyle(.white.opacity(0.25))
+                                    }
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                    .padding(.vertical, 10)
+                                }
+                                .buttonStyle(.plain)
+                            }
+                        }
+                    }
+
+                    if isLoading {
+                        HStack(spacing: 10) {
+                            ProgressView().tint(.green)
+                            Text("Buscando…").foregroundStyle(.white.opacity(0.55))
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 12)
+                    } else if let errorMessage {
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("No se pudo completar la búsqueda")
+                                .font(.headline)
+                            Text(errorMessage)
+                                .font(.subheadline)
+                                .foregroundStyle(.white.opacity(0.55))
+                            Button("Reintentar") { Task { await performSearch() } }
+                                .font(.subheadline.weight(.semibold))
+                                .foregroundStyle(.green)
+                        }
+                        .padding(.vertical, 8)
+                    } else if results.isEmpty {
+                        VStack(alignment: .leading, spacing: 10) {
+                            Text("¿Qué quieres escuchar?")
+                                .font(.title3.weight(.bold))
+                            Text("Busca una canción, un artista o un álbum en el catálogo de KubanFy.")
+                                .foregroundStyle(.white.opacity(0.5))
+                        }
+                        .padding(.top, 8)
+                    } else {
+                        Text("Resultados")
+                            .font(.title3.weight(.bold))
+                        LazyVStack(spacing: 0) {
+                            ForEach(results) { result in
+                                searchRow(result)
+                            }
+                        }
+                    }
+                }
+                .padding(.horizontal, 20)
+                .padding(.top, 8)
+                .padding(.bottom, 32)
+            }
+        }
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Button("Cancelar") {
+                    searchFocused = false
+                    dismiss()
+                }
+                .foregroundStyle(.green)
+            }
+        }
+        .task {
+            searchFocused = true
+        }
+        .navigationDestination(for: DiscoveryHome.Track.self) { track in
+            TrackDetailView(track: track, audioPlayer: audioPlayer)
+        }
+        .preferredColorScheme(.dark)
+    }
+
+    @ViewBuilder
+    private func searchRow(_ result: TrackSearchResult) -> some View {
+        HStack(spacing: 12) {
+            if let trackId = result.trackId {
+                NavigationLink(value: DiscoveryHome.Track(id: trackId, title: result.title, duration: result.duration)) {
+                    HStack(spacing: 12) {
+                        searchArtwork(result)
+                        searchText(result)
+                    }
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .simultaneousGesture(TapGesture().onEnded { searchFocused = false })
+            } else {
+                HStack(spacing: 12) {
+                    searchArtwork(result)
+                    searchText(result)
+                }
+            }
+
+            Spacer(minLength: 4)
+
+            if let trackId = result.trackId {
+                Button {
+                    let track = DiscoveryHome.Track(
+                        id: trackId,
+                        title: result.title,
+                        duration: result.duration
+                    )
+                    Task { await audioPlayer.toggle(track: track) }
+                } label: {
+                    ZStack {
+                        Circle().fill(Color.green)
+                        if audioPlayer.isLoading && audioPlayer.currentTrackID == trackId {
+                            ProgressView().tint(.black)
+                        } else {
+                            Image(
+                                systemName: audioPlayer.currentTrackID == trackId && audioPlayer.isPlaying
+                                    ? "pause.fill"
+                                    : "play.fill"
+                            )
+                            .foregroundStyle(.black)
+                        }
+                    }
+                    .frame(width: 38, height: 38)
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(.vertical, 9)
+    }
+
+    private func searchArtwork(_ result: TrackSearchResult) -> some View {
+        RoundedRectangle(cornerRadius: 8)
+            .fill(Color.white.opacity(0.09))
+            .frame(width: 56, height: 56)
+            .overlay(
+                Image(systemName: "music.note")
+                    .foregroundStyle(.white.opacity(0.45))
+            )
+    }
+
+    private func searchText(_ result: TrackSearchResult) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(result.title)
+                .font(.body.weight(.semibold))
+                .lineLimit(1)
+            Text(result.artists.joined(separator: ", "))
+                .font(.subheadline)
+                .foregroundStyle(.white.opacity(0.5))
+                .lineLimit(1)
+            if let album = result.album {
+                Text(album)
+                    .font(.caption)
+                    .foregroundStyle(.white.opacity(0.35))
+                    .lineLimit(1)
+            }
+        }
+    }
+
+    private func performSearch() async {
+        let value = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !value.isEmpty else { return }
+        isLoading = true
+        errorMessage = nil
+        do {
+            results = try await APIClient.shared.search(query: value)
+            recentSearches.removeAll { $0.caseInsensitiveCompare(value) == .orderedSame }
+            recentSearches.insert(value, at: 0)
+            recentSearches = Array(recentSearches.prefix(8))
+            UserDefaults.standard.set(recentSearches, forKey: "kubanfy.search.history")
+        } catch {
+            results = []
+            errorMessage = error.localizedDescription
+        }
+        isLoading = false
+    }
+}
+
+private enum RepeatMode { case off, all, one }
+
+@MainActor
+private final class AudioPlayer: ObservableObject {
+    @Published private(set) var currentTrackID: UUID?
+    @Published private(set) var errorMessage: String?
+    @Published private(set) var isPlaying = false
+    @Published private(set) var position: Double = 0
+    @Published private(set) var duration: Double = 0
+    @Published private(set) var currentTitle: String?
+    @Published private(set) var isLoading = false
+
+    private var player: AVPlayer?
+    private var timeObserver: Any?
+    private var currentTrack: DiscoveryHome.Track?
+    private var currentPlayback: PlaybackResponse?
+    private var currentLocalAudioURL: URL?
+    private var playbackToken: String?
+    private var playbackSessionID: UUID?
+    private var heartbeatTask: Task<Void, Never>?
+    private var renewalTask: Task<Void, Never>?
+    private var notificationTokens: [NSObjectProtocol] = []
+    private var recoveryTask: Task<Void, Never>?
+    private var recoveryAttempts = 0
+    private var playbackGeneration = UUID()
+
+    init() {
+        let session = AVAudioSession.sharedInstance()
+        try? session.setCategory(.playback, mode: .default, options: [])
+        try? session.setActive(true)
+
+        let interruption = NotificationCenter.default.addObserver(
+            forName: AVAudioSession.interruptionNotification,
+            object: session,
+            queue: .main
+        ) { [weak self] notification in
+            Task { @MainActor in
+                self?.handleInterruption(notification)
+            }
+        }
+        notificationTokens.append(interruption)
+
+        let failed = NotificationCenter.default.addObserver(
+            forName: .AVPlayerItemFailedToPlayToEndTime,
+            object: nil,
+            queue: .main
+        ) { [weak self] notification in
+            Task { @MainActor in
+                await self?.handlePlaybackFailure(notification)
+            }
+        }
+        notificationTokens.append(failed)
+
+        let ended = NotificationCenter.default.addObserver(
+            forName: .AVPlayerItemDidPlayToEndTime,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor in
+                await self?.handlePlaybackEnded()
+            }
+        }
+        notificationTokens.append(ended)
+
+        let commands = MPRemoteCommandCenter.shared()
+        commands.playCommand.addTarget { [weak self] _ in
+            guard let self else { return .commandFailed }
+            Task { @MainActor in
+                self.resume()
+            }
+            return .success
+        }
+        commands.pauseCommand.addTarget { [weak self] _ in
+            guard let self else { return .commandFailed }
+            Task { @MainActor in
+                await self.pause()
+            }
+            return .success
+        }
+        commands.changePlaybackPositionCommand.addTarget { [weak self] event in
+            guard let self, let event = event as? MPChangePlaybackPositionCommandEvent else {
+                return .commandFailed
+            }
+            Task { @MainActor in
+                self.seek(to: event.positionTime)
+            }
+            return .success
+        }
+
+    }
+
+    func toggleShuffle() { isShuffled.toggle() }
+
+    func cycleRepeat() {
+        switch repeatMode { case .off: repeatMode = .all; case .all: repeatMode = .one; case .one: repeatMode = .off }
     }
 
     func toggle(track: DiscoveryHome.Track) async {
