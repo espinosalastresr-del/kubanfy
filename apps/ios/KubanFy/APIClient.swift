@@ -32,6 +32,30 @@ struct DiscoveryHome: Codable {
     let country: String; let localArtists: [Artist]; let topCountry: [Ranking]; let topGlobal: [Ranking]; let newReleases: [Track]; let trending: [Ranking]; let viralByCountry: [Ranking]
     enum CodingKeys: String, CodingKey { case country, trending; case localArtists = "local_artists"; case topCountry = "top_50_country"; case topGlobal = "top_50_global"; case newReleases = "new_releases"; case viralByCountry = "viral_by_country" }
 }
+struct TrackDetail: Codable, Identifiable {
+    struct Artist: Codable, Identifiable {
+        let id: UUID
+        let name: String
+        let slug: String
+        let verified: Bool
+    }
+    let id: UUID
+    let title: String
+    let duration: Double?
+    let isrc: String?
+    let explicit: Bool
+    let language: String?
+    let releaseDate: Date?
+    let artworkURL: String?
+    let artists: [Artist]
+
+    enum CodingKeys: String, CodingKey {
+        case id, title, duration, isrc, explicit, language, artists
+        case releaseDate = "release_date"
+        case artworkURL = "artwork_url"
+    }
+}
+
 struct TrackSearchResult: Codable, Identifiable {
     let id = UUID(); let provider: String; let providerTrackId: String; let title: String; let artists: [String]; let album: String?; let duration: Double?; let artwork: String?; let isrc: String?
     enum CodingKeys: String, CodingKey { case provider, title, artists, album, duration, artwork, isrc; case providerTrackId = "provider_track_id" }
@@ -178,6 +202,11 @@ final class APIClient {
 
     func context() async throws -> AuthContext { let data = try await performRequest(path: "/auth/context"); return try decoder.decode(AuthContext.self, from: data) }
     func discoveryHome() async throws -> DiscoveryHome { let data = try await performRequest(path: "/discovery/home"); return try decoder.decode(DiscoveryHome.self, from: data) }
+
+    func trackDetail(trackId: UUID) async throws -> TrackDetail {
+        let data = try await performRequest(path: "/music/tracks/\(trackId.uuidString)")
+        return try decoder.decode(TrackDetail.self, from: data)
+    }
 
     func playback(trackId: UUID, quality: String = "low") async throws -> PlaybackResponse {
         var components = URLComponents(url: baseURL.appendingPathComponent("music/play/\(trackId.uuidString)"), resolvingAgainstBaseURL: false)
