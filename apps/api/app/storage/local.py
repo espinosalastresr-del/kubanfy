@@ -7,6 +7,11 @@ Not for production use.
 from __future__ import annotations
 
 import asyncio
+import base64
+import hashlib
+import hmac
+import json
+import time
 from collections.abc import AsyncIterator
 from pathlib import Path
 from typing import BinaryIO
@@ -20,8 +25,16 @@ logger = get_logger(__name__)
 
 
 class LocalStorage(StorageProvider):
-    def __init__(self, root: str | Path = "local_storage") -> None:
+    def __init__(
+        self,
+        root: str | Path = "local_storage",
+        *,
+        public_base_url: str = "",
+        signing_secret: str = "",
+    ) -> None:
         self.root = Path(root)
+        self.public_base_url = public_base_url.rstrip("/")
+        self.signing_secret = signing_secret
         self.root.mkdir(parents=True, exist_ok=True)
         for b in StorageBucket:
             (self.root / b.value).mkdir(parents=True, exist_ok=True)
@@ -165,6 +178,48 @@ class LocalStorage(StorageProvider):
     ) -> bool:
         return self._path(key, bucket).is_file()
 
+    def _delivery_token(self, *, key: str, bucket: StorageBucket, expires_at: int) -> str:
+        if not self.signing_secret:
+            raise StorageError("Local delivery signing secret is not configured")
+        payload = json.dumps(
+            {"b": bucket.value, "k": key, "e": expires_at},
+            separators=(",", ":"),
+            sort_keys=True,
+        ).encode("utf-8")
+        encoded = base64.urlsafe_b64encode(payload).rstrip(b"=").decode("ascii")
+        signature = hmac.new(
+            self.signing_secret.encode("utf-8"),
+            encoded.encode("ascii"),
+            hashlib.sha256,
+        ).digest()
+        signed = base64.urlsafe_b64encode(signature).rstrip(b"=").decode("ascii")
+        return f"{encoded}.{signed}"
+
+    def verify_delivery_token(self, token: str) -> tuple[StorageBucket, str, int]:
+        if not self.signing_secret:
+            raise StorageError("Local delivery signing secret is not configured")
+        try:
+            encoded, provided_sig = token.split(".", 1)
+            expected_sig = base64.urlsafe_b64encode(
+                hmac.new(
+                    self.signing_secret.encode("utf-8"),
+                    encoded.encode("ascii"),
+                    hashlib.sha256,
+                ).digest()
+            ).rstrip(b"=").decode("ascii")
+            if not hmac.compare_digest(provided_sig, expected_sig):
+                raise ValueError("invalid signature")
+            padded = encoded + "=" * ((4 - len(encoded) % 4) % 4)
+            payload = json.loads(base64.urlsafe_b64decode(padded).decode("utf-8"))
+            bucket = StorageBucket(payload["b"])
+            key = payload["k"]
+            expires_at = int(payload["e"])
+        except (ValueError, KeyError, TypeError, json.JSONDecodeError, UnicodeDecodeError) as exc:
+            raise StorageError("Invalid storage delivery token", status_code=404) from exc
+        if not key or not key.endswith(".kby") or expires_at < int(time.time()):
+            raise StorageError("Storage delivery token expired or invalid", status_code=404)
+        return bucket, key, expires_at
+
     async def signed_url(
         self,
         key: str,
@@ -173,11 +228,19 @@ class LocalStorage(StorageProvider):
         expires_in: int | None = None,
         method: str = "GET",
     ) -> SignedUrl:
-        # Local signed URL is a pseudo-URL for tests/dev only
         expires = expires_in or 3600
+        normalized_method = method.upper()
+        if normalized_method != "GET":
+            raise StorageError("Local storage only supports GET delivery URLs")
+        if self.public_base_url:
+            expires_at = int(time.time()) + expires
+            token = self._delivery_token(key=key, bucket=bucket, expires_at=expires_at)
+            url = f"{self.public_base_url}/v1/music/local-delivery/{token}"
+            return SignedUrl(url=url, expires_in_seconds=expires, method=normalized_method)
+        # Development/test-only fallback; staging requires public_base_url.
         encoded = quote(key, safe="/")
         url = f"file://local/{bucket.value}/{encoded}?expires={expires}"
-        return SignedUrl(url=url, expires_in_seconds=expires, method=method.upper())
+        return SignedUrl(url=url, expires_in_seconds=expires, method=normalized_method)
 
     async def health_check(self) -> bool:
         return self.root.is_dir()
