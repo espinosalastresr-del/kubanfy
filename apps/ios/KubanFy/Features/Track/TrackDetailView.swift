@@ -1,6 +1,6 @@
 import SwiftUI
 
-private struct TrackDetailView: View {
+struct TrackDetailView: View {
     let track: DiscoveryHome.Track
     @ObservedObject var audioPlayer: AudioPlayer
     @State private var detail: TrackDetail?
