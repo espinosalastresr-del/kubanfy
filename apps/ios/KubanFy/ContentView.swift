@@ -148,7 +148,15 @@ struct ContentView: View {
             ZStack {
                 Color.black.ignoresSafeArea()
                 ScrollView {
-                    VStack(alignment: .leading, spacing: 26) {
+                    VStack(alignment: .leading, spacing: 22) {
+                        HStack(spacing: 10) {
+                            NavigationLink { SearchView() } label: {
+                                topAction("magnifyingglass", "Buscar")
+                            }
+                            quickTopLink("Biblioteca", "rectangle.stack")
+                            quickTopLink("Playlists", "music.note.list")
+                            Spacer()
+                        }
                         HStack {
                             VStack(alignment: .leading, spacing: 4) {
                                 Text("Hola, \(user.displayName)").font(.title2.weight(.bold))
@@ -163,7 +171,7 @@ struct ContentView: View {
                             ScrollView(.horizontal, showsIndicators: false) {
                                 HStack(spacing: 14) {
                                     ForEach(discovery.newReleases.prefix(12), id: \.id) { track in
-                                        ZStack(alignment: .bottomTrailing) {
+                                        HStack(alignment: .top, spacing: 8) {
                                             NavigationLink {
                                                 TrackDetailView(track: track, audioPlayer: audioPlayer)
                                             } label: {
@@ -176,6 +184,7 @@ struct ContentView: View {
                                                     if let duration = track.duration { Text(formatDuration(duration)).font(.caption).foregroundStyle(.white.opacity(0.4)) }
                                                 }
                                             }
+                                            .buttonStyle(.plain)
                                             Button { Task { await audioPlayer.toggle(track: track) } } label: {
                                                 ZStack {
                                                     Circle().fill(Color.green)
@@ -188,8 +197,8 @@ struct ContentView: View {
                                                 }
                                                 .frame(width: 42, height: 42)
                                             }
-                                            .padding(8)
                                             .buttonStyle(.plain)
+                                            .padding(.top, 142)
                                         }
                                     }
                                 }
@@ -221,12 +230,9 @@ struct ContentView: View {
                             MiniPlayer(audioPlayer: audioPlayer) { showPlayer = true }
                         }
 
-                        HStack(spacing: 10) {
-                            NavigationLink { SearchView() } label: { quickAction("magnifyingglass", "Buscar") }
-                            quickAction("rectangle.stack", "Biblioteca")
-                            quickAction("music.note.list", "Playlists")
+                        if context?.isArtist == true {
+                            quickAction("person.crop.rectangle.stack", "Panel de artista")
                         }
-                        if context?.isArtist == true { quickAction("person.crop.rectangle.stack", "Panel de artista") }
                     }.padding(20)
                 }
                 .refreshable {
@@ -260,6 +266,23 @@ struct ContentView: View {
         } catch {
             errorMessage = userFacingError(error)
         }
+    }
+
+    private func topAction(_ icon: String, _ title: String) -> some View {
+        HStack(spacing: 7) {
+            Image(systemName: icon).font(.subheadline.weight(.bold))
+            Text(title).font(.subheadline.weight(.semibold))
+        }
+        .foregroundStyle(.white)
+        .padding(.horizontal, 14)
+        .frame(height: 40)
+        .background(Color.white.opacity(0.10))
+        .clipShape(Capsule())
+    }
+
+    private func quickTopLink(_ title: String, _ icon: String) -> some View {
+        Button {} label: { topAction(icon, title) }
+            .buttonStyle(.plain)
     }
 
     private func quickAction(_ icon: String, _ title: String) -> some View {
@@ -661,37 +684,161 @@ private struct SearchView: View {
     @State private var results: [TrackSearchResult] = []
     @State private var errorMessage: String?
     @State private var isLoading = false
+    @FocusState private var searchFocused: Bool
 
     var body: some View {
         ZStack {
             Color.black.ignoresSafeArea()
-            List {
-                Section {
-                    TextField("Canción o artista", text: $query).textInputAutocapitalization(.never).autocorrectionDisabled()
-                    Button(isLoading ? "Buscando…" : "Buscar") { Task { await performSearch() } }
-                        .disabled(isLoading || query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                }
-                if let errorMessage { Section { Text(errorMessage).foregroundStyle(.red) } }
-                Section("Resultados") {
-                    if results.isEmpty && !isLoading { Text("Busca una canción o artista.").foregroundStyle(.secondary) }
-                    ForEach(results) { track in
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text(track.title).font(.headline)
-                            Text(track.artists.joined(separator: ", ")).foregroundStyle(.secondary)
-                            if let album = track.album { Text(album).font(.caption).foregroundStyle(.secondary) }
-                        }.padding(.vertical, 4)
+            ScrollView {
+                VStack(alignment: .leading, spacing: 22) {
+                    Text("Buscar")
+                        .font(.system(size: 34, weight: .bold, design: .rounded))
+
+                    HStack(spacing: 10) {
+                        Image(systemName: "magnifyingglass")
+                            .foregroundStyle(.secondary)
+                        TextField("Artistas, canciones o álbumes", text: $query)
+                            .focused($searchFocused)
+                            .textInputAutocapitalization(.never)
+                            .autocorrectionDisabled()
+                            .submitLabel(.search)
+                            .onSubmit { Task { await performSearch() } }
+                        if !query.isEmpty {
+                            Button {
+                                query = ""
+                                results = []
+                                errorMessage = nil
+                                searchFocused = true
+                            } label: {
+                                Image(systemName: "xmark.circle.fill").foregroundStyle(.secondary)
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                    .padding(.horizontal, 14)
+                    .frame(height: 48)
+                    .background(Color.white.opacity(0.11))
+                    .clipShape(RoundedRectangle(cornerRadius: 12))
+
+                    if isLoading {
+                        HStack(spacing: 10) {
+                            ProgressView().tint(.green)
+                            Text("Buscando…").foregroundStyle(.white.opacity(0.55))
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 12)
+                    } else if let errorMessage {
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("No se pudo completar la búsqueda")
+                                .font(.headline)
+                            Text(errorMessage)
+                                .font(.subheadline)
+                                .foregroundStyle(.white.opacity(0.55))
+                            Button("Reintentar") { Task { await performSearch() } }
+                                .font(.subheadline.weight(.semibold))
+                                .foregroundStyle(.green)
+                        }
+                        .padding(.vertical, 8)
+                    } else if results.isEmpty {
+                        VStack(alignment: .leading, spacing: 10) {
+                            Text("¿Qué quieres escuchar?")
+                                .font(.title3.weight(.bold))
+                            Text("Busca una canción, un artista o un álbum en el catálogo de KubanFy.")
+                                .foregroundStyle(.white.opacity(0.5))
+                        }
+                        .padding(.top, 8)
+                    } else {
+                        Text("Resultados")
+                            .font(.title3.weight(.bold))
+                        LazyVStack(spacing: 0) {
+                            ForEach(results) { result in
+                                searchRow(result)
+                            }
+                        }
                     }
                 }
-            }.scrollContentBackground(.hidden)
+                .padding(.horizontal, 20)
+                .padding(.top, 8)
+                .padding(.bottom, 32)
+            }
         }
-        .navigationTitle("Buscar").preferredColorScheme(.dark)
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Button("Cancelar") { searchFocused = false }
+                    .foregroundStyle(.green)
+            }
+        }
+        .task {
+            searchFocused = true
+        }
+        .preferredColorScheme(.dark)
+    }
+
+    @ViewBuilder
+    private func searchRow(_ result: TrackSearchResult) -> some View {
+        let row = HStack(spacing: 13) {
+            RoundedRectangle(cornerRadius: 8)
+                .fill(Color.white.opacity(0.09))
+                .frame(width: 56, height: 56)
+                .overlay(
+                    Image(systemName: "music.note")
+                        .foregroundStyle(.white.opacity(0.45))
+                )
+            VStack(alignment: .leading, spacing: 4) {
+                Text(result.title)
+                    .font(.body.weight(.semibold))
+                    .lineLimit(1)
+                Text(result.artists.joined(separator: ", "))
+                    .font(.subheadline)
+                    .foregroundStyle(.white.opacity(0.5))
+                    .lineLimit(1)
+                if let album = result.album {
+                    Text(album)
+                        .font(.caption)
+                        .foregroundStyle(.white.opacity(0.35))
+                        .lineLimit(1)
+                }
+            }
+            Spacer()
+            if result.trackId != nil {
+                Button {
+                    guard let trackId = result.trackId else { return }
+                    let track = DiscoveryHome.Track(id: trackId, title: result.title, duration: result.duration)
+                    Task { await AudioPlayer.sharedlessPlay(track) }
+                } label: {
+                    Image(systemName: "play.fill")
+                        .font(.subheadline.weight(.bold))
+                        .frame(width: 34, height: 34)
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(.green)
+            }
+        }
+        .padding(.vertical, 9)
+
+        if let trackId = result.trackId {
+            NavigationLink {
+                TrackDetailView(track: .init(id: trackId, title: result.title, duration: result.duration), audioPlayer: AudioPlayer.shared)
+            } label: { row }
+            .buttonStyle(.plain)
+        } else {
+            row
+        }
     }
 
     private func performSearch() async {
-        isLoading = true; errorMessage = nil
-        defer { isLoading = false }
-        do { results = try await APIClient.shared.search(query: query) }
-        catch { errorMessage = error.localizedDescription; results = [] }
+        let value = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !value.isEmpty else { return }
+        isLoading = true
+        errorMessage = nil
+        do {
+            results = try await APIClient.shared.search(query: value)
+        } catch {
+            results = []
+            errorMessage = error.localizedDescription
+        }
+        isLoading = false
     }
 }
 
