@@ -706,7 +706,7 @@ private struct SearchView: View {
     @State private var errorMessage: String?
     @State private var isLoading = false
     @FocusState private var searchFocused: Bool
-    @Environment(\\.dismiss) private var dismiss
+    @Environment(\.dismiss) private var dismiss
     @State private var selectedTrack: DiscoveryHome.Track?
 
     var body: some View {
