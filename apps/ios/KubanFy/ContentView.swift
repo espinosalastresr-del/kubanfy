@@ -196,7 +196,7 @@ struct ContentView: View {
                             }
                             Text("Tendencias").font(.title3.weight(.bold)).padding(.top, 2)
                             ForEach(discovery.trending.prefix(5), id: \.rank) { item in
-                                if let trackID = item.trackId, let title = item.title {
+                                if let title = item.title {
                                     NavigationLink {
                                         TrackDetailView(track: .init(id: trackID, title: title, duration: nil), audioPlayer: audioPlayer)
                                     } label: {
@@ -521,12 +521,19 @@ private struct TrackDetailView: View {
                     }
                     .padding(.top, 24)
 
+                    if let errorMessage {
+                        Text(errorMessage)
+                            .font(.footnote)
+                            .foregroundStyle(.red)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(.top, 14)
+                    }
                     if audioPlayer.currentTrackID == track.id, let error = audioPlayer.errorMessage {
                         Text(error)
                             .font(.footnote)
                             .foregroundStyle(.red)
                             .frame(maxWidth: .infinity, alignment: .leading)
-                            .padding(.top, 14)
+                            .padding(.top, 8)
                     }
 
                     VStack(alignment: .leading, spacing: 14) {
