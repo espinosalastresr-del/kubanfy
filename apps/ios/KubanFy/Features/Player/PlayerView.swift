@@ -1,6 +1,6 @@
 import SwiftUI
 
-private struct PlayerView: View {
+struct PlayerView: View {
     @ObservedObject var audioPlayer: AudioPlayer
     @Environment(\.dismiss) private var dismiss
     @State private var isLiked = false
