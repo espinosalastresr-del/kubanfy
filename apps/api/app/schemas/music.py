@@ -78,6 +78,7 @@ class MusicDownloadResponse(BaseModel):
 class TrackSearchResult(BaseModel):
     provider: str
     provider_track_id: str
+    track_id: UUID | None = None
     title: str
     artists: list[str]
     album: str | None = None
