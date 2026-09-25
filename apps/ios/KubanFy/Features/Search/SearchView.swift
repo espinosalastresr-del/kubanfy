@@ -144,10 +144,10 @@ struct SearchView: View {
                         searchArtwork(result)
                         searchText(result)
                     }
+                    .frame(maxWidth: .infinity, alignment: .leading)
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
-                .simultaneousGesture(TapGesture().onEnded { searchFocused = false })
             } else {
                 HStack(spacing: 12) {
                     searchArtwork(result)
