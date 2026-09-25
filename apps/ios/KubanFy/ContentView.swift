@@ -17,6 +17,7 @@ struct ContentView: View {
     @State private var showRegister = false
     @StateObject private var audioPlayer = AudioPlayer()
     @State private var showPlayer = false
+    @State private var isRefreshing = false
 
     var body: some View {
         ZStack {
@@ -162,35 +163,54 @@ struct ContentView: View {
                             ScrollView(.horizontal, showsIndicators: false) {
                                 HStack(spacing: 14) {
                                     ForEach(discovery.newReleases.prefix(12), id: \.id) { track in
-                                        VStack(alignment: .leading, spacing: 8) {
-                                            RoundedRectangle(cornerRadius: 14)
-                                                .fill(LinearGradient(colors: [Color.green.opacity(0.75), Color.white.opacity(0.08)], startPoint: .topLeading, endPoint: .bottomTrailing))
-                                                .frame(width: 150, height: 150)
-                                                .overlay(Image(systemName: "music.note").font(.system(size: 42)).foregroundStyle(.white.opacity(0.9)))
-                                                .overlay(alignment: .bottomTrailing) {
-                                                    Button { Task { await audioPlayer.toggle(track: track) } } label: {
-                                                        Image(systemName: audioPlayer.currentTrackID == track.id && audioPlayer.isPlaying ? "pause.fill" : "play.fill")
-                                                            .font(.system(size: 17, weight: .bold)).foregroundStyle(.black).frame(width: 42, height: 42)
-                                                            .background(Color.green).clipShape(Circle())
-                                                    }.padding(8)
+                                        ZStack(alignment: .bottomTrailing) {
+                                            NavigationLink {
+                                                TrackDetailView(track: track, audioPlayer: audioPlayer)
+                                            } label: {
+                                                VStack(alignment: .leading, spacing: 8) {
+                                                    RoundedRectangle(cornerRadius: 14)
+                                                        .fill(LinearGradient(colors: [Color.green.opacity(0.75), Color.white.opacity(0.08)], startPoint: .topLeading, endPoint: .bottomTrailing))
+                                                        .frame(width: 150, height: 150)
+                                                        .overlay(Image(systemName: "music.note").font(.system(size: 42)).foregroundStyle(.white.opacity(0.9)))
+                                                    Text(track.title).font(.subheadline.weight(.semibold)).lineLimit(2).frame(width: 150, alignment: .leading)
+                                                    if let duration = track.duration { Text(formatDuration(duration)).font(.caption).foregroundStyle(.white.opacity(0.4)) }
                                                 }
-                                            Text(track.title).font(.subheadline.weight(.semibold)).lineLimit(2).frame(width: 150, alignment: .leading)
-                                            if let duration = track.duration { Text(formatDuration(duration)).font(.caption).foregroundStyle(.white.opacity(0.4)) }
+                                            }
+                                            Button { Task { await audioPlayer.toggle(track: track) } } label: {
+                                                ZStack {
+                                                    Circle().fill(Color.green)
+                                                    if audioPlayer.isLoading && audioPlayer.currentTrackID == track.id {
+                                                        ProgressView().tint(.black)
+                                                    } else {
+                                                        Image(systemName: audioPlayer.currentTrackID == track.id && audioPlayer.isPlaying ? "pause.fill" : "play.fill")
+                                                            .font(.system(size: 17, weight: .bold)).foregroundStyle(.black)
+                                                    }
+                                                }
+                                                .frame(width: 42, height: 42)
+                                            }
+                                            .padding(8)
+                                            .buttonStyle(.plain)
                                         }
                                     }
                                 }
                             }
                             Text("Tendencias").font(.title3.weight(.bold)).padding(.top, 2)
                             ForEach(discovery.trending.prefix(5), id: \.rank) { item in
-                                HStack(spacing: 14) {
-                                    Text(String(item.rank)).font(.headline.monospacedDigit()).foregroundStyle(.white.opacity(0.35)).frame(width: 24)
-                                    VStack(alignment: .leading) {
-                                        Text(item.title ?? "Sin título").font(.subheadline.weight(.semibold))
-                                        Text("\(item.metrics["plays"] ?? 0) reproducciones").font(.caption).foregroundStyle(.white.opacity(0.4))
-                                    }
-                                    Spacer()
-                                    Image(systemName: "chevron.right").foregroundStyle(.white.opacity(0.25))
-                                }.padding(.vertical, 7)
+                                if let trackID = item.trackId, let title = item.title {
+                                    NavigationLink {
+                                        TrackDetailView(track: .init(id: trackID, title: title, duration: nil), audioPlayer: audioPlayer)
+                                    } label: {
+                                        HStack(spacing: 14) {
+                                            Text(String(item.rank)).font(.headline.monospacedDigit()).foregroundStyle(.white.opacity(0.35)).frame(width: 24)
+                                            VStack(alignment: .leading) {
+                                                Text(title).font(.subheadline.weight(.semibold))
+                                                Text("\(item.metrics["plays"] ?? 0) reproducciones").font(.caption).foregroundStyle(.white.opacity(0.4))
+                                            }
+                                            Spacer()
+                                            Image(systemName: "chevron.right").foregroundStyle(.white.opacity(0.25))
+                                        }.padding(.vertical, 7)
+                                    }.buttonStyle(.plain)
+                                }
                             }
                         } else {
                             ProgressView("Cargando tu inicio…").tint(.green).frame(maxWidth: .infinity).padding(.vertical, 50)
@@ -208,6 +228,9 @@ struct ContentView: View {
                         if context?.isArtist == true { quickAction("person.crop.rectangle.stack", "Panel de artista") }
                     }.padding(20)
                 }
+                .refreshable {
+                    await refreshDiscovery()
+                }
             }
             .navigationBarTitleDisplayMode(.inline)
             .sheet(isPresented: $showPlayer) {
@@ -223,6 +246,18 @@ struct ContentView: View {
                     } label: { Image(systemName: "ellipsis") }
                 }
             }
+        }
+    }
+
+    private func refreshDiscovery() async {
+        guard !isRefreshing else { return }
+        isRefreshing = true
+        defer { isRefreshing = false }
+        do {
+            try await APIClient.shared.refreshIfNeeded()
+            discovery = try await APIClient.shared.discoveryHome()
+        } catch {
+            errorMessage = userFacingError(error)
         }
     }
 
@@ -406,6 +441,158 @@ private struct RegisterView: View {
     private func hideKeyboard() { UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil) }
 }
 
+private struct TrackDetailView: View {
+    let track: DiscoveryHome.Track
+    @ObservedObject var audioPlayer: AudioPlayer
+    @State private var detail: TrackDetail?
+    @State private var isLoading = true
+    @State private var errorMessage: String?
+
+    private var artistsText: String {
+        detail?.artists.map(\.name).joined(separator: ", ") ?? "KubanFy"
+    }
+
+    private var isCurrentTrack: Bool {
+        audioPlayer.currentTrackID == track.id
+    }
+
+    var body: some View {
+        ZStack {
+            Color.black.ignoresSafeArea()
+            ScrollView {
+                VStack(spacing: 0) {
+                    artwork
+                    VStack(alignment: .leading, spacing: 14) {
+                        Text(detail?.title ?? track.title)
+                            .font(.system(size: 28, weight: .bold))
+                            .lineLimit(3)
+                        HStack(spacing: 5) {
+                            if detail?.artists.contains(where: { $0.verified }) == true {
+                                Image(systemName: "checkmark.seal.fill").foregroundStyle(.green)
+                            }
+                            Text(artistsText)
+                                .font(.headline)
+                                .foregroundStyle(.white.opacity(0.68))
+                                .lineLimit(2)
+                        }
+                        if let detail {
+                            HStack(spacing: 8) {
+                                if detail.explicit {
+                                    Text("E").font(.caption.weight(.bold)).padding(4).background(Color.white.opacity(0.16)).clipShape(RoundedRectangle(cornerRadius: 4))
+                                }
+                                if let duration = detail.duration ?? track.duration {
+                                    Text(formatDuration(duration))
+                                }
+                                if let date = detail.releaseDate {
+                                    Text("•")
+                                    Text(date.formatted(.dateTime.year().month(.abbreviated).day()))
+                                }
+                            }
+                            .font(.caption)
+                            .foregroundStyle(.white.opacity(0.45))
+                        }
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.top, 24)
+
+                    HStack(spacing: 18) {
+                        Button { Task { await audioPlayer.toggle(track: track) } } label: {
+                            ZStack {
+                                Circle().fill(Color.green).frame(width: 62, height: 62)
+                                if audioPlayer.isLoading && isCurrentTrack {
+                                    ProgressView().tint(.black)
+                                } else {
+                                    Image(systemName: isCurrentTrack && audioPlayer.isPlaying ? "pause.fill" : "play.fill")
+                                        .font(.title2.weight(.bold)).foregroundStyle(.black)
+                                }
+                            }
+                        }
+                        .buttonStyle(.plain)
+                        Button { } label: {
+                            Image(systemName: "plus.circle").font(.system(size: 30))
+                        }
+                        Button { } label: {
+                            Image(systemName: "arrow.down.circle").font(.system(size: 30))
+                        }
+                        Spacer()
+                        Button { } label: {
+                            Image(systemName: "ellipsis").font(.title2.weight(.bold))
+                        }
+                    }
+                    .padding(.top, 24)
+
+                    if audioPlayer.currentTrackID == track.id, let error = audioPlayer.errorMessage {
+                        Text(error)
+                            .font(.footnote)
+                            .foregroundStyle(.red)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(.top, 14)
+                    }
+
+                    VStack(alignment: .leading, spacing: 14) {
+                        Text("Más información").font(.title3.weight(.bold))
+                        infoRow("Artista", artistsText)
+                        if let isrc = detail?.isrc, !isrc.isEmpty { infoRow("ISRC", isrc) }
+                        if let language = detail?.language, !language.isEmpty { infoRow("Idioma", language.uppercased()) }
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.top, 34)
+                }
+                .padding(.horizontal, 20)
+                .padding(.bottom, 32)
+            }
+        }
+        .navigationTitle("")
+        .navigationBarTitleDisplayMode(.inline)
+        .task { await loadDetail() }
+        .animation(.easeInOut(duration: 0.25), value: detail != nil)
+        .preferredColorScheme(.dark)
+    }
+
+    private var artwork: some View {
+        Group {
+            if let artworkURL = detail?.artworkURL, let url = URL(string: artworkURL) {
+                AsyncImage(url: url) { phase in
+                    switch phase {
+                    case .success(let image): image.resizable().scaledToFill()
+                    default: placeholderArtwork
+                    }
+                }
+            } else {
+                placeholderArtwork
+            }
+        }
+        .frame(maxWidth: 360)
+        .aspectRatio(1, contentMode: .fit)
+        .clipShape(RoundedRectangle(cornerRadius: 18))
+        .shadow(radius: 18)
+        .padding(.top, 20)
+    }
+
+    private var placeholderArtwork: some View {
+        RoundedRectangle(cornerRadius: 18)
+            .fill(LinearGradient(colors: [Color.green.opacity(0.72), Color.white.opacity(0.08)], startPoint: .topLeading, endPoint: .bottomTrailing))
+            .overlay(Image(systemName: "music.note").font(.system(size: 70)).foregroundStyle(.white.opacity(0.88)))
+    }
+
+    private func infoRow(_ label: String, _ value: String) -> some View {
+        HStack {
+            Text(label).foregroundStyle(.white.opacity(0.45))
+            Spacer()
+            Text(value).fontWeight(.semibold).multilineTextAlignment(.trailing)
+        }
+    }
+
+    private func loadDetail() async {
+        do {
+            detail = try await APIClient.shared.trackDetail(trackId: track.id)
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+        isLoading = false
+    }
+}
+
 private struct MiniPlayer: View {
     @ObservedObject var audioPlayer: AudioPlayer
     let onTap: () -> Void
@@ -508,6 +695,7 @@ private final class AudioPlayer: ObservableObject {
     @Published private(set) var position: Double = 0
     @Published private(set) var duration: Double = 0
     @Published private(set) var currentTitle: String?
+    @Published private(set) var isLoading = false
 
     private var player: AVPlayer?
     private var timeObserver: Any?
@@ -607,6 +795,8 @@ private final class AudioPlayer: ObservableObject {
     }
 
     private func start(track: DiscoveryHome.Track) async {
+        isLoading = true
+        defer { isLoading = false }
         do {
             heartbeatTask?.cancel()
             renewalTask?.cancel()
