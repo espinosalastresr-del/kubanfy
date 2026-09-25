@@ -17,6 +17,7 @@ from app.schemas.music import (
     MusicPreviewRequest,
     MusicPreviewResponse,
     MusicPlaybackResponse,
+    MusicOfflineBootstrapResponse,
     MusicUpdateRequest,
     MusicUpdateResponse,
     TrackSearchResult,
@@ -27,7 +28,7 @@ from app.services.entitlement import EntitlementService
 from app.services.geo import GeoService
 from app.services.music_engine import MusicEngine
 from app.services.offline_license import OfflineLicenseService
-from app.models.music import Artist, Release, Track, TrackArtist
+from app.models.music import Artist, AudioAsset, AudioQuality, Release, Track, TrackArtist
 from app.storage import LocalStorage, get_storage
 
 router = APIRouter(prefix="/music", tags=["music"])
@@ -279,6 +280,113 @@ async def music_download(
     )
 
 
+@router.get("/offline/bootstrap", response_model=list[MusicOfflineBootstrapResponse])
+async def music_offline_bootstrap(
+    request: Request,
+    session: DbSession,
+    user: CurrentUser,
+    limit: int = Query(3, ge=1, le=3),
+) -> list[MusicOfflineBootstrapResponse]:
+    """Issue up to three free, device-bound offline bootstrap assets.
+
+    This is distinct from Premium persistent downloads. It authorizes only the
+    small offline-first bootstrap set and still uses the normal published-track,
+    entitlement, KBY, storage, and device-binding pipeline.
+    """
+    device_id = request.headers.get("X-Device-ID", "").strip()
+    if not device_id:
+        from app.core.exceptions import ValidationError
+
+        raise ValidationError("X-Device-ID is required for offline bootstrap")
+
+    geo = GeoService()
+    ip = request.client.host if request.client else None
+    real_ip = geo.resolve_client_ip(
+        ip,
+        forwarded_for=request.headers.get("x-forwarded-for"),
+    )
+    await AntiAbuseService().check_download(str(user.id), real_ip)
+
+    asset_exists = select(AudioAsset.track_id).where(
+        AudioAsset.track_id == Track.id,
+        AudioAsset.quality == AudioQuality.LOW,
+        AudioAsset.is_active.is_(True),
+        AudioAsset.content_hash.is_not(None),
+        AudioAsset.storage_key.is_not(None),
+    )
+    tracks = (
+        await session.scalars(
+            select(Track)
+            .where(
+                Track.status == "published",
+                asset_exists.exists(),
+            )
+            .order_by(Track.created_at, Track.id)
+            .limit(limit)
+        )
+    ).all()
+
+    if not tracks:
+        return []
+
+    entitlement = EntitlementService(session)
+    engine = MusicEngine(session, provider_manager=_manager)
+    license_service = OfflineLicenseService(session)
+    response: list[MusicOfflineBootstrapResponse] = []
+
+    for track in tracks:
+        await entitlement.require_track_access(user.id, track.id)
+        playback = await engine.download_by_track_id(
+            track_id=track.id,
+            quality="low",
+            user_id=user.id,
+        )
+        if (
+            playback.signed_url is None
+            or playback.content_hash is None
+            or not playback.kby_key
+        ):
+            continue
+
+        asset = await session.scalar(
+            select(AudioAsset)
+            .where(
+                AudioAsset.track_id == track.id,
+                AudioAsset.quality == AudioQuality.LOW,
+                AudioAsset.is_active.is_(True),
+                AudioAsset.content_hash == playback.content_hash,
+                AudioAsset.storage_key.is_not(None),
+            )
+            .order_by(AudioAsset.version.desc())
+        )
+        if asset is None:
+            continue
+
+        license_row, offline_license = await license_service.issue_bootstrap(
+            user_id=user.id,
+            device_id=device_id,
+            track_id=track.id,
+            quality="low",
+        )
+        response.append(
+            MusicOfflineBootstrapResponse(
+                track_id=track.id,
+                title=track.title,
+                duration=track.duration,
+                url=playback.signed_url.url,
+                expires_in_seconds=playback.signed_url.expires_in_seconds,
+                quality="low",
+                content_hash=playback.content_hash,
+                kby_key=playback.kby_key,
+                asset_version=asset.version,
+                offline_license=offline_license,
+                offline_license_expires_at=license_row.expires_at.isoformat(),
+            )
+        )
+
+    return response
+
+
 @router.get("/search", response_model=list[TrackSearchResult])
 async def music_search(
     request: Request,
@@ -288,76 +396,136 @@ async def music_search(
 ) -> list[TrackSearchResult]:
     geo = GeoService()
     ip = request.client.host if request.client else None
-    real_ip = geo.resolve_client_ip(ip, forwarded_for=request.headers.get("x-forwarded-for"))
+    real_ip = geo.resolve_client_ip(
+        ip,
+        forwarded_for=request.headers.get("x-forwarded-for"),
+    )
     await AntiAbuseService().check_search(real_ip)
 
     normalized = q.strip()
-    provider_results = await _manager.search(normalized, limit=limit)
-    results = [
-        TrackSearchResult(
-            provider=name,
-            provider_track_id=meta.provider_track_id,
-            title=meta.title,
-            artists=list(meta.artists),
-            album=meta.album,
-            duration=meta.duration_seconds,
-            artwork=meta.artwork_url,
-            isrc=meta.isrc,
+    pattern = f"%{normalized.lower()}%"
+
+    # First-party catalog results come first so every owned track has a stable
+    # KubanFy track_id and can open the native detail screen.
+    local_rows = (
+        await session.execute(
+            select(Track, Release)
+            .outerjoin(Release, Release.id == Track.release_id)
+            .where(
+                Track.status == "published",
+                or_(
+                    func.lower(Track.title).like(pattern),
+                    Track.id.in_(
+                        select(TrackArtist.track_id)
+                        .join(Artist, Artist.id == TrackArtist.artist_id)
+                        .where(
+                            Artist.status == "active",
+                            func.lower(Artist.name).like(pattern),
+                        )
+                    ),
+                ),
+            )
+            .order_by(Track.title, Track.id)
+            .limit(limit)
         )
-        for name, meta in provider_results
-    ]
+    ).all()
+
+    results: list[TrackSearchResult] = []
+    local_keys: set[str] = set()
+    local_isrcs: set[str] = set()
+
+    for track, release in local_rows:
+        artist_rows = (
+            await session.execute(
+                select(Artist)
+                .join(TrackArtist, TrackArtist.artist_id == Artist.id)
+                .where(
+                    TrackArtist.track_id == track.id,
+                    Artist.status == "active",
+                )
+                .order_by(TrackArtist.display_order, Artist.name)
+            )
+        ).scalars().all()
+        artists = [artist.name for artist in artist_rows]
+        key = (
+            f"{track.title.casefold()}|"
+            f"{'|'.join(name.casefold() for name in artists)}"
+        )
+        local_keys.add(key)
+        if track.isrc:
+            local_isrcs.add(track.isrc.casefold())
+        results.append(
+            TrackSearchResult(
+                provider="kubanfy",
+                provider_track_id=str(track.id),
+                track_id=track.id,
+                title=track.title,
+                artists=artists,
+                album=release.title if release else None,
+                duration=track.duration,
+                artwork=track.artwork_url,
+                isrc=track.isrc,
+            )
+        )
 
     remaining = max(0, limit - len(results))
     if remaining:
-        pattern = f"%{normalized.lower()}%"
-        rows = (
-            await session.execute(
-                select(Track, Release)
-                .outerjoin(Release, Release.id == Track.release_id)
-                .where(
-                    Track.status == "published",
-                    or_(
-                        func.lower(Track.title).like(pattern),
-                        Track.id.in_(
-                            select(TrackArtist.track_id)
-                            .join(Artist, Artist.id == TrackArtist.artist_id)
-                            .where(
-                                Artist.status == "active",
-                                func.lower(Artist.name).like(pattern),
-                            )
-                        ),
-                    ),
-                )
-                .order_by(Track.title)
-                .limit(remaining)
+        provider_results = await _manager.search(normalized, limit=limit)
+        for name, meta in provider_results:
+            provider_isrc = meta.isrc.casefold() if meta.isrc else None
+            provider_artists = [artist.casefold() for artist in meta.artists]
+            provider_key = (
+                f"{meta.title.casefold()}|"
+                f"{'|'.join(provider_artists)}"
             )
-        ).all()
+            if provider_isrc and provider_isrc in local_isrcs:
+                continue
+            if provider_key in local_keys:
+                continue
 
-        for track, release in rows:
-            artist_rows = (
-                await session.execute(
-                    select(Artist)
-                    .join(TrackArtist, TrackArtist.artist_id == Artist.id)
-                    .where(
-                        TrackArtist.track_id == track.id,
-                        Artist.status == "active",
+            matched_track_id: UUID | None = None
+            if provider_isrc:
+                matched_track_id = await session.scalar(
+                    select(Track.id).where(
+                        Track.status == "published",
+                        Track.isrc.is_not(None),
+                        func.lower(Track.isrc) == provider_isrc,
                     )
-                    .order_by(TrackArtist.display_order, Artist.name)
                 )
-            ).scalars().all()
+            if matched_track_id is None:
+                matched_track_id = await session.scalar(
+                    select(Track.id)
+                    .join(
+                        TrackArtist,
+                        TrackArtist.track_id == Track.id,
+                    )
+                    .join(
+                        Artist,
+                        Artist.id == TrackArtist.artist_id,
+                    )
+                    .where(
+                        Track.status == "published",
+                        func.lower(Track.title) == meta.title.casefold(),
+                        Artist.status == "active",
+                        func.lower(Artist.name).in_(provider_artists),
+                    )
+                )
+
             results.append(
                 TrackSearchResult(
-                    provider="kubanfy",
-                    provider_track_id=str(track.id),
-                    track_id=track.id,
-                    title=track.title,
-                    artists=[artist.name for artist in artist_rows],
-                    album=release.title if release else None,
-                    duration=track.duration,
-                    artwork=track.artwork_url,
-                    isrc=track.isrc,
+                    provider=name,
+                    provider_track_id=meta.provider_track_id,
+                    track_id=matched_track_id,
+                    title=meta.title,
+                    artists=list(meta.artists),
+                    album=meta.album,
+                    duration=meta.duration_seconds,
+                    artwork=meta.artwork_url,
+                    isrc=meta.isrc,
                 )
             )
+            if len(results) >= limit:
+                break
 
     return results[:limit]
 
