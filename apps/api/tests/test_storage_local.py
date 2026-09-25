@@ -21,6 +21,7 @@ def signed_storage(tmp_path):
         signing_secret="test-signing-secret",
     )
 
+
 @pytest.mark.asyncio
 async def test_put_get_delete(storage: LocalStorage) -> None:
     obj = await storage.put("tracks/abc/master.flac", b"audio-bytes", content_type="audio/flac")
