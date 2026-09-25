@@ -798,9 +798,27 @@ private struct SearchView: View {
         .task {
             searchFocused = true
         }
-        .navigationDestination(item: $selectedTrack) { track in
-            TrackDetailView(track: track, audioPlayer: audioPlayer)
-        }
+        .background(
+            NavigationLink(
+                isActive: Binding(
+                    get: { selectedTrack != nil },
+                    set: { isActive in
+                        if !isActive { selectedTrack = nil }
+                    }
+                )
+            ) {
+                Group {
+                    if let track = selectedTrack {
+                        TrackDetailView(track: track, audioPlayer: audioPlayer)
+                    } else {
+                        EmptyView()
+                    }
+                }
+            } label: {
+                EmptyView()
+            }
+            .hidden()
+        )
         .preferredColorScheme(.dark)
     }
 
