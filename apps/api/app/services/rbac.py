@@ -25,7 +25,7 @@ from sqlalchemy.orm import selectinload
 
 from app.core.exceptions import ConflictError, NotFoundError
 from app.core.logging import get_logger
-from app.models.rbac import Permission, Role, SystemRole, UserRole
+from app.models.rbac import Permission, Role, RolePermission, SystemRole, UserRole
 
 logger = get_logger(__name__)
 
@@ -187,12 +187,12 @@ class RbacService:
         existing_roles = {
             r.name: r
             for r in (
-                await self.session.execute(select(Role).options(selectinload(Role.permissions)))
+                await self.session.execute(select(Role))
             )
             .scalars()
             .all()
         }
-        for role_name, perm_codes in DEFAULT_ROLE_PERMISSIONS.items():
+        for role_name in DEFAULT_ROLE_PERMISSIONS:
             if role_name not in existing_roles:
                 role = Role(
                     name=role_name,
@@ -202,16 +202,25 @@ class RbacService:
                 self.session.add(role)
                 await self.session.flush()
                 existing_roles[role_name] = role
-                # A newly-created role has no loaded relationship yet. Do not
-                # read role.permissions here: with AsyncSession that would
-                # trigger an implicit lazy load and MissingGreenlet.
-                current_codes: set[str] = set()
-            else:
-                role = existing_roles[role_name]
-                current_codes = {p.code for p in (role.permissions or [])}
+
+        # Manage the many-to-many rows directly. This avoids implicit
+        # relationship lazy-loading, which is unsafe with AsyncSession.
+        existing_role_permissions = {
+            (row.role_id, row.permission_id)
+            for row in (
+                await self.session.execute(select(RolePermission))
+            )
+            .scalars()
+            .all()
+        }
+        for role_name, perm_codes in DEFAULT_ROLE_PERMISSIONS.items():
+            role = existing_roles[role_name]
             for code in perm_codes:
-                if code not in current_codes and code in existing_perms:
-                    role.permissions.append(existing_perms[code])
+                permission = existing_perms[code]
+                pair = (role.id, permission.id)
+                if pair not in existing_role_permissions:
+                    self.session.add(RolePermission(role_id=role.id, permission_id=permission.id))
+                    existing_role_permissions.add(pair)
 
         await self.session.flush()
         logger.info(
