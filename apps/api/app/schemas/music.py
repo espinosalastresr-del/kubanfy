@@ -60,6 +60,20 @@ class MusicPlaybackResponse(BaseModel):
     kby_key: str
 
 
+class MusicOfflineBootstrapResponse(BaseModel):
+    track_id: UUID
+    title: str
+    duration: float | None = None
+    url: str
+    expires_in_seconds: int
+    quality: str
+    content_hash: str
+    kby_key: str
+    asset_version: int
+    offline_license: str
+    offline_license_expires_at: str
+
+
 class MusicDownloadResponse(BaseModel):
     url: str | None = None
     expires_in_seconds: int | None = None
