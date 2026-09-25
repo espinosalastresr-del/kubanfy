@@ -3,6 +3,30 @@
  archiveVersion = 1;
  objectVersion = 56;
  objects = {
+  A11111111111111111111111 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RegisterView.swift; sourceTree = "<group>";};
+  A11111111111111111111112 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrackDetailView.swift; sourceTree = "<group>";};
+  A11111111111111111111113 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MiniPlayer.swift; sourceTree = "<group>";};
+  A11111111111111111111114 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlayerView.swift; sourceTree = "<group>";};
+  A11111111111111111111115 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlaylistPicker.swift; sourceTree = "<group>";};
+  A11111111111111111111116 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SearchView.swift; sourceTree = "<group>";};
+  A11111111111111111111117 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioPlayer.swift; sourceTree = "<group>";};
+  A11111111111111111111118 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Formatting.swift; sourceTree = "<group>";};
+  B11111111111111111111111 = {isa = PBXBuildFile; fileRef = A11111111111111111111111;};
+  B11111111111111111111112 = {isa = PBXBuildFile; fileRef = A11111111111111111111112;};
+  B11111111111111111111113 = {isa = PBXBuildFile; fileRef = A11111111111111111111113;};
+  B11111111111111111111114 = {isa = PBXBuildFile; fileRef = A11111111111111111111114;};
+  B11111111111111111111115 = {isa = PBXBuildFile; fileRef = A11111111111111111111115;};
+  B11111111111111111111116 = {isa = PBXBuildFile; fileRef = A11111111111111111111116;};
+  B11111111111111111111117 = {isa = PBXBuildFile; fileRef = A11111111111111111111117;};
+  B11111111111111111111118 = {isa = PBXBuildFile; fileRef = A11111111111111111111118;};
+  C11111111111111111111111 = {isa = PBXGroup; children = (A11111111111111111111111); path = Auth; sourceTree = "<group>";};
+  C11111111111111111111112 = {isa = PBXGroup; children = (A11111111111111111111112); path = Track; sourceTree = "<group>";};
+  C11111111111111111111113 = {isa = PBXGroup; children = (A11111111111111111111113,A11111111111111111111114); path = Player; sourceTree = "<group>";};
+  C11111111111111111111114 = {isa = PBXGroup; children = (A11111111111111111111115); path = Playlists; sourceTree = "<group>";};
+  C11111111111111111111115 = {isa = PBXGroup; children = (A11111111111111111111116); path = Search; sourceTree = "<group>";};
+  C11111111111111111111116 = {isa = PBXGroup; children = (A11111111111111111111117); path = Audio; sourceTree = "<group>";};
+  C11111111111111111111117 = {isa = PBXGroup; children = (A11111111111111111111118); path = Shared; sourceTree = "<group>";};
+
   111111111111111111111111 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KubanFyApp.swift; sourceTree = "<group>";};
   111111111111111111111112 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>";};
   111111111111111111111113 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = APIClient.swift; sourceTree = "<group>";};
@@ -14,10 +38,10 @@
   222222222222222222222223 = {isa = PBXBuildFile; fileRef = 111111111111111111111113;};
   222222222222222222222224 = {isa = PBXBuildFile; fileRef = 111111111111111111111114;};
   333333333333333333333331 = {isa = PBXGroup; children = (333333333333333333333332,333333333333333333333333,333333333333333333333334); sourceTree = "<group>";};
-  333333333333333333333332 = {isa = PBXGroup; children = (111111111111111111111111,111111111111111111111112,111111111111111111111113,111111111111111111111114,111111111111111111111115); path = KubanFy; sourceTree = "<group>";};
+  333333333333333333333332 = {isa = PBXGroup; children = (111111111111111111111111,111111111111111111111112,111111111111111111111113,111111111111111111111114,111111111111111111111115,C11111111111111111111111,C11111111111111111111112,C11111111111111111111113,C11111111111111111111114,C11111111111111111111115,C11111111111111111111116,C11111111111111111111117); path = KubanFy; sourceTree = "<group>";};
   333333333333333333333333 = {isa = PBXGroup; children = (111111111111111111111116); name = Products; sourceTree = "<group>";};
   333333333333333333333334 = {isa = PBXGroup; children = (); name = Frameworks; sourceTree = "<group>";};
-  444444444444444444444441 = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (222222222222222222222221,222222222222222222222222,222222222222222222222223,222222222222222222222224); runOnlyForDeploymentPostprocessing = 0;};
+  444444444444444444444441 = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (222222222222222222222221,222222222222222222222222,222222222222222222222223,222222222222222222222224,B11111111111111111111111,B11111111111111111111112,B11111111111111111111113,B11111111111111111111114,B11111111111111111111115,B11111111111111111111116,B11111111111111111111117,B11111111111111111111118); runOnlyForDeploymentPostprocessing = 0;};
   444444444444444444444442 = {isa = PBXResourcesBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0;};
   444444444444444444444443 = {isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0;};
   555555555555555555555551 = {isa = PBXNativeTarget; buildConfigurationList = 666666666666666666666662; buildPhases = (444444444444444444444441,444444444444444444444443,444444444444444444444442); buildRules = (); dependencies = (); name = KubanFy; productName = KubanFy; productReference = 111111111111111111111116; productType = "com.apple.product-type.application";};
