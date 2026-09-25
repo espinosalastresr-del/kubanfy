@@ -1065,6 +1065,8 @@ private final class AudioPlayer: ObservableObject {
     @Published private(set) var duration: Double = 0
     @Published private(set) var currentTitle: String?
     @Published private(set) var isLoading = false
+    @Published private(set) var isShuffled = false
+    @Published private(set) var repeatMode: RepeatMode = .off
 
     private var player: AVPlayer?
     private var timeObserver: Any?
@@ -1362,5 +1364,34 @@ private final class AudioPlayer: ObservableObject {
         await sendHeartbeat(completed: true)
         updateNowPlaying()
     }
+    private func updateNowPlaying() {
+        guard let track = currentTrack else { MPNowPlayingInfoCenter.default().nowPlayingInfo = nil; return }
+        var info: [String: Any] = [MPMediaItemPropertyTitle: track.title, MPNowPlayingInfoPropertyElapsedPlaybackTime: position, MPNowPlayingInfoPropertyPlaybackRate: isPlaying ? 1.0 : 0.0]
+        if let duration = track.duration { info[MPMediaItemPropertyPlaybackDuration] = duration }
+        MPNowPlayingInfoCenter.default().nowPlayingInfo = info
+    }
+    private func handleInterruption(_ notification: Notification) {
+        guard let raw = notification.userInfo?[AVAudioSessionInterruptionTypeKey] as? UInt, let type = AVAudioSession.InterruptionType(rawValue: raw) else { return }
+        if type == .ended { try? AVAudioSession.sharedInstance().setActive(true) } else { isPlaying = false; Task { await sendHeartbeat(completed: false) } }
+        updateNowPlaying()
+    }
+    private func stopPlaybackResources() {
+        heartbeatTask?.cancel(); renewalTask?.cancel(); recoveryTask?.cancel()
+        heartbeatTask = nil; renewalTask = nil; recoveryTask = nil
+        playbackToken = nil; playbackSessionID = nil; currentPlayback = nil; player?.pause()
+        if let url = currentLocalAudioURL { try? FileManager.default.removeItem(at: url) }
+        currentLocalAudioURL = nil; duration = 0; position = 0; isPlaying = false; playbackGeneration = UUID()
+    }
+    private func resetPlaybackState() { stopPlaybackResources(); currentTrack = nil; currentTrackID = nil; currentTitle = nil; errorMessage = nil }
+    deinit {
+        heartbeatTask?.cancel(); renewalTask?.cancel(); recoveryTask?.cancel()
+        if let timeObserver, let player { player.removeTimeObserver(timeObserver) }
+        for token in notificationTokens { NotificationCenter.default.removeObserver(token) }
+        player?.pause()
+    }
 }
-
+private func formatDuration(_ seconds: Double) -> String {
+    guard seconds.isFinite, seconds >= 0 else { return "--:--" }
+    let totalSeconds = Int(seconds.rounded())
+    return String(format: "%d:%02d", totalSeconds / 60, totalSeconds % 60)
+}
