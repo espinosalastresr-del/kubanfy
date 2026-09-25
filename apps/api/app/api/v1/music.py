@@ -5,6 +5,7 @@ from __future__ import annotations
 from uuid import UUID
 
 from fastapi import APIRouter, HTTPException, Query, Request
+from fastapi.responses import StreamingResponse
 from sqlalchemy import func, or_, select
 
 from app.api.deps import CurrentUser, DbSession, OptionalUser
@@ -27,6 +28,7 @@ from app.services.geo import GeoService
 from app.services.music_engine import MusicEngine
 from app.services.offline_license import OfflineLicenseService
 from app.models.music import Artist, Release, Track, TrackArtist
+from app.storage import LocalStorage, get_storage
 
 router = APIRouter(prefix="/music", tags=["music"])
 
@@ -359,6 +361,28 @@ async def music_search(
 
     return results[:limit]
 
+
+@router.get("/local-delivery/{token}")
+async def local_storage_delivery(token: str):
+    """Deliver a signed staging-local KBY object over HTTPS.
+
+    Authorization has already happened before the URL is issued. The token
+    authenticates only this exact stored KBY object until its expiry.
+    """
+    storage = get_storage()
+    if not isinstance(storage, LocalStorage):
+        raise HTTPException(status_code=404, detail="Local delivery is unavailable")
+    bucket, key, _ = storage.verify_delivery_token(token)
+    total = await storage.size(key, bucket=bucket)
+    return StreamingResponse(
+        storage.stream(key, bucket=bucket, chunk_size=65536),
+        media_type="application/vnd.kubanfy.kby",
+        headers={
+            "Content-Length": str(total),
+            "Cache-Control": "private, no-store",
+            "X-Content-Type-Options": "nosniff",
+        },
+    )
 
 @router.get("/content/{track_id}")
 async def music_content_stream(
