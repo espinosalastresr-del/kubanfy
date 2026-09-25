@@ -708,6 +708,7 @@ private struct SearchView: View {
     @FocusState private var searchFocused: Bool
     @Environment(\.dismiss) private var dismiss
     @State private var selectedTrack: DiscoveryHome.Track?
+    @State private var recentSearches: [String] = UserDefaults.standard.stringArray(forKey: "kubanfy.search.history") ?? []
 
     var body: some View {
         ZStack {
@@ -742,6 +743,38 @@ private struct SearchView: View {
                     .frame(height: 48)
                     .background(Color.white.opacity(0.11))
                     .clipShape(RoundedRectangle(cornerRadius: 12))
+
+                    if !recentSearches.isEmpty && results.isEmpty && !isLoading {
+                        HStack {
+                            Text("Historial").font(.title3.weight(.bold))
+                            Spacer()
+                            Button("Borrar") {
+                                recentSearches.removeAll()
+                                UserDefaults.standard.removeObject(forKey: "kubanfy.search.history")
+                            }
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(.green)
+                        }
+                        LazyVStack(spacing: 0) {
+                            ForEach(recentSearches, id: \.self) { item in
+                                Button {
+                                    query = item
+                                    searchFocused = false
+                                    Task { await performSearch() }
+                                } label: {
+                                    HStack(spacing: 12) {
+                                        Image(systemName: "clock.arrow.circlepath").foregroundStyle(.white.opacity(0.45))
+                                        Text(item).font(.body).lineLimit(1)
+                                        Spacer()
+                                        Image(systemName: "arrow.up.left").foregroundStyle(.white.opacity(0.25))
+                                    }
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                    .padding(.vertical, 10)
+                                }
+                                .buttonStyle(.plain)
+                            }
+                        }
+                    }
 
                     if isLoading {
                         HStack(spacing: 10) {
@@ -798,27 +831,9 @@ private struct SearchView: View {
         .task {
             searchFocused = true
         }
-        .background(
-            NavigationLink(
-                isActive: Binding(
-                    get: { selectedTrack != nil },
-                    set: { isActive in
-                        if !isActive { selectedTrack = nil }
-                    }
-                )
-            ) {
-                Group {
-                    if let track = selectedTrack {
-                        TrackDetailView(track: track, audioPlayer: audioPlayer)
-                    } else {
-                        EmptyView()
-                    }
-                }
-            } label: {
-                EmptyView()
-            }
-            .hidden()
-        )
+        .navigationDestination(for: DiscoveryHome.Track.self) { track in
+            TrackDetailView(track: track, audioPlayer: audioPlayer)
+        }
         .preferredColorScheme(.dark)
     }
 
@@ -826,10 +841,7 @@ private struct SearchView: View {
     private func searchRow(_ result: TrackSearchResult) -> some View {
         HStack(spacing: 12) {
             if let trackId = result.trackId {
-                Button {
-                    selectedTrack = .init(id: trackId, title: result.title, duration: result.duration)
-                    searchFocused = false
-                } label: {
+                NavigationLink(value: DiscoveryHome.Track(id: trackId, title: result.title, duration: result.duration)) {
                     HStack(spacing: 12) {
                         searchArtwork(result)
                         searchText(result)
@@ -837,6 +849,7 @@ private struct SearchView: View {
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
+                .simultaneousGesture(TapGesture().onEnded { searchFocused = false })
             } else {
                 HStack(spacing: 12) {
                     searchArtwork(result)
@@ -911,6 +924,10 @@ private struct SearchView: View {
         errorMessage = nil
         do {
             results = try await APIClient.shared.search(query: value)
+            recentSearches.removeAll { $0.caseInsensitiveCompare(value) == .orderedSame }
+            recentSearches.insert(value, at: 0)
+            recentSearches = Array(recentSearches.prefix(8))
+            UserDefaults.standard.set(recentSearches, forKey: "kubanfy.search.history")
         } catch {
             results = []
             errorMessage = error.localizedDescription
