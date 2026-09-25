@@ -79,6 +79,43 @@ struct PlaybackStartResponse: Codable {
     let playbackToken: String; let playbackSessionId: UUID; let heartbeatIntervalSeconds: Int; let qualifyingListenSeconds: Int; let assetVersion: Int; let contentHash: String
     enum CodingKeys: String, CodingKey { case playbackToken = "playback_token"; case playbackSessionId = "playback_session_id"; case heartbeatIntervalSeconds = "heartbeat_interval_seconds"; case qualifyingListenSeconds = "qualifying_listen_seconds"; case assetVersion = "asset_version"; case contentHash = "content_hash" }
 }
+struct OfflineBootstrapResponse: Codable {
+    let trackId: UUID
+    let title: String
+    let duration: Double?
+    let url: URL
+    let expiresInSeconds: Int
+    let quality: String
+    let contentHash: String
+    let kbyKey: String
+    let assetVersion: Int
+    let offlineLicense: String
+    let offlineLicenseExpiresAt: Date
+
+    enum CodingKeys: String, CodingKey {
+        case trackId = "track_id"
+        case title, duration, url, quality
+        case expiresInSeconds = "expires_in_seconds"
+        case contentHash = "content_hash"
+        case kbyKey = "kby_key"
+        case assetVersion = "asset_version"
+        case offlineLicense = "offline_license"
+        case offlineLicenseExpiresAt = "offline_license_expires_at"
+    }
+}
+
+private struct OfflineCacheEntry: Codable {
+    let trackId: UUID
+    let quality: String
+    let contentHash: String
+    let assetVersion: Int?
+    let kbyKey: String
+    let contentType: String
+    let fileName: String
+    let offlineLicense: String?
+    let offlineLicenseExpiresAt: Date?
+}
+
 struct PlaybackHeartbeatResponse: Codable {
     let qualified: Bool; let listenedMs: Int; let suspiciousScore: Double
     enum CodingKeys: String, CodingKey { case qualified; case listenedMs = "listened_ms"; case suspiciousScore = "suspicious_score" }
@@ -95,7 +132,7 @@ struct DownloadTicketResponse: Codable { let downloadTicket: String; let expires
 }
 
 enum APIError: LocalizedError {
-    case invalidURL, decoding, missingSession, network
+    case invalidURL, decoding, missingSession, network, offlineUnavailable, audioDelivery
     case http(Int, String)
     var errorDescription: String? {
         switch self {
@@ -103,6 +140,8 @@ enum APIError: LocalizedError {
         case .decoding: return "Respuesta inválida del servidor"
         case .missingSession: return "No hay una sesión activa"
         case .network: return "No se pudo conectar con el servidor"
+        case .offlineUnavailable: return "Esta canción no está disponible sin conexión"
+        case .audioDelivery: return "No se pudo descargar el audio"
         case let .http(code, message): return "\(message) (HTTP \(code))"
         }
     }
@@ -251,17 +290,142 @@ final class APIClient {
     }
 
     func fetchAndDecryptKBY(_ playback: PlaybackResponse) async throws -> URL {
-        let (data, response) = try await session.data(from: playback.url)
-        guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
-            throw APIError.network
-        }
-        let decoded = try OfflineCrypto.decryptKBY(
-            data,
+        let (data, contentType) = try await downloadAndValidateKBY(
+            url: playback.url,
             base64Key: playback.kbyKey,
             expectedHash: playback.contentHash
         )
+        return try materializeDecryptedAudio(data, contentType: contentType)
+    }
+
+    func cachedAuthorizedPlaybackURL(
+        trackId: UUID,
+        quality: String,
+        expectedHash: String?,
+        kbyKey: String
+    ) throws -> URL? {
+        guard let entry = loadOfflineCacheIndex().first(where: {
+            $0.trackId == trackId && $0.quality == quality
+        }) else {
+            return nil
+        }
+        if let expectedHash, !expectedHash.isEmpty,
+           entry.contentHash.caseInsensitiveCompare(expectedHash) != .orderedSame {
+            return nil
+        }
+        guard entry.kbyKey == kbyKey else { return nil }
+        let fileURL = try offlineCacheURL(for: entry)
+        guard FileManager.default.fileExists(atPath: fileURL.path) else {
+            removeOfflineCacheEntry(entry)
+            return nil
+        }
+        let container = try Data(contentsOf: fileURL)
+        let decoded = try OfflineCrypto.decryptKBY(
+            container,
+            base64Key: entry.kbyKey,
+            expectedHash: expectedHash ?? entry.contentHash
+        )
+        return try materializeDecryptedAudio(decoded.data, contentType: decoded.contentType)
+    }
+
+    func cachedOfflinePlaybackURL(trackId: UUID, quality: String = "low") throws -> URL {
+        let now = Date()
+        guard let entry = loadOfflineCacheIndex().first(where: {
+            $0.trackId == trackId && $0.quality == quality && $0.offlineLicense != nil
+        }) else {
+            throw APIError.offlineUnavailable
+        }
+        guard let expiresAt = entry.offlineLicenseExpiresAt, expiresAt > now else {
+            removeOfflineCacheEntry(entry)
+            throw APIError.offlineUnavailable
+        }
+        let fileURL = try offlineCacheURL(for: entry)
+        guard FileManager.default.fileExists(atPath: fileURL.path) else {
+            removeOfflineCacheEntry(entry)
+            throw APIError.offlineUnavailable
+        }
+        do {
+            let container = try Data(contentsOf: fileURL)
+            let decoded = try OfflineCrypto.decryptKBY(
+                container,
+                base64Key: entry.kbyKey,
+                expectedHash: entry.contentHash
+            )
+            return try materializeDecryptedAudio(decoded.data, contentType: decoded.contentType)
+        } catch {
+            removeOfflineCacheEntry(entry)
+            throw APIError.offlineUnavailable
+        }
+    }
+
+    func preloadOfflineBootstrapIfNeeded() async {
+        let now = Date()
+        let validBootstrap = loadOfflineCacheIndex().filter {
+            $0.offlineLicense != nil && ($0.offlineLicenseExpiresAt ?? .distantPast) > now
+        }
+        guard validBootstrap.count < 3 else { return }
+
+        do {
+            let data = try await performRequest(
+                path: "/music/offline/bootstrap?limit=3",
+                method: "GET"
+            )
+            let items = try decoder.decode([OfflineBootstrapResponse].self, from: data)
+            for item in items.prefix(3) {
+                let existing = loadOfflineCacheIndex().first {
+                    $0.trackId == item.trackId &&
+                    $0.quality == item.quality &&
+                    $0.contentHash.caseInsensitiveCompare(item.contentHash) == .orderedSame &&
+                    ($0.offlineLicenseExpiresAt ?? .distantPast) > now
+                }
+                if existing != nil {
+                    continue
+                }
+                let (container, contentType) = try await downloadAndValidateKBY(
+                    url: item.url,
+                    base64Key: item.kbyKey,
+                    expectedHash: item.contentHash
+                )
+                try saveOfflineKBY(
+                    container,
+                    trackId: item.trackId,
+                    quality: item.quality,
+                    contentHash: item.contentHash,
+                    assetVersion: item.assetVersion,
+                    kbyKey: item.kbyKey,
+                    contentType: contentType,
+                    offlineLicense: item.offlineLicense,
+                    offlineLicenseExpiresAt: item.offlineLicenseExpiresAt
+                )
+            }
+        } catch {
+            // Bootstrap is best-effort. Normal online playback remains available.
+        }
+    }
+
+    private func downloadAndValidateKBY(
+        url: URL,
+        base64Key: String,
+        expectedHash: String?
+    ) async throws -> (Data, String) {
+        let (data, response) = try await session.data(from: url)
+        guard let http = response as? HTTPURLResponse else {
+            throw APIError.audioDelivery
+        }
+        guard (200..<300).contains(http.statusCode) else {
+            throw APIError.http(http.statusCode, "Audio delivery failed")
+        }
+        let decoded = try OfflineCrypto.decryptKBY(
+            data,
+            base64Key: base64Key,
+            expectedHash: expectedHash
+        )
+        return (data, decoded.contentType)
+    }
+
+    private func materializeDecryptedAudio(_ data: Data, contentType: String) throws -> URL {
         let ext: String
-        switch decoded.contentType.lowercased() {
+        switch contentType.lowercased() {
         case "audio/mp4", "audio/m4a": ext = "m4a"
         case "audio/flac": ext = "flac"
         case "audio/ogg", "audio/opus": ext = "ogg"
@@ -269,8 +433,90 @@ final class APIClient {
         }
         let url = FileManager.default.temporaryDirectory
             .appendingPathComponent("kubanfy-\(UUID().uuidString).\(ext)")
-        try decoded.data.write(to: url, options: .atomic)
+        try data.write(to: url, options: .atomic)
         return url
+    }
+
+    private func offlineCacheDirectory() throws -> URL {
+        let base = try FileManager.default.url(
+            for: .applicationSupportDirectory,
+            in: .userDomainMask,
+            appropriateFor: nil,
+            create: true
+        )
+        let directory = base.appendingPathComponent("OfflineAudio", isDirectory: true)
+        try FileManager.default.createDirectory(
+            at: directory,
+            withIntermediateDirectories: true,
+            attributes: nil
+        )
+        return directory
+    }
+
+    private func loadOfflineCacheIndex() -> [OfflineCacheEntry] {
+        guard let data = keychain.loadData("offline_cache_index") else { return [] }
+        return (try? decoder.decode([OfflineCacheEntry].self, from: data)) ?? []
+    }
+
+    private func saveOfflineKBY(
+        _ container: Data,
+        trackId: UUID,
+        quality: String,
+        contentHash: String,
+        assetVersion: Int?,
+        kbyKey: String,
+        contentType: String,
+        offlineLicense: String?,
+        offlineLicenseExpiresAt: Date?
+    ) throws {
+        let directory = try offlineCacheDirectory()
+        let filename = "\(trackId.uuidString)-\(quality)-\(UUID().uuidString).kby"
+        let fileURL = directory.appendingPathComponent(filename)
+        try container.write(to: fileURL, options: .atomic)
+
+        var entries = loadOfflineCacheIndex()
+        if let old = entries.first(where: { $0.trackId == trackId && $0.quality == quality }) {
+            try? FileManager.default.removeItem(at: try offlineCacheURL(for: old))
+            entries.removeAll { $0.trackId == trackId && $0.quality == quality }
+        }
+
+        entries.append(
+            OfflineCacheEntry(
+                trackId: trackId,
+                quality: quality,
+                contentHash: contentHash,
+                assetVersion: assetVersion,
+                kbyKey: kbyKey,
+                contentType: contentType,
+                fileName: filename,
+                offlineLicense: offlineLicense,
+                offlineLicenseExpiresAt: offlineLicenseExpiresAt
+            )
+        )
+        let encoded = try JSONEncoder().encode(entries)
+        do {
+            try keychain.saveData(encoded, account: "offline_cache_index")
+        } catch {
+            try? FileManager.default.removeItem(at: fileURL)
+            throw error
+        }
+    }
+
+    private func offlineCacheURL(for entry: OfflineCacheEntry) throws -> URL {
+        try offlineCacheDirectory().appendingPathComponent(entry.fileName)
+    }
+
+    private func removeOfflineCacheEntry(_ entry: OfflineCacheEntry) {
+        if let url = try? offlineCacheURL(for: entry) {
+            try? FileManager.default.removeItem(at: url)
+        }
+        var entries = loadOfflineCacheIndex()
+        entries.removeAll {
+            $0.trackId == entry.trackId && $0.quality == entry.quality && $0.fileName == entry.fileName
+        }
+        if let data = try? JSONEncoder().encode(entries) {
+            try? keychain.saveData(data, account: "offline_cache_index")
+        }
     }
 
     func startPlayback(trackId: UUID, quality: String = "low", sessionId: String? = nil) async throws -> PlaybackStartResponse {
