@@ -19,11 +19,11 @@
   B11111111111111111111116 = {isa = PBXBuildFile; fileRef = A11111111111111111111116;};
   B11111111111111111111117 = {isa = PBXBuildFile; fileRef = A11111111111111111111117;};
   B11111111111111111111118 = {isa = PBXBuildFile; fileRef = A11111111111111111111118;};
-  C11111111111111111111111 = {isa = PBXGroup; children = (A11111111111111111111111); path = Auth; sourceTree = "<group>";};
-  C11111111111111111111112 = {isa = PBXGroup; children = (A11111111111111111111112); path = Track; sourceTree = "<group>";};
-  C11111111111111111111113 = {isa = PBXGroup; children = (A11111111111111111111113,A11111111111111111111114); path = Player; sourceTree = "<group>";};
-  C11111111111111111111114 = {isa = PBXGroup; children = (A11111111111111111111115); path = Playlists; sourceTree = "<group>";};
-  C11111111111111111111115 = {isa = PBXGroup; children = (A11111111111111111111116); path = Search; sourceTree = "<group>";};
+  C11111111111111111111111 = {isa = PBXGroup; children = (A11111111111111111111111); path = Features/Auth; sourceTree = "<group>";};
+  C11111111111111111111112 = {isa = PBXGroup; children = (A11111111111111111111112); path = Features/Track; sourceTree = "<group>";};
+  C11111111111111111111113 = {isa = PBXGroup; children = (A11111111111111111111113,A11111111111111111111114); path = Features/Player; sourceTree = "<group>";};
+  C11111111111111111111114 = {isa = PBXGroup; children = (A11111111111111111111115); path = Features/Playlists; sourceTree = "<group>";};
+  C11111111111111111111115 = {isa = PBXGroup; children = (A11111111111111111111116); path = Features/Search; sourceTree = "<group>";};
   C11111111111111111111116 = {isa = PBXGroup; children = (A11111111111111111111117); path = Audio; sourceTree = "<group>";};
   C11111111111111111111117 = {isa = PBXGroup; children = (A11111111111111111111118); path = Shared; sourceTree = "<group>";};
 
