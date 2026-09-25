@@ -13,6 +13,13 @@ from app.storage.local import LocalStorage
 def storage(tmp_path):
     return LocalStorage(root=tmp_path / "store")
 
+@pytest.fixture
+def signed_storage(tmp_path):
+    return LocalStorage(
+        root=tmp_path / "signed-store",
+        public_base_url="https://staging.example.test",
+        signing_secret="test-signing-secret",
+    )
 
 @pytest.mark.asyncio
 async def test_put_get_delete(storage: LocalStorage) -> None:
@@ -83,3 +90,20 @@ async def test_signed_url(storage: LocalStorage) -> None:
 async def test_path_traversal_rejected(storage: LocalStorage) -> None:
     with pytest.raises(StorageError):
         await storage.put("../../etc/passwd", b"nope")
+
+@pytest.mark.asyncio
+async def test_signed_https_delivery_round_trip(signed_storage: LocalStorage) -> None:
+    key = "tracks/demo/low/audio.kby"
+    await signed_storage.put(key, b"KBY1fixture", bucket=StorageBucket.PERMANENT)
+    signed = await signed_storage.signed_url(key, bucket=StorageBucket.PERMANENT, expires_in=60)
+    assert signed.url.startswith("https://staging.example.test/v1/music/local-delivery/")
+    token = signed.url.rsplit("/", 1)[-1]
+    bucket, decoded_key, _ = signed_storage.verify_delivery_token(token)
+    assert bucket == StorageBucket.PERMANENT
+    assert decoded_key == key
+
+
+@pytest.mark.asyncio
+async def test_signed_https_delivery_rejects_tampering(signed_storage: LocalStorage) -> None:
+    with pytest.raises(StorageError):
+        signed_storage.verify_delivery_token("invalid.invalid")
