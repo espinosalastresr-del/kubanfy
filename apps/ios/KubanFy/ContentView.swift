@@ -778,53 +778,80 @@ private struct SearchView: View {
 
     @ViewBuilder
     private func searchRow(_ result: TrackSearchResult) -> some View {
-        let row = HStack(spacing: 13) {
-            RoundedRectangle(cornerRadius: 8)
-                .fill(Color.white.opacity(0.09))
-                .frame(width: 56, height: 56)
-                .overlay(
-                    Image(systemName: "music.note")
-                        .foregroundStyle(.white.opacity(0.45))
-                )
-            VStack(alignment: .leading, spacing: 4) {
-                Text(result.title)
-                    .font(.body.weight(.semibold))
-                    .lineLimit(1)
-                Text(result.artists.joined(separator: ", "))
-                    .font(.subheadline)
-                    .foregroundStyle(.white.opacity(0.5))
-                    .lineLimit(1)
-                if let album = result.album {
-                    Text(album)
-                        .font(.caption)
-                        .foregroundStyle(.white.opacity(0.35))
-                        .lineLimit(1)
-                }
-            }
-            Spacer()
-            if result.trackId != nil {
-                Button {
-                    guard let trackId = result.trackId else { return }
-                    let track = DiscoveryHome.Track(id: trackId, title: result.title, duration: result.duration)
-                    Task { await audioPlayer.toggle(track: track) }
+        HStack(spacing: 12) {
+            if let trackId = result.trackId {
+                NavigationLink {
+                    TrackDetailView(
+                        track: .init(id: trackId, title: result.title, duration: result.duration),
+                        audioPlayer: audioPlayer
+                    )
                 } label: {
-                    Image(systemName: "play.fill")
-                        .font(.subheadline.weight(.bold))
-                        .frame(width: 34, height: 34)
+                    searchArtwork(result)
+                    searchText(result)
                 }
                 .buttonStyle(.plain)
-                .foregroundStyle(.green)
+            } else {
+                searchArtwork(result)
+                searchText(result)
+            }
+
+            Spacer(minLength: 4)
+
+            if let trackId = result.trackId {
+                Button {
+                    let track = DiscoveryHome.Track(
+                        id: trackId,
+                        title: result.title,
+                        duration: result.duration
+                    )
+                    Task { await audioPlayer.toggle(track: track) }
+                } label: {
+                    ZStack {
+                        Circle().fill(Color.green)
+                        if audioPlayer.isLoading && audioPlayer.currentTrackID == trackId {
+                            ProgressView().tint(.black)
+                        } else {
+                            Image(
+                                systemName: audioPlayer.currentTrackID == trackId && audioPlayer.isPlaying
+                                    ? "pause.fill"
+                                    : "play.fill"
+                            )
+                            .foregroundStyle(.black)
+                        }
+                    }
+                    .frame(width: 38, height: 38)
+                }
+                .buttonStyle(.plain)
             }
         }
         .padding(.vertical, 9)
+    }
 
-        if let trackId = result.trackId {
-            NavigationLink {
-                TrackDetailView(track: .init(id: trackId, title: result.title, duration: result.duration), audioPlayer: audioPlayer)
-            } label: { row }
-            .buttonStyle(.plain)
-        } else {
-            row
+    private func searchArtwork(_ result: TrackSearchResult) -> some View {
+        RoundedRectangle(cornerRadius: 8)
+            .fill(Color.white.opacity(0.09))
+            .frame(width: 56, height: 56)
+            .overlay(
+                Image(systemName: "music.note")
+                    .foregroundStyle(.white.opacity(0.45))
+            )
+    }
+
+    private func searchText(_ result: TrackSearchResult) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(result.title)
+                .font(.body.weight(.semibold))
+                .lineLimit(1)
+            Text(result.artists.joined(separator: ", "))
+                .font(.subheadline)
+                .foregroundStyle(.white.opacity(0.5))
+                .lineLimit(1)
+            if let album = result.album {
+                Text(album)
+                    .font(.caption)
+                    .foregroundStyle(.white.opacity(0.35))
+                    .lineLimit(1)
+            }
         }
     }
 
