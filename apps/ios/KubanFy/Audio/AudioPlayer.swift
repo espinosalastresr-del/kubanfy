@@ -5,9 +5,7 @@ import MediaPlayer
 enum RepeatMode { case off, all, one }
 
 @MainActor
-
-
-private final class AudioPlayer: ObservableObject {
+final class AudioPlayer: ObservableObject {
     @Published private(set) var currentTrackID: UUID?
     @Published private(set) var errorMessage: String?
     @Published private(set) var isPlaying = false
