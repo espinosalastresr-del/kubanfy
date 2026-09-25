@@ -30,6 +30,7 @@ class OfflineLicenseService:
         device_id: str,
         track_id: UUID,
         quality: str,
+        require_download_access: bool = True,
     ) -> tuple[OfflineLicense, str]:
         if quality not in {q.value for q in AudioQuality}:
             raise ValidationError("Unsupported audio quality")
@@ -49,7 +50,8 @@ class OfflineLicenseService:
             raise NotFoundError("Track not available")
 
         entitlement = EntitlementService(self.session)
-        await entitlement.require_download_access(user_id)
+        if require_download_access:
+            await entitlement.require_download_access(user_id)
         await entitlement.require_track_access(user_id, track_id)
         await entitlement.require_quality_access(user_id, quality)
 
@@ -100,6 +102,28 @@ class OfflineLicenseService:
         license_row.token_hash = hashlib.sha256(token.encode("utf-8")).hexdigest()
         await self.session.flush()
         return license_row, token
+
+    async def issue_bootstrap(
+        self,
+        *,
+        user_id: UUID,
+        device_id: str,
+        track_id: UUID,
+        quality: str = "low",
+    ) -> tuple[OfflineLicense, str]:
+        """Issue the small device-bound offline authorization used by app bootstrap.
+
+        Bootstrap is not Premium persistent download functionality: it keeps the
+        normal track/quality authorization checks but intentionally skips the
+        premium download entitlement gate.
+        """
+        return await self.issue(
+            user_id=user_id,
+            device_id=device_id,
+            track_id=track_id,
+            quality=quality,
+            require_download_access=False,
+        )
 
     async def validate(
         self,
