@@ -116,25 +116,23 @@ async def _ensure_demo_playable_track(session) -> None:
             )
         )
         if asset is None:
-            session.add(
-                AudioAsset(
-                    track_id=track.id,
-                    storage_key=key,
-                    codec=probe.codec,
-                    bitrate=(probe.bitrate // 1000) if probe.bitrate else None,
-                    bit_depth=probe.bit_depth,
-                    sample_rate=probe.sample_rate,
-                    channels=probe.channels,
-                    duration=probe.duration,
-                    size=probe.size,
-                    quality=quality,
-                    source_type=source_type,
-                    content_hash=probe.content_hash,
-                    quality_confidence=QualityConfidence.VERIFIED,
-                    version=1,
-                    is_active=True,
-                )
-            )
+            asset = AudioAsset(track_id=track.id, quality=quality)
+            session.add(asset)
+
+        asset.storage_key = key
+        asset.codec = probe.codec
+        asset.bitrate = (probe.bitrate // 1000) if probe.bitrate else None
+        asset.bit_depth = probe.bit_depth
+        asset.sample_rate = probe.sample_rate
+        asset.channels = probe.channels
+        asset.duration = probe.duration
+        asset.size = probe.size
+        asset.quality = quality
+        asset.source_type = source_type
+        asset.content_hash = probe.content_hash
+        asset.quality_confidence = QualityConfidence.VERIFIED
+        asset.version = 1
+        asset.is_active = True
     await session.flush()
     track.status = TrackStatus.PUBLISHED
     await session.flush()
