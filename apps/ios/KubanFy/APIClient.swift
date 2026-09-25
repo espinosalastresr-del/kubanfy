@@ -372,13 +372,18 @@ final class APIClient {
             removeOfflineCacheEntry(entry)
             return nil
         }
-        let container = try Data(contentsOf: fileURL)
-        let decoded = try OfflineCrypto.decryptKBY(
-            container,
-            base64Key: entry.kbyKey,
-            expectedHash: expectedHash ?? entry.contentHash
-        )
-        return try materializeDecryptedAudio(decoded.data, contentType: decoded.contentType)
+        do {
+            let container = try Data(contentsOf: fileURL)
+            let decoded = try OfflineCrypto.decryptKBY(
+                container,
+                base64Key: entry.kbyKey,
+                expectedHash: expectedHash ?? entry.contentHash
+            )
+            return try materializeDecryptedAudio(decoded.data, contentType: decoded.contentType)
+        } catch {
+            removeOfflineCacheEntry(entry)
+            return nil
+        }
     }
 
     func cachedOfflinePlaybackURL(trackId: UUID, quality: String = "low") throws -> URL {
@@ -508,6 +513,8 @@ final class APIClient {
 
     private func loadOfflineCacheIndex() -> [OfflineCacheEntry] {
         guard let data = keychain.loadData("offline_cache_index") else { return [] }
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
         return (try? decoder.decode([OfflineCacheEntry].self, from: data)) ?? []
     }
 
@@ -546,7 +553,9 @@ final class APIClient {
                 offlineLicenseExpiresAt: offlineLicenseExpiresAt
             )
         )
-        let encoded = try JSONEncoder().encode(entries)
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        let encoded = try encoder.encode(entries)
         do {
             try keychain.saveData(encoded, account: "offline_cache_index")
         } catch {
@@ -567,7 +576,9 @@ final class APIClient {
         entries.removeAll {
             $0.trackId == entry.trackId && $0.quality == entry.quality && $0.fileName == entry.fileName
         }
-        if let data = try? JSONEncoder().encode(entries) {
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        if let data = try? encoder.encode(entries) {
             try? keychain.saveData(data, account: "offline_cache_index")
         }
     }
