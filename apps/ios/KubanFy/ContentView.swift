@@ -1361,10 +1361,8 @@ private final class AudioPlayer: ObservableObject {
         position = duration
         await sendHeartbeat(completed: true)
         updateNowPlaying()
-    }t SwiftUI
-import AVFoundation
-import MediaPlayer
-import UIKit
+    }
+}
 
 struct ContentView: View {
     @State private var email = ""
