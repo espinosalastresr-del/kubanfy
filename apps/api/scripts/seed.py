@@ -258,6 +258,32 @@ async def seed() -> None:
         else:
             release = await session.get(Release, track.release_id) if track.release_id else None
 
+        if demo is not None and release is not None:
+            existing_license = await session.scalar(
+                select(LicenseRecord).where(
+                    LicenseRecord.track_id == track.id,
+                    LicenseRecord.artist_id == artist.id,
+                )
+            )
+            if existing_license is None:
+                session.add(
+                    LicenseRecord(
+                        track_id=track.id,
+                        release_id=release.id,
+                        artist_id=artist.id,
+                        accepted_by_user_id=demo.id,
+                        storage_allowed=True,
+                        processing_allowed=True,
+                        transcoding_allowed=True,
+                        streaming_allowed=True,
+                        artwork_allowed=True,
+                        metadata_allowed=True,
+                        license_version="1.0",
+                        status=LicenseStatus.ACTIVE,
+                    )
+                )
+                await session.flush()
+
         # Never seed a published track without the same validated/KBY/AudioAsset
         # chain required by the production playback path.
         # Reconcile the complete playable chain on every staging seed run.
