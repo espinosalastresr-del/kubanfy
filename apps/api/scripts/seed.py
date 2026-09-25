@@ -26,7 +26,7 @@ import app.core.database as database
 from app.core.logging import setup_logging
 from app.core.security import hash_password
 from app.models.artist_member import ArtistMember, ArtistMemberRole
-from app.models.music import AudioAsset, AudioQuality, Artist, Release, ReleaseType, SourceType, Track, TrackArtist, TrackStatus
+from app.models.music import AudioAsset, AudioQuality, Artist, QualityConfidence, Release, ReleaseType, SourceType, Track, TrackArtist, TrackStatus
 from app.models.rights import LicenseRecord, LicenseStatus
 from app.models.rbac import SystemRole
 from app.models.user import User, UserStatus
@@ -130,6 +130,7 @@ async def _ensure_demo_playable_track(session) -> None:
                     quality=quality,
                     source_type=source_type,
                     content_hash=probe.content_hash,
+                    quality_confidence=QualityConfidence.VERIFIED,
                     version=1,
                     is_active=True,
                 )
@@ -335,9 +336,8 @@ async def seed() -> None:
                     release.status = TrackStatus.PUBLISHED
                 await session.flush()
 
-        # The connectivity fixture is intentionally created as plaintext only
-        # during staging setup; entrypoint immediately converts it to KBY before
-        # the API starts. This keeps fixture preparation separate from playback.
+        # The connectivity fixture is created through the same validation + KBY
+        # storage contract used by first-party audio before it is published.
         await _ensure_demo_playable_track(session)
 
         await session.commit()
