@@ -77,6 +77,9 @@ class Settings(BaseSettings):
     r2_permanent_bucket: str = "kubanfy-permanent"
     r2_region: str = "auto"
     r2_signed_url_expiry_seconds: int = 3600
+    # Public HTTPS origin used only for staging local-storage delivery.
+    public_base_url: str = ""
+    staging_use_local_storage: bool = False
 
     # -------------------------------------------------------------------------
     # Authentication
@@ -201,6 +204,9 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def production_guards(self) -> Settings:
+        if self.environment == Environment.STAGING and self.staging_use_local_storage:
+            if not self.public_base_url.strip().lower().startswith("https://"):
+                raise ValueError("PUBLIC_BASE_URL must be an HTTPS origin when STAGING_USE_LOCAL_STORAGE is enabled")
         if self.environment == Environment.PRODUCTION:
             # Redis-backed abuse controls must remain effective in production.
             self.rate_limit_fail_open = False
