@@ -1,6 +1,6 @@
 import SwiftUI
 
-private struct RegisterView: View {
+struct RegisterView: View {
     @Environment(\.dismiss) private var dismiss
     private let onRegistered: (String, String) -> Void
 
