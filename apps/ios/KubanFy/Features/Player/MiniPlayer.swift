@@ -1,6 +1,6 @@
 import SwiftUI
 
-private struct MiniPlayer: View {
+struct MiniPlayer: View {
     @ObservedObject var audioPlayer: AudioPlayer
     let onTap: () -> Void
 
