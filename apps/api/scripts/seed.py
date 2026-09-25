@@ -26,11 +26,14 @@ import app.core.database as database
 from app.core.logging import setup_logging
 from app.core.security import hash_password
 from app.models.artist_member import ArtistMember, ArtistMemberRole
-from app.models.music import AudioAsset, AudioQuality, Artist, SourceType, Track, TrackArtist, TrackStatus
+from app.models.music import AudioAsset, AudioQuality, Artist, Release, ReleaseType, SourceType, Track, TrackArtist, TrackStatus
+from app.models.rights import LicenseRecord, LicenseStatus
 from app.models.rbac import SystemRole
 from app.models.user import User, UserStatus
 from app.services.admin import AdminService
+from app.services.audio_validation import AudioValidationService
 from app.services.entitlement import EntitlementService
+from app.services.kby import pack
 from app.services.rbac import RbacService
 from app.storage import StorageBucket, get_storage
 
@@ -52,7 +55,7 @@ def _demo_wav_bytes(*, duration_seconds: float = 8.0, sample_rate: int = 44100) 
 
 
 async def _ensure_demo_playable_track(session) -> None:
-    """Create an owned demo asset so the complete playback path is testable."""
+    """Create a fully playable staging fixture through the real storage contract."""
     artist = await session.scalar(select(Artist).where(Artist.slug == "kubanfy-demo"))
     if artist is None:
         artist = Artist(
@@ -72,7 +75,7 @@ async def _ensure_demo_playable_track(session) -> None:
             title="KubanFy Connectivity Test",
             slug="kubanfy-connectivity-test",
             duration=8.0,
-            status=TrackStatus.PUBLISHED,
+            status=TrackStatus.PROCESSING,
             language="zxx",
         )
         session.add(track)
@@ -81,12 +84,30 @@ async def _ensure_demo_playable_track(session) -> None:
         await session.flush()
 
     audio = _demo_wav_bytes()
-    content_hash = hashlib.sha256(audio).hexdigest()
+    probe = await AudioValidationService(get_settings()).validate_bytes(audio, suffix=".wav")
     storage = get_storage()
+
     for quality in (AudioQuality.LOW, AudioQuality.MEDIUM, AudioQuality.LOSSLESS):
-        key = f"artists/{artist.id}/demo/connectivity-test/{quality.value}/{content_hash}.wav"
+        source_type = (
+            SourceType.ARTIST_UPLOAD
+            if quality == AudioQuality.LOSSLESS
+            else SourceType.DERIVATIVE
+        )
+        key = f"artists/{artist.id}/demo/connectivity-test/{quality.value}/{probe.content_hash}.kby"
         if not await storage.exists(key, bucket=StorageBucket.PERMANENT):
-            await storage.put(key, audio, bucket=StorageBucket.PERMANENT, content_type="audio/wav")
+            kby = pack(
+                audio,
+                content_hash=probe.content_hash,
+                quality=quality.value,
+                content_type="audio/wav",
+                settings=get_settings(),
+            )
+            await storage.put(
+                key,
+                kby,
+                bucket=StorageBucket.PERMANENT,
+                content_type="application/vnd.kubanfy.kby",
+            )
         asset = await session.scalar(
             select(AudioAsset).where(
                 AudioAsset.track_id == track.id,
@@ -99,16 +120,16 @@ async def _ensure_demo_playable_track(session) -> None:
                 AudioAsset(
                     track_id=track.id,
                     storage_key=key,
-                    codec="pcm_s16le",
-                    bitrate=1411,
-                    bit_depth=16,
-                    sample_rate=44100,
-                    channels=2,
-                    duration=8.0,
-                    size=len(audio),
+                    codec=probe.codec,
+                    bitrate=(probe.bitrate // 1000) if probe.bitrate else None,
+                    bit_depth=probe.bit_depth,
+                    sample_rate=probe.sample_rate,
+                    channels=probe.channels,
+                    duration=probe.duration,
+                    size=probe.size,
                     quality=quality,
-                    source_type=SourceType.ARTIST_UPLOAD,
-                    content_hash=content_hash,
+                    source_type=source_type,
+                    content_hash=probe.content_hash,
                     version=1,
                     is_active=True,
                 )
@@ -187,11 +208,24 @@ async def seed() -> None:
                         role=ArtistMemberRole.OWNER,
                     )
                 )
+
+        track = await session.scalar(select(Track).where(Track.slug == "guantanamera-demo"))
+        if track is None:
+            release = Release(
+                artist_id=artist.id,
+                title="Guantanamera Demo",
+                type=ReleaseType.SINGLE,
+                status=TrackStatus.DRAFT,
+            )
+            session.add(release)
+            await session.flush()
             track = Track(
                 title="Guantanamera (Demo)",
                 slug="guantanamera-demo",
-                duration=180.0,
-                status=TrackStatus.PUBLISHED,
+                duration=8.0,
+                release_id=release.id,
+                album_id=release.id,
+                status=TrackStatus.PROCESSING,
                 language="es",
             )
             session.add(track)
@@ -199,7 +233,101 @@ async def seed() -> None:
             session.add(
                 TrackArtist(track_id=track.id, artist_id=artist.id, role="main", display_order=0)
             )
+            if demo:
+                session.add(
+                    LicenseRecord(
+                        track_id=track.id,
+                        release_id=release.id,
+                        artist_id=artist.id,
+                        accepted_by_user_id=demo.id,
+                        storage_allowed=True,
+                        processing_allowed=True,
+                        transcoding_allowed=True,
+                        streaming_allowed=True,
+                        artwork_allowed=True,
+                        metadata_allowed=True,
+                        license_version="1.0",
+                        status=LicenseStatus.ACTIVE,
+                    )
+                )
+            await session.flush()
             print("Created demo artist + track")
+        else:
+            release = await session.get(Release, track.release_id) if track.release_id else None
+
+        # Never seed a published track without the same validated/KBY/AudioAsset
+        # chain required by the production playback path.
+        if track.status != TrackStatus.PUBLISHED:
+            audio = _demo_wav_bytes()
+            probe = await AudioValidationService(get_settings()).validate_bytes(audio, suffix=".wav")
+            storage = get_storage()
+            for quality in (AudioQuality.LOW, AudioQuality.MEDIUM, AudioQuality.LOSSLESS):
+                source_type = (
+                    SourceType.ARTIST_UPLOAD
+                    if quality == AudioQuality.LOSSLESS
+                    else SourceType.DERIVATIVE
+                )
+                key = f"artists/{artist.id}/tracks/{track.id}/demo/{quality.value}/{probe.content_hash}.kby"
+                if not await storage.exists(key, bucket=StorageBucket.PERMANENT):
+                    kby = pack(
+                        audio,
+                        content_hash=probe.content_hash,
+                        quality=quality.value,
+                        content_type="audio/wav",
+                        settings=get_settings(),
+                    )
+                    await storage.put(
+                        key,
+                        kby,
+                        bucket=StorageBucket.PERMANENT,
+                        content_type="application/vnd.kubanfy.kby",
+                    )
+                asset = await session.scalar(
+                    select(AudioAsset).where(
+                        AudioAsset.track_id == track.id,
+                        AudioAsset.quality == quality,
+                        AudioAsset.is_active.is_(True),
+                    )
+                )
+                if asset is None:
+                    session.add(
+                        AudioAsset(
+                            track_id=track.id,
+                            storage_key=key,
+                            codec=probe.codec,
+                            bitrate=(probe.bitrate // 1000) if probe.bitrate else None,
+                            bit_depth=probe.bit_depth,
+                            sample_rate=probe.sample_rate,
+                            channels=probe.channels,
+                            duration=probe.duration,
+                            size=probe.size,
+                            quality=quality,
+                            source_type=source_type,
+                            content_hash=probe.content_hash,
+                            version=1,
+                            is_active=True,
+                        )
+                    )
+            await session.flush()
+            release = await session.get(Release, track.release_id) if track.release_id else None
+            license_rec = await session.scalar(
+                select(LicenseRecord).where(
+                    LicenseRecord.track_id == track.id,
+                    LicenseRecord.status == LicenseStatus.ACTIVE,
+                )
+            )
+            assets = list((await session.scalars(
+                select(AudioAsset).where(
+                    AudioAsset.track_id == track.id,
+                    AudioAsset.is_active.is_(True),
+                )
+            )).all())
+            qualities = {a.quality for a in assets}
+            has_master = any(a.source_type == SourceType.ARTIST_UPLOAD for a in assets)
+            if release and license_rec and has_master and {AudioQuality.LOW, AudioQuality.MEDIUM}.issubset(qualities):
+                track.status = TrackStatus.PUBLISHED
+                release.status = TrackStatus.PUBLISHED
+                await session.flush()
 
         # The connectivity fixture is intentionally created as plaintext only
         # during staging setup; entrypoint immediately converts it to KBY before
