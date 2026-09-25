@@ -15,8 +15,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from sqlalchemy import select
 
-from app.core.database import async_session_factory, close_db, init_db
+import app.core.database as database
 from app.core.config import get_settings
+from app.core.database import close_db, init_db
 from app.models.music import AudioAsset, Track
 from app.services.kby import pack
 from app.storage import StorageBucket, get_storage
@@ -25,10 +26,10 @@ from app.storage import StorageBucket, get_storage
 async def main() -> None:
     settings = get_settings()
     init_db(settings)
-    if async_session_factory is None:
+    if database.async_session_factory is None:
         raise RuntimeError("DB not initialized")
 
-    async with async_session_factory() as session:
+    async with database.async_session_factory() as session:
         track = await session.scalar(
             select(Track).where(Track.slug == "kubanfy-connectivity-test")
         )
@@ -60,7 +61,9 @@ async def main() -> None:
                 plaintext,
                 content_hash=content_hash,
                 quality=asset.quality.value,
-                content_type="audio/wav" if asset.storage_key.endswith(".wav") else "audio/mpeg",
+                content_type="audio/wav"
+                if asset.storage_key.endswith(".wav")
+                else "audio/mpeg",
                 settings=settings,
             )
             new_key = asset.storage_key.rsplit(".", 1)[0] + ".kby"
