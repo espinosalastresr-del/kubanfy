@@ -1,6 +1,6 @@
 import SwiftUI
 
-private struct SearchView: View {
+struct SearchView: View {
     @ObservedObject var audioPlayer: AudioPlayer
     @State private var query = ""
     @State private var results: [TrackSearchResult] = []
