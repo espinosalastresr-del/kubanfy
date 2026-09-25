@@ -26,7 +26,7 @@ struct AuthContext: Codable {
 }
 struct DiscoveryHome: Codable {
     struct Artist: Codable { let id: UUID; let name: String; let slug: String; let verified: Bool }
-    struct Track: Codable, Identifiable { let id: UUID; let title: String; let duration: Double? }
+    struct Track: Codable, Identifiable, Hashable { let id: UUID; let title: String; let duration: Double? }
     struct Ranking: Codable { let rank: Int; let trackId: UUID; let title: String?; let score: Double; let metrics: [String: Int]
         enum CodingKeys: String, CodingKey { case rank, title, score, metrics; case trackId = "track_id" } }
     let country: String; let localArtists: [Artist]; let topCountry: [Ranking]; let topGlobal: [Ranking]; let newReleases: [Track]; let trending: [Ranking]; let viralByCountry: [Ranking]
@@ -128,7 +128,7 @@ private final class KeychainStore {
         guard SecItemCopyMatching(query as CFDictionary, &item) == errSecSuccess, let data = item as? Data else { return nil }
         return String(data: data, encoding: .utf8)
     }
-    func remove(_ account: String) { SecItemDelete([kSecClass as String: kSecClassGenericPassword, kSecAttrService as String: service, kSecAttrAccount as String: account] as CFDictionary) }
+    func remove(_ account: String) { SecItemDelete([kSecClass as String: kSecAttrGenericPassword, kSecAttrService as String: service, kSecAttrAccount as String: account] as CFDictionary) }
 }
 
 final class APIClient {
