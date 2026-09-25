@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import binascii
 import hashlib
 import hmac
 import json
@@ -214,7 +215,7 @@ class LocalStorage(StorageProvider):
             bucket = StorageBucket(payload["b"])
             key = payload["k"]
             expires_at = int(payload["e"])
-        except (ValueError, KeyError, TypeError, json.JSONDecodeError, UnicodeDecodeError) as exc:
+        except (binascii.Error, ValueError, KeyError, TypeError, json.JSONDecodeError, UnicodeDecodeError) as exc:
             raise StorageError("Invalid storage delivery token", status_code=404) from exc
         if not key or not key.endswith(".kby") or expires_at < int(time.time()):
             raise StorageError("Storage delivery token expired or invalid", status_code=404)
