@@ -42,7 +42,7 @@ class PlaybackSession(Base):
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     suspicious_score: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     country: Mapped[str | None] = mapped_column(String(2), nullable=True, index=True)
-    metadata_json: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, default=dict)
+    metadata_json: Mapped[dict[str, Any]] = mapped_column("metadata", JSONB, nullable=False, default=dict)
 
 
 class DownloadReceipt(Base):
