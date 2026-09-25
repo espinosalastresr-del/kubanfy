@@ -255,6 +255,9 @@ struct ContentView: View {
             .sheet(isPresented: $showPlayer) {
                 PlayerView(audioPlayer: audioPlayer)
             }
+            .task(id: user.id) {
+                await APIClient.shared.preloadOfflineBootstrapIfNeeded()
+            }
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) { Text("KubanFy").font(.headline.weight(.bold)) }
                 ToolbarItem(placement: .topBarTrailing) {
