@@ -147,9 +147,34 @@ final class APIClient {
     private let decoder: JSONDecoder
     private let session: URLSession
 
+    private static let fallbackBaseURL: String = {
+#if DEBUG
+        return "https://kubanfy-api-staging.onrender.com/v1"
+#else
+        return "https://api.kubanfy.com/v1"
+#endif
+    }()
+
+    private static func resolveBaseURL() -> URL {
+        let candidates = [
+            ProcessInfo.processInfo.environment["KUBANFY_API_URL"],
+            Bundle.main.object(forInfoDictionaryKey: "KubanFyAPIBaseURL") as? String,
+        ]
+        for value in candidates.compactMap({ $0 }) {
+            let normalized = value.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+            if normalized.isEmpty || normalized.contains("$(") { continue }
+            if let url = URL(string: normalized), url.scheme == "https", url.host != nil {
+                return url
+            }
+        }
+        guard let fallback = URL(string: fallbackBaseURL) else {
+            preconditionFailure("Invalid KubanFy API fallback URL")
+        }
+        return fallback
+    }
+
     private init() {
-        let raw = ProcessInfo.processInfo.environment["KUBANFY_API_URL"] ?? (Bundle.main.object(forInfoDictionaryKey: "KubanFyAPIBaseURL") as? String) ?? "https://api.kubanfy.com/v1"
-        baseURL = URL(string: raw.trimmingCharacters(in: CharacterSet(charactersIn: "/")))! 
+        baseURL = Self.resolveBaseURL()
         decoder = JSONDecoder(); decoder.dateDecodingStrategy = .iso8601
         let configuration = URLSessionConfiguration.default
         configuration.waitsForConnectivity = false
