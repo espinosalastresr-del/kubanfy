@@ -57,8 +57,8 @@ struct TrackDetail: Codable, Identifiable {
 }
 
 struct TrackSearchResult: Codable, Identifiable {
-    let id = UUID(); let provider: String; let providerTrackId: String; let title: String; let artists: [String]; let album: String?; let duration: Double?; let artwork: String?; let isrc: String?
-    enum CodingKeys: String, CodingKey { case provider, title, artists, album, duration, artwork, isrc; case providerTrackId = "provider_track_id" }
+    let id = UUID(); let provider: String; let providerTrackId: String; let trackId: UUID?; let title: String; let artists: [String]; let album: String?; let duration: Double?; let artwork: String?; let isrc: String?
+    enum CodingKeys: String, CodingKey { case provider, title, artists, album, duration, artwork, isrc, trackId; case providerTrackId = "provider_track_id" }
 }
 struct PlaybackResponse: Codable {
     let url: URL
