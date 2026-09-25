@@ -73,3 +73,34 @@ def test_terminal_status_values_are_stable() -> None:
     assert TrackStatus.DELETED.value == "deleted"
     assert TrackStatus.TAKEDOWN.value == "takedown"
     assert TrackStatus.HIDDEN.value == "hidden"
+
+
+@pytest.mark.asyncio
+async def test_published_track_requires_validated_asset() -> None:
+    artist_id = uuid4()
+    track_id = uuid4()
+    release_id = uuid4()
+    user_id = uuid4()
+    session = SimpleNamespace(
+        scalar=AsyncMock(
+            side_effect=[
+                SimpleNamespace(role=ArtistMemberRole.OWNER),
+                SimpleNamespace(),
+                None,
+            ]
+        ),
+        get=AsyncMock(
+            side_effect=[
+                SimpleNamespace(status=TrackStatus.DRAFT, release_id=release_id),
+                SimpleNamespace(artist_id=artist_id, status=TrackStatus.DRAFT),
+            ]
+        ),
+    )
+    service = ReleaseTrackService(session)
+    with pytest.raises(ValidationError, match="Validated active artist audio asset required"):
+        await service.set_track_status(
+            user_id=user_id,
+            artist_id=artist_id,
+            track_id=track_id,
+            status=TrackStatus.PUBLISHED,
+        )
