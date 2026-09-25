@@ -84,6 +84,15 @@ struct PlaybackHeartbeatResponse: Codable {
     enum CodingKeys: String, CodingKey { case qualified; case listenedMs = "listened_ms"; case suspiciousScore = "suspicious_score" }
 }
 struct LoginResponse: Codable { let user: UserResponse; let tokens: TokenResponse }
+struct FavoriteResponse: Codable { let id: UUID; let targetType: String; let targetId: UUID; let createdAt: Date
+    enum CodingKeys: String, CodingKey { case id; case targetType = "target_type"; case targetId = "target_id"; case createdAt = "created_at" }
+}
+struct PlaylistResponse: Codable, Identifiable { let id: UUID; let name: String; let description: String?; let visibility: String; let createdAt: Date; let updatedAt: Date
+    enum CodingKeys: String, CodingKey { case id, name, description, visibility; case createdAt = "created_at"; case updatedAt = "updated_at" }
+}
+struct DownloadTicketResponse: Codable { let downloadTicket: String; let expiresInSeconds: Int
+    enum CodingKeys: String, CodingKey { case downloadTicket = "download_ticket"; case expiresInSeconds = "expires_in_seconds" }
+}
 
 enum APIError: LocalizedError {
     case invalidURL, decoding, missingSession, network
@@ -250,6 +259,42 @@ final class APIClient {
         let body: [String: Any] = ["token": token, "position_ms": max(0, positionMs), "paused": paused, "completed": completed]
         let data = try await performRequest(path: "/analytics/playback/heartbeat", method: "POST", body: JSONSerialization.data(withJSONObject: body))
         return try decoder.decode(PlaybackHeartbeatResponse.self, from: data)
+    }
+
+    func addFavorite(trackId: UUID) async throws -> FavoriteResponse {
+        let body = try JSONSerialization.data(withJSONObject: ["target_type": "track", "target_id": trackId.uuidString])
+        return try decoder.decode(FavoriteResponse.self, from: try await performRequest(path: "/library/favorites", method: "POST", body: body))
+    }
+
+    func removeFavorite(trackId: UUID) async throws {
+        _ = try await performRequest(path: "/library/favorites/track/\(trackId.uuidString)", method: "DELETE")
+    }
+
+    func listFavorites() async throws -> [FavoriteResponse] {
+        try decoder.decode([FavoriteResponse].self, from: try await performRequest(path: "/library/favorites"))
+    }
+
+    func listPlaylists() async throws -> [PlaylistResponse] {
+        try decoder.decode([PlaylistResponse].self, from: try await performRequest(path: "/library/playlists"))
+    }
+
+    func createPlaylist(name: String) async throws -> PlaylistResponse {
+        let body = try JSONSerialization.data(withJSONObject: ["name": name, "visibility": "private"])
+        return try decoder.decode(PlaylistResponse.self, from: try await performRequest(path: "/library/playlists", method: "POST", body: body))
+    }
+
+    func addToPlaylist(playlistId: UUID, trackId: UUID) async throws {
+        _ = try await performRequest(path: "/library/playlists/\(playlistId.uuidString)/tracks/\(trackId.uuidString)", method: "POST")
+    }
+
+    func issueDownloadTicket(trackId: UUID, quality: String = "low") async throws -> DownloadTicketResponse {
+        let body = try JSONSerialization.data(withJSONObject: ["track_id": trackId.uuidString, "quality": quality, "device_id": deviceID])
+        return try decoder.decode(DownloadTicketResponse.self, from: try await performRequest(path: "/analytics/downloads/ticket", method: "POST", body: body))
+    }
+
+    func completeDownload(ticket: String, sizeBytes: Int) async throws {
+        let body = try JSONSerialization.data(withJSONObject: ["ticket": ticket, "size_bytes": sizeBytes, "device_id": deviceID])
+        _ = try await performRequest(path: "/analytics/downloads/complete", method: "POST", body: body)
     }
 
     func search(query: String, limit: Int = 20) async throws -> [TrackSearchResult] {
