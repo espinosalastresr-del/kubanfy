@@ -230,6 +230,20 @@ struct ContentView: View {
                             MiniPlayer(audioPlayer: audioPlayer) { showPlayer = true }
                         }
 
+                        if let playbackError = audioPlayer.errorMessage {
+                            HStack(alignment: .top, spacing: 10) {
+                                Image(systemName: "exclamationmark.triangle.fill")
+                                Text(playbackError)
+                                    .font(.footnote)
+                                    .foregroundStyle(.white.opacity(0.85))
+                            }
+                            .foregroundStyle(.red)
+                            .padding(12)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .background(Color.red.opacity(0.10))
+                            .clipShape(RoundedRectangle(cornerRadius: 12))
+                        }
+
                         if context?.isArtist == true {
                             quickAction("person.crop.rectangle.stack", "Panel de artista")
                         }
