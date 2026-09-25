@@ -5,6 +5,7 @@ from __future__ import annotations
 from uuid import UUID
 
 from fastapi import APIRouter, HTTPException, Query, Request
+from sqlalchemy import select
 
 from app.api.deps import CurrentUser, DbSession, OptionalUser
 from app.core.exceptions import AuthError
@@ -25,6 +26,7 @@ from app.services.entitlement import EntitlementService
 from app.services.geo import GeoService
 from app.services.music_engine import MusicEngine
 from app.services.offline_license import OfflineLicenseService
+from app.models.music import Artist, Track, TrackArtist
 
 router = APIRouter(prefix="/music", tags=["music"])
 
@@ -100,6 +102,45 @@ async def music_preview(
         duration_seconds=result.source.duration_seconds,
         codec=result.source.codec,
     )
+
+
+@router.get("/tracks/{track_id}")
+async def music_track_detail(
+    track_id: UUID,
+    session: DbSession,
+    user: OptionalUser,
+) -> dict:
+    """Return presentation metadata for a published track detail screen."""
+    track = await session.scalar(
+        select(Track).where(Track.id == track_id, Track.status == "published")
+    )
+    if track is None:
+        from app.core.exceptions import NotFoundError
+
+        raise NotFoundError("Track not found")
+
+    rows = (
+        await session.execute(
+            select(Artist)
+            .join(TrackArtist, TrackArtist.artist_id == Artist.id)
+            .where(TrackArtist.track_id == track.id, Artist.status == "active")
+            .order_by(TrackArtist.display_order, Artist.name)
+        )
+    ).scalars().all()
+    return {
+        "id": track.id,
+        "title": track.title,
+        "duration": track.duration,
+        "isrc": track.isrc,
+        "explicit": track.explicit,
+        "language": track.language,
+        "release_date": track.release_date,
+        "artwork_url": track.artwork_url,
+        "artists": [
+            {"id": artist.id, "name": artist.name, "slug": artist.slug, "verified": artist.verified}
+            for artist in rows
+        ],
+    }
 
 
 @router.get("/play/{track_id}", response_model=MusicPlaybackResponse)
