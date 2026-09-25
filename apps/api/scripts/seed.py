@@ -135,6 +135,8 @@ async def _ensure_demo_playable_track(session) -> None:
                 )
             )
     await session.flush()
+    track.status = TrackStatus.PUBLISHED
+    await session.flush()
     print(f"Ensured playable demo track: {track.id}")
 
 
@@ -257,7 +259,10 @@ async def seed() -> None:
 
         # Never seed a published track without the same validated/KBY/AudioAsset
         # chain required by the production playback path.
-        if track.status != TrackStatus.PUBLISHED:
+        # Reconcile the complete playable chain on every staging seed run.
+        # This also repairs legacy fixtures that were published before AudioAsset
+        # creation became mandatory.
+        if track is not None:
             audio = _demo_wav_bytes()
             probe = await AudioValidationService(get_settings()).validate_bytes(audio, suffix=".wav")
             storage = get_storage()
@@ -324,9 +329,10 @@ async def seed() -> None:
             )).all())
             qualities = {a.quality for a in assets}
             has_master = any(a.source_type == SourceType.ARTIST_UPLOAD for a in assets)
-            if release and license_rec and has_master and {AudioQuality.LOW, AudioQuality.MEDIUM}.issubset(qualities):
+            if license_rec and has_master and {AudioQuality.LOW, AudioQuality.MEDIUM}.issubset(qualities):
                 track.status = TrackStatus.PUBLISHED
-                release.status = TrackStatus.PUBLISHED
+                if release:
+                    release.status = TrackStatus.PUBLISHED
                 await session.flush()
 
         # The connectivity fixture is intentionally created as plaintext only
