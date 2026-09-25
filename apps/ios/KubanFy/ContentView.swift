@@ -198,7 +198,7 @@ struct ContentView: View {
                             ForEach(discovery.trending.prefix(5), id: \.rank) { item in
                                 if let title = item.title {
                                     NavigationLink {
-                                        TrackDetailView(track: .init(id: trackID, title: title, duration: nil), audioPlayer: audioPlayer)
+                                        TrackDetailView(track: .init(id: item.trackId ?? UUID(), title: title, duration: nil), audioPlayer: audioPlayer)
                                     } label: {
                                         HStack(spacing: 14) {
                                             Text(String(item.rank)).font(.headline.monospacedDigit()).foregroundStyle(.white.opacity(0.35)).frame(width: 24)
