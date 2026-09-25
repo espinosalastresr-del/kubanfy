@@ -132,9 +132,6 @@ struct SearchView: View {
         .task {
             searchFocused = true
         }
-        .navigationDestination(for: DiscoveryHome.Track.self) { track in
-            TrackDetailView(track: track, audioPlayer: audioPlayer)
-        }
         .preferredColorScheme(.dark)
     }
 
@@ -142,7 +139,7 @@ struct SearchView: View {
     private func searchRow(_ result: TrackSearchResult) -> some View {
         HStack(spacing: 12) {
             if let trackId = result.trackId {
-                NavigationLink(value: DiscoveryHome.Track(id: trackId, title: result.title, duration: result.duration)) {
+                NavigationLink { TrackDetailView(track: DiscoveryHome.Track(id: trackId, title: result.title, duration: result.duration), audioPlayer: audioPlayer) } label: {
                     HStack(spacing: 12) {
                         searchArtwork(result)
                         searchText(result)
