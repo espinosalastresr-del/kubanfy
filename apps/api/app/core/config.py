@@ -204,9 +204,14 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def production_guards(self) -> Settings:
-        if self.environment == Environment.STAGING and self.staging_use_local_storage:
-            if not self.public_base_url.strip().lower().startswith("https://"):
-                raise ValueError("PUBLIC_BASE_URL must be an HTTPS origin when STAGING_USE_LOCAL_STORAGE is enabled")
+        if (
+            self.environment == Environment.STAGING
+            and self.staging_use_local_storage
+            and not self.public_base_url.strip().lower().startswith("https://")
+        ):
+            raise ValueError(
+                "PUBLIC_BASE_URL must be an HTTPS origin when STAGING_USE_LOCAL_STORAGE is enabled"
+            )
         if self.environment == Environment.PRODUCTION:
             # Redis-backed abuse controls must remain effective in production.
             self.rate_limit_fail_open = False
