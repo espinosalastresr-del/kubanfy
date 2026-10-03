@@ -29,6 +29,10 @@ final class AudioPlayer: ObservableObject {
     private var recoveryAttempts = 0
     private var playbackGeneration = UUID()
 
+    private func log(_ level: AppLogLevel, _ event: String, _ message: String, _ context: [String: String] = [:]) {
+        AppLogger.shared.log(level, event: event, message: message, context: context)
+    }
+
     init() {
         let session = AVAudioSession.sharedInstance()
         try? session.setCategory(.playback, mode: .default, options: [])
@@ -136,6 +140,11 @@ final class AudioPlayer: ObservableObject {
     }
 
     private func start(track: DiscoveryHome.Track) async {
+        let startedAt = Date()
+        log(.info, "playback.start", "Iniciando reproducción", [
+            "track_id": track.id.uuidString,
+            "quality": "low"
+        ])
         isLoading = true
         isPlaying = false
         errorMessage = nil
@@ -164,6 +173,9 @@ final class AudioPlayer: ObservableObject {
             quality: "low"
         ) {
             do {
+                log(.debug, "playback.cache_hit", "Usando audio offline/cache autorizado", [
+                    "track_id": track.id.uuidString
+                ])
                 try await activateLocalItem(
                     localURL,
                     track: track,
@@ -171,8 +183,16 @@ final class AudioPlayer: ObservableObject {
                     position: 0
                 )
                 attachAnalyticsSessionIfPossible(track: track, generation: generation)
+                log(.info, "playback.ready", "Reproducción iniciada desde caché", [
+                    "track_id": track.id.uuidString,
+                    "elapsed_ms": String(Int(Date().timeIntervalSince(startedAt) * 1000))
+                ])
                 return
             } catch {
+                log(.warning, "playback.cache_failed", "La caché local no pudo activarse; se intenta online", [
+                    "track_id": track.id.uuidString,
+                    "error": String(describing: error)
+                ])
                 // Corrupt/unsupported local data falls through to the normal
                 // authorized online path. The cache layer already removes bad data.
             }
@@ -195,6 +215,10 @@ final class AudioPlayer: ObservableObject {
             duration = track.duration ?? 0
             position = 0
 
+            log(.debug, "playback.download", "Audio autorizado obtenido; materializando reproducción", [
+                "track_id": track.id.uuidString,
+                "content_hash": playback.contentHash ?? "missing"
+            ])
             let localURL = try await APIClient.shared.cacheAuthorizedPlaybackKBY(playback)
             guard generation == playbackGeneration else {
                 try? FileManager.default.removeItem(at: localURL)
@@ -208,8 +232,17 @@ final class AudioPlayer: ObservableObject {
                 position: 0
             )
             startHeartbeatLoop(interval: session.heartbeatIntervalSeconds)
+            log(.info, "playback.ready", "Reproducción iniciada online", [
+                "track_id": track.id.uuidString,
+                "elapsed_ms": String(Int(Date().timeIntervalSince(startedAt) * 1000))
+            ])
         } catch {
             guard generation == playbackGeneration else { return }
+            log(.error, "playback.failed", "Falló la reproducción", [
+                "track_id": track.id.uuidString,
+                "elapsed_ms": String(Int(Date().timeIntervalSince(startedAt) * 1000)),
+                "error": String(describing: error)
+            ])
             stopPlaybackResources()
             isPlaying = false
             errorMessage = error.localizedDescription
@@ -230,16 +263,17 @@ final class AudioPlayer: ObservableObject {
 
         let item = AVPlayerItem(url: url)
         item.preferredForwardBufferDuration = 0
-        try await waitUntilReady(item)
 
-        guard generation == playbackGeneration else { return }
-
+        // AVPlayerItem.status does not reliably transition to .readyToPlay
+        // until the item is attached to an AVPlayer. Waiting before attaching
+        // caused the previous artificial HTTP 408 after ~5 seconds.
         let oldURL = currentLocalAudioURL
         if let player {
             player.replaceCurrentItem(with: item)
         } else {
-            let newPlayer = AVPlayer(playerItem: item)
+            let newPlayer = AVPlayer()
             player = newPlayer
+            newPlayer.replaceCurrentItem(with: item)
             timeObserver = newPlayer.addPeriodicTimeObserver(
                 forInterval: CMTime(seconds: 0.5, preferredTimescale: 600),
                 queue: .main
@@ -252,6 +286,10 @@ final class AudioPlayer: ObservableObject {
                 }
             }
         }
+
+        try await waitUntilReady(item)
+
+        guard generation == playbackGeneration else { return }
 
         currentLocalAudioURL = url
         if let loadedDuration = try? await item.asset.load(.duration) {
@@ -284,18 +322,33 @@ final class AudioPlayer: ObservableObject {
     }
 
     private func waitUntilReady(_ item: AVPlayerItem) async throws {
-        for _ in 0..<100 {
+        let deadline = Date().addingTimeInterval(15)
+        while Date() < deadline {
             switch item.status {
             case .readyToPlay:
+                log(.debug, "audio.ready_to_play", "AVPlayerItem está listo", [
+                    "duration_hint": String(item.asset.duration.seconds)
+                ])
                 return
             case .failed:
+                let nsError = item.error as NSError?
+                log(.error, "audio.item_failed", "AVPlayerItem falló", [
+                    "domain": nsError?.domain ?? "unknown",
+                    "code": nsError.map { String($0.code) } ?? "unknown",
+                    "error": nsError?.localizedDescription ?? "unknown"
+                ])
                 throw item.error ?? APIError.audioDelivery
             case .unknown:
-                try await Task.sleep(nanoseconds: 50_000_000)
+                try await Task.sleep(nanoseconds: 100_000_000)
             @unknown default:
                 throw APIError.audioDelivery
             }
         }
+
+        log(.error, "audio.ready_timeout", "AVPlayerItem no llegó a readyToPlay dentro del límite", [
+            "status": String(describing: item.status),
+            "error": item.error?.localizedDescription ?? "none"
+        ])
         throw APIError.http(408, "El audio no estuvo listo a tiempo")
     }
 
@@ -379,6 +432,7 @@ final class AudioPlayer: ObservableObject {
     }
 
     private func handlePlaybackFailure(_ notification: Notification) async {
+        log(.error, "audio.playback_failure_notification", "AVPlayer notificó un fallo de reproducción")
         guard let failedItem = notification.object as? AVPlayerItem,
               failedItem === player?.currentItem,
               currentTrackID != nil,
@@ -506,8 +560,10 @@ final class AudioPlayer: ObservableObject {
         }
 
         if type == .ended {
+            log(.info, "audio.interruption_ended", "Interrupción de audio finalizada")
             try? AVAudioSession.sharedInstance().setActive(true)
         } else {
+            log(.warning, "audio.interrupted", "Reproducción interrumpida")
             isPlaying = false
             Task { await sendHeartbeat(completed: false) }
         }
@@ -533,6 +589,14 @@ final class AudioPlayer: ObservableObject {
         position = 0
         isPlaying = false
         playbackGeneration = UUID()
+    }
+
+    func diagnosticsReport() -> String {
+        AppLogger.shared.exportText()
+    }
+
+    func clearDiagnostics() {
+        AppLogger.shared.clear()
     }
 
     deinit {
