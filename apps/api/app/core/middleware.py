@@ -12,8 +12,9 @@ from starlette.requests import Request
 from starlette.responses import Response
 from starlette.types import ASGIApp
 
-from app.core.logging import get_logger
 import structlog
+
+from app.core.logging import get_logger
 from app.core.metrics import HTTP_LATENCY, HTTP_REQUESTS, normalize_path
 
 logger = get_logger(__name__)
