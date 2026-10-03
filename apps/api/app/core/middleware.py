@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
+import asyncio
 import time
 import uuid
-from collections.abc import Callable
+from collections.abc import AsyncIterator, Callable
 
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
@@ -12,6 +13,7 @@ from starlette.responses import Response
 from starlette.types import ASGIApp
 
 from app.core.logging import get_logger
+import structlog
 from app.core.metrics import HTTP_LATENCY, HTTP_REQUESTS, normalize_path
 
 logger = get_logger(__name__)
@@ -29,6 +31,10 @@ class RequestContextMiddleware(BaseHTTPMiddleware):
 
         request.state.request_id = request_id
         request.state.correlation_id = correlation_id
+        structlog.contextvars.bind_contextvars(
+            request_id=request_id,
+            correlation_id=correlation_id,
+        )
 
         start = time.perf_counter()
         status_code = 500
@@ -53,6 +59,98 @@ class RequestContextMiddleware(BaseHTTPMiddleware):
         try:
             response = await call_next(request)
             status_code = response.status_code
+
+            # StreamingResponse returns control before the body is consumed.
+            # Wrap its iterator so Render also receives first-byte, progress,
+            # completion and cancellation/failure diagnostics.
+            body_iterator = getattr(response, "body_iterator", None)
+            if body_iterator is not None:
+                async def logged_body() -> AsyncIterator[bytes]:
+                    stream_started = time.perf_counter()
+                    bytes_sent = 0
+                    chunks = 0
+                    first_byte_ms: float | None = None
+                    try:
+                        async for chunk in body_iterator:
+                            chunks += 1
+                            chunk_bytes = len(chunk)
+                            bytes_sent += chunk_bytes
+                            if first_byte_ms is None:
+                                first_byte_ms = round(
+                                    (time.perf_counter() - stream_started) * 1000,
+                                    2,
+                                )
+                                logger.info(
+                                    "http.stream",
+                                    event="stream_first_byte",
+                                    request_id=request_id,
+                                    correlation_id=correlation_id,
+                                    method=method,
+                                    path=path,
+                                    status_code=status_code,
+                                    chunk_bytes=chunk_bytes,
+                                    bytes_sent=bytes_sent,
+                                    first_byte_ms=first_byte_ms,
+                                )
+                            yield chunk
+                    except asyncio.CancelledError:
+                        logger.warning(
+                            "http.stream",
+                            event="stream_cancelled",
+                            request_id=request_id,
+                            correlation_id=correlation_id,
+                            method=method,
+                            path=path,
+                            status_code=status_code,
+                            chunks=chunks,
+                            bytes_sent=bytes_sent,
+                            first_byte_ms=first_byte_ms,
+                            elapsed_ms=round(
+                                (time.perf_counter() - stream_started) * 1000,
+                                2,
+                            ),
+                        )
+                        raise
+                    except Exception as exc:
+                        logger.exception(
+                            "http.stream",
+                            event="stream_failed",
+                            request_id=request_id,
+                            correlation_id=correlation_id,
+                            method=method,
+                            path=path,
+                            status_code=status_code,
+                            chunks=chunks,
+                            bytes_sent=bytes_sent,
+                            first_byte_ms=first_byte_ms,
+                            elapsed_ms=round(
+                                (time.perf_counter() - stream_started) * 1000,
+                                2,
+                            ),
+                            error_type=type(exc).__name__,
+                            error=str(exc)[:500],
+                        )
+                        raise
+                    else:
+                        logger.info(
+                            "http.stream",
+                            event="stream_completed",
+                            request_id=request_id,
+                            correlation_id=correlation_id,
+                            method=method,
+                            path=path,
+                            status_code=status_code,
+                            chunks=chunks,
+                            bytes_sent=bytes_sent,
+                            first_byte_ms=first_byte_ms,
+                            elapsed_ms=round(
+                                (time.perf_counter() - stream_started) * 1000,
+                                2,
+                            ),
+                        )
+
+                response.body_iterator = logged_body()
+
             return response
         except Exception as exc:
             failed = True
@@ -75,9 +173,16 @@ class RequestContextMiddleware(BaseHTTPMiddleware):
                 HTTP_REQUESTS.labels(method=method, path=path, status=str(status_code)).inc()
                 HTTP_LATENCY.labels(method=method, path=path).observe(duration_ms / 1000)
 
-            logger.info(
+            response_is_streaming = bool(
+                response is not None and getattr(response, "body_iterator", None) is not None
+            )
+            response_event = "response_ready" if response_is_streaming else "request_completed"
+            log_method = logger.error if status_code >= 500 else (
+                logger.warning if status_code >= 400 else logger.info
+            )
+            log_method(
                 "http.response",
-                event="request_completed",
+                event=response_event,
                 request_id=request_id,
                 correlation_id=correlation_id,
                 method=method,
@@ -89,8 +194,15 @@ class RequestContextMiddleware(BaseHTTPMiddleware):
                     if response is not None
                     else None
                 ),
+                content_type=(
+                    response.headers.get("content-type")
+                    if response is not None
+                    else None
+                ),
+                streaming=response_is_streaming,
                 failed=failed,
             )
+            structlog.contextvars.clear_contextvars()
 
 
 class RequestIdHeaderMiddleware(BaseHTTPMiddleware):
