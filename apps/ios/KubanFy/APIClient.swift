@@ -130,6 +130,30 @@ struct PlaylistResponse: Codable, Identifiable { let id: UUID; let name: String;
 struct DownloadTicketResponse: Codable { let downloadTicket: String; let expiresInSeconds: Int
     enum CodingKeys: String, CodingKey { case downloadTicket = "download_ticket"; case expiresInSeconds = "expires_in_seconds" }
 }
+struct MusicDownloadResponse: Codable {
+    let url: URL?
+    let expiresInSeconds: Int?
+    let quality: String
+    let trackId: UUID?
+    let contentHash: String?
+    let kbyKey: String?
+    let sizeBytes: Int?
+    let downloadTicket: String?
+    let offlineLicense: String?
+    let offlineLicenseExpiresAt: Date?
+
+    enum CodingKeys: String, CodingKey {
+        case url, quality
+        case expiresInSeconds = "expires_in_seconds"
+        case trackId = "track_id"
+        case contentHash = "content_hash"
+        case kbyKey = "kby_key"
+        case sizeBytes = "size_bytes"
+        case downloadTicket = "download_ticket"
+        case offlineLicense = "offline_license"
+        case offlineLicenseExpiresAt = "offline_license_expires_at"
+    }
+}
 
 enum APIError: LocalizedError {
     case invalidURL, decoding, missingSession, network, offlineUnavailable, audioDelivery
@@ -620,6 +644,55 @@ final class APIClient {
 
     func addToPlaylist(playlistId: UUID, trackId: UUID) async throws {
         _ = try await performRequest(path: "/library/playlists/\(playlistId.uuidString)/tracks/\(trackId.uuidString)", method: "POST")
+    }
+
+    func downloadAndCacheTrack(trackId: UUID, quality: String = "low") async throws -> URL {
+        let normalized = ["low", "medium", "lossless"].contains(quality.lowercased()) ? quality.lowercased() : "low"
+        let body = try JSONSerialization.data(withJSONObject: [
+            "track_id": trackId.uuidString,
+            "quality": normalized,
+            "device_id": deviceID
+        ])
+        let data = try await performRequest(path: "/music/download", method: "POST", body: body)
+        let response = try decoder.decode(MusicDownloadResponse.self, from: data)
+        guard let url = response.url,
+              let contentHash = response.contentHash,
+              let kbyKey = response.kbyKey,
+              let offlineLicense = response.offlineLicense,
+              let offlineLicenseExpiresAt = response.offlineLicenseExpiresAt,
+              let resolvedTrackID = response.trackId,
+              resolvedTrackID == trackId else {
+            throw APIError.audioDelivery
+        }
+
+        // Persist the encrypted KBY container, never the decrypted audio.
+        let (container, contentType) = try await downloadAndValidateKBY(
+            url: url,
+            base64Key: kbyKey,
+            expectedHash: contentHash
+        )
+        try saveOfflineKBY(
+            container,
+            trackId: resolvedTrackID,
+            quality: response.quality,
+            contentHash: contentHash,
+            assetVersion: nil,
+            kbyKey: kbyKey,
+            contentType: contentType,
+            offlineLicense: offlineLicense,
+            offlineLicenseExpiresAt: offlineLicenseExpiresAt
+        )
+
+        if let ticket = response.downloadTicket {
+            do {
+                try await completeDownload(ticket: ticket, sizeBytes: container.count)
+            } catch {
+                // Keep the valid device-bound encrypted cache if analytics completion
+                // is temporarily unavailable; it can still be used offline.
+            }
+        }
+
+        return try cachedOfflinePlaybackURL(trackId: resolvedTrackID, quality: response.quality)
     }
 
     func issueDownloadTicket(trackId: UUID, quality: String = "low") async throws -> DownloadTicketResponse {
