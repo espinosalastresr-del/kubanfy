@@ -66,7 +66,27 @@ struct PlayerView: View {
                         Button { showMore = true } label: { Image(systemName: "ellipsis.circle").font(.title2) }
                     }
                     if let message = actionMessage { Text(message).font(.footnote).foregroundStyle(.white.opacity(0.65)).multilineTextAlignment(.center) }
-                    if let error = audioPlayer.errorMessage { Text(error).font(.caption).foregroundStyle(.red).multilineTextAlignment(.center) }
+                    if let error = audioPlayer.errorMessage {
+                        VStack(spacing: 10) {
+                            Text(error)
+                                .font(.caption)
+                                .foregroundStyle(.red)
+                                .multilineTextAlignment(.center)
+                            ShareLink(
+                                item: audioPlayer.diagnosticsReport(),
+                                subject: Text("KubanFy — diagnóstico de reproducción"),
+                                message: Text("Logs técnicos de KubanFy para depuración")
+                            ) {
+                                Label("Compartir diagnóstico", systemImage: "square.and.arrow.up")
+                                    .font(.footnote.weight(.semibold))
+                            }
+                            Button("Limpiar diagnóstico") {
+                                audioPlayer.clearDiagnostics()
+                            }
+                            .font(.caption2)
+                            .foregroundStyle(.white.opacity(0.45))
+                        }
+                    }
                 }.padding(24)
             }
             .background(Color.black.ignoresSafeArea())
