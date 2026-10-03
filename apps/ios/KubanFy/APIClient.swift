@@ -209,6 +209,7 @@ final class APIClient {
     private let keychain = KeychainStore()
     private let decoder: JSONDecoder
     private let session: URLSession
+    private let audioSession: URLSession
 
     private static let fallbackBaseURL: String = {
 #if DEBUG
@@ -245,6 +246,17 @@ final class APIClient {
         configuration.timeoutIntervalForResource = 30
         configuration.httpMaximumConnectionsPerHost = 4
         session = URLSession(configuration: configuration)
+
+        // Audio delivery is deliberately isolated from normal API traffic.
+        // Cuba/mobile networks can take much longer to transfer a KBY container,
+        // while short API requests should keep their strict timeout budget.
+        let audioConfiguration = URLSessionConfiguration.default
+        audioConfiguration.waitsForConnectivity = false
+        audioConfiguration.timeoutIntervalForRequest = 45
+        audioConfiguration.timeoutIntervalForResource = 120
+        audioConfiguration.httpMaximumConnectionsPerHost = 2
+        audioConfiguration.requestCachePolicy = .reloadIgnoringLocalCacheData
+        audioSession = URLSession(configuration: audioConfiguration)
     }
 
     var hasStoredSession: Bool { keychain.load("access") != nil && keychain.load("refresh") != nil }
@@ -490,19 +502,64 @@ final class APIClient {
         base64Key: String,
         expectedHash: String?
     ) async throws -> (Data, String) {
-        let (data, response) = try await session.data(from: url)
-        guard let http = response as? HTTPURLResponse else {
-            throw APIError.audioDelivery
+        let requestID = UUID().uuidString
+        let startedAt = Date()
+        AppLogger.shared.log(.debug, event: "audio.download.start", message: "Descarga de contenedor KBY iniciada", context: [
+            "request_id": requestID,
+            "host": url.host ?? "unknown"
+        ])
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        request.cachePolicy = .reloadIgnoringLocalCacheData
+        request.setValue("application/octet-stream", forHTTPHeaderField: "Accept")
+
+        do {
+            let (data, response) = try await audioSession.data(for: request)
+            guard let http = response as? HTTPURLResponse else {
+                AppLogger.shared.log(.error, event: "audio.download.invalid_response", message: "La respuesta de audio no es HTTP", context: [
+                    "request_id": requestID
+                ])
+                throw APIError.audioDelivery
+            }
+
+            let elapsedMs = String(Int(Date().timeIntervalSince(startedAt) * 1000))
+            AppLogger.shared.log(
+                (200..<300).contains(http.statusCode) ? .debug : .error,
+                event: "audio.download.response",
+                message: "Contenedor KBY recibido",
+                context: [
+                    "request_id": requestID,
+                    "status": String(http.statusCode),
+                    "bytes": String(data.count),
+                    "elapsed_ms": elapsedMs
+                ]
+            )
+
+            guard (200..<300).contains(http.statusCode) else {
+                throw APIError.http(http.statusCode, "Audio delivery failed")
+            }
+
+            let decoded = try OfflineCrypto.decryptKBY(
+                data,
+                base64Key: base64Key,
+                expectedHash: expectedHash
+            )
+            AppLogger.shared.log(.debug, event: "audio.download.validated", message: "Contenedor KBY validado y descifrado correctamente", context: [
+                "request_id": requestID,
+                "bytes": String(data.count),
+                "elapsed_ms": String(Int(Date().timeIntervalSince(startedAt) * 1000))
+            ])
+            return (data, decoded.contentType)
+        } catch {
+            let mapped = mapNetworkError(error)
+            AppLogger.shared.log(.error, event: "audio.download.failure", message: "Falló la descarga del contenedor KBY", context: [
+                "request_id": requestID,
+                "elapsed_ms": String(Int(Date().timeIntervalSince(startedAt) * 1000)),
+                "error": String(describing: mapped)
+            ])
+            throw mapped
         }
-        guard (200..<300).contains(http.statusCode) else {
-            throw APIError.http(http.statusCode, "Audio delivery failed")
-        }
-        let decoded = try OfflineCrypto.decryptKBY(
-            data,
-            base64Key: base64Key,
-            expectedHash: expectedHash
-        )
-        return (data, decoded.contentType)
     }
 
     private func materializeDecryptedAudio(_ data: Data, contentType: String) throws -> URL {
