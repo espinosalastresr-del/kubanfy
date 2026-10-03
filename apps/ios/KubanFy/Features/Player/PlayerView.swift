@@ -56,17 +56,8 @@ struct PlayerView: View {
                                 isDownloading = true
                                 defer { isDownloading = false }
                                 do {
-                                    let ticket = try await APIClient.shared.issueDownloadTicket(trackId: id)
-                                    let playback = try await APIClient.shared.playback(trackId: id, quality: "low")
-                                    let localURL = try await APIClient.shared.fetchAndDecryptKBY(playback)
-                                    let downloads = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0].appendingPathComponent("Downloads", isDirectory: true)
-                                    try FileManager.default.createDirectory(at: downloads, withIntermediateDirectories: true)
-                                    let destination = downloads.appendingPathComponent("\(id.uuidString).kby")
-                                    try? FileManager.default.removeItem(at: destination)
-                                    try FileManager.default.copyItem(at: localURL, to: destination)
-                                    let size = (try FileManager.default.attributesOfItem(atPath: destination.path)[.size] as? NSNumber)?.intValue ?? 0
-                                    try await APIClient.shared.completeDownload(ticket: ticket.downloadTicket, sizeBytes: size)
-                                    actionMessage = "Descarga completada"
+                                    _ = try await APIClient.shared.downloadAndCacheTrack(trackId: id, quality: "low")
+                                    actionMessage = "Descarga completada y protegida sin conexión"
                                 } catch { actionMessage = error.localizedDescription }
                             }
                         } label: {
