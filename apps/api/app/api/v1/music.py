@@ -408,10 +408,10 @@ async def music_offline_bootstrap(
             )
             await entitlement.require_track_access(user.id, track.id)
             playback = await engine.download_by_track_id(
-            track_id=track.id,
-            quality="low",
-            user_id=user.id,
-        )
+                track_id=track.id,
+                quality="low",
+                user_id=user.id,
+            )
             if (
                 playback.signed_url is None
                 or playback.content_hash is None
@@ -429,17 +429,17 @@ async def music_offline_bootstrap(
                 )
                 continue
 
-        asset = await session.scalar(
-            select(AudioAsset)
-            .where(
-                AudioAsset.track_id == track.id,
-                AudioAsset.quality == AudioQuality.LOW,
-                AudioAsset.is_active.is_(True),
-                AudioAsset.content_hash == playback.content_hash,
-                AudioAsset.storage_key.is_not(None),
+            asset = await session.scalar(
+                select(AudioAsset)
+                .where(
+                    AudioAsset.track_id == track.id,
+                    AudioAsset.quality == AudioQuality.LOW,
+                    AudioAsset.is_active.is_(True),
+                    AudioAsset.content_hash == playback.content_hash,
+                    AudioAsset.storage_key.is_not(None),
+                )
+                .order_by(AudioAsset.version.desc())
             )
-            .order_by(AudioAsset.version.desc())
-        )
             if asset is None:
                 logger.warning(
                     "offline_bootstrap_asset_missing",
@@ -452,11 +452,11 @@ async def music_offline_bootstrap(
                 continue
 
             license_row, offline_license = await license_service.issue_bootstrap(
-            user_id=user.id,
-            device_id=device_id,
-            track_id=track.id,
-            quality="low",
-        )
+                user_id=user.id,
+                device_id=device_id,
+                track_id=track.id,
+                quality="low",
+            )
             response.append(
                 MusicOfflineBootstrapResponse(
                     track_id=track.id,
