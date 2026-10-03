@@ -21,8 +21,8 @@ async def validate_offline_license(
     user: CurrentUser,
 ) -> OfflineLicenseResponse:
     logger.info(
-        "offline.license.validate",
-        event="offline_license_validation_started",
+        "offline_license_validation_started",
+        category="offline.license.validate",
         user_id=str(user.id),
         track_id=str(body.track_id) if getattr(body, "track_id", None) else None,
         device_id_present=bool(body.device_id),
@@ -33,8 +33,8 @@ async def validate_offline_license(
         device_id=body.device_id,
     )
     logger.info(
-        "offline.license.validate",
-        event="offline_license_validation_succeeded",
+        "offline_license_validation_succeeded",
+        category="offline.license.validate",
         user_id=str(user.id),
         track_id=str(row.track_id),
         license_id=str(row.id),
