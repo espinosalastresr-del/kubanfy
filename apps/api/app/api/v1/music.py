@@ -163,8 +163,8 @@ async def music_play(
     started = time.perf_counter()
     request_id = getattr(request.state, "request_id", None)
     logger.info(
-        "playback.authorize",
-        event="playback_authorization_started",
+        "playback_authorization_started",
+        category="playback.authorize",
         request_id=request_id,
         track_id=str(track_id),
         quality=quality,
@@ -185,8 +185,8 @@ async def music_play(
     )
     if result.signed_url is None:
         logger.error(
-            "playback.authorize",
-            event="playback_authorization_missing_url",
+            "playback_authorization_missing_url",
+            category="playback.authorize",
             request_id=request_id,
             track_id=str(track_id),
             quality=quality,
@@ -197,8 +197,8 @@ async def music_play(
 
         raise NotFoundError("Playable audio URL unavailable")
     logger.info(
-        "playback.authorize",
-        event="playback_authorization_succeeded",
+        "playback_authorization_succeeded",
+        category="playback.authorize",
         request_id=request_id,
         track_id=str(track_id),
         quality=result.quality,
@@ -333,8 +333,8 @@ async def music_offline_bootstrap(
     started = time.perf_counter()
     request_id = getattr(request.state, "request_id", None)
     logger.info(
-        "offline.bootstrap",
-        event="offline_bootstrap_started",
+        "offline_bootstrap_started",
+        category="offline.bootstrap",
         request_id=request_id,
         user_id=str(user.id),
         limit=limit,
@@ -374,8 +374,8 @@ async def music_offline_bootstrap(
     ).all()
 
     logger.info(
-        "offline.bootstrap",
-        event="offline_bootstrap_tracks_selected",
+        "offline_bootstrap_tracks_selected",
+        category="offline.bootstrap",
         request_id=request_id,
         user_id=str(user.id),
         selected_count=len(tracks),
@@ -383,8 +383,8 @@ async def music_offline_bootstrap(
     )
     if not tracks:
         logger.warning(
-            "offline.bootstrap",
-            event="offline_bootstrap_no_tracks",
+            "offline_bootstrap_no_tracks",
+            category="offline.bootstrap",
             request_id=request_id,
             user_id=str(user.id),
             elapsed_ms=round((time.perf_counter() - started) * 1000, 2),
@@ -400,8 +400,8 @@ async def music_offline_bootstrap(
         track_started = time.perf_counter()
         try:
             logger.info(
-                "offline.bootstrap",
-                event="offline_bootstrap_track_started",
+                "offline_bootstrap_track_started",
+                category="offline.bootstrap",
                 request_id=request_id,
                 user_id=str(user.id),
                 track_id=str(track.id),
@@ -418,8 +418,8 @@ async def music_offline_bootstrap(
                 or not playback.kby_key
             ):
                 logger.warning(
-                    "offline.bootstrap",
-                    event="offline_bootstrap_track_incomplete",
+                    "offline_bootstrap_track_incomplete",
+                    category="offline.bootstrap",
                     request_id=request_id,
                     user_id=str(user.id),
                     track_id=str(track.id),
@@ -442,8 +442,8 @@ async def music_offline_bootstrap(
         )
             if asset is None:
                 logger.warning(
-                    "offline.bootstrap",
-                    event="offline_bootstrap_asset_missing",
+                    "offline_bootstrap_asset_missing",
+                    category="offline.bootstrap",
                     request_id=request_id,
                     user_id=str(user.id),
                     track_id=str(track.id),
@@ -473,8 +473,8 @@ async def music_offline_bootstrap(
                 )
             )
             logger.info(
-                "offline.bootstrap",
-                event="offline_bootstrap_track_succeeded",
+                "offline_bootstrap_track_succeeded",
+                category="offline.bootstrap",
                 request_id=request_id,
                 user_id=str(user.id),
                 track_id=str(track.id),
@@ -484,8 +484,8 @@ async def music_offline_bootstrap(
             )
         except Exception as exc:
             logger.exception(
-                "offline.bootstrap",
-                event="offline_bootstrap_track_failed",
+                "offline_bootstrap_track_failed",
+                category="offline.bootstrap",
                 request_id=request_id,
                 user_id=str(user.id),
                 track_id=str(track.id),
@@ -495,8 +495,8 @@ async def music_offline_bootstrap(
             )
 
     logger.info(
-        "offline.bootstrap",
-        event="offline_bootstrap_completed",
+        "offline_bootstrap_completed",
+        category="offline.bootstrap",
         request_id=request_id,
         user_id=str(user.id),
         requested_limit=limit,
@@ -655,16 +655,16 @@ async def local_storage_delivery(request: Request, token: str):
     started = time.perf_counter()
     request_id = getattr(request.state, "request_id", None)
     logger.info(
-        "playback.delivery",
-        event="local_delivery_started",
+        "local_delivery_started",
+        category="playback.delivery",
         request_id=request_id,
         token_length=len(token),
     )
     storage = get_storage()
     if not isinstance(storage, LocalStorage):
         logger.error(
-            "playback.delivery",
-            event="local_delivery_backend_unavailable",
+            "local_delivery_backend_unavailable",
+            category="playback.delivery",
             request_id=request_id,
             backend=type(storage).__name__,
         )
@@ -674,8 +674,8 @@ async def local_storage_delivery(request: Request, token: str):
     key_fingerprint = hashlib.sha256(key.encode("utf-8")).hexdigest()[:16]
     total = await storage.size(key, bucket=bucket)
     logger.info(
-        "playback.delivery",
-        event="local_delivery_authorized",
+        "local_delivery_authorized",
+        category="playback.delivery",
         request_id=request_id,
         bucket=bucket.value,
         key_fingerprint=key_fingerprint,
@@ -695,8 +695,8 @@ async def local_storage_delivery(request: Request, token: str):
                 yield chunk
         except asyncio.CancelledError:
             logger.warning(
-                "playback.delivery",
-                event="local_delivery_cancelled",
+                "local_delivery_cancelled",
+                category="playback.delivery",
                 request_id=request_id,
                 bucket=bucket.value,
                 key_fingerprint=key_fingerprint,
@@ -707,8 +707,8 @@ async def local_storage_delivery(request: Request, token: str):
             raise
         except Exception as exc:
             logger.exception(
-                "playback.delivery",
-                event="local_delivery_stream_failed",
+                "local_delivery_stream_failed",
+                category="playback.delivery",
                 request_id=request_id,
                 bucket=bucket.value,
                 key_fingerprint=key_fingerprint,
@@ -721,8 +721,8 @@ async def local_storage_delivery(request: Request, token: str):
             raise
         else:
             logger.info(
-                "playback.delivery",
-                event="local_delivery_completed",
+                "local_delivery_completed",
+                category="playback.delivery",
                 request_id=request_id,
                 bucket=bucket.value,
                 key_fingerprint=key_fingerprint,
