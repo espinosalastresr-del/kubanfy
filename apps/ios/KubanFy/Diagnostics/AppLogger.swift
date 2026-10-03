@@ -15,8 +15,17 @@ final class AppLogger {
     private let lock = NSLock()
     private let maxEntries = 500
     private var entries: [String] = []
+    private let fileURL: URL
 
-    private init() {}
+    private init() {
+        let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
+        let directory = base.appendingPathComponent("KubanFyDiagnostics", isDirectory: true)
+        try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        fileURL = directory.appendingPathComponent("app.log")
+        if let existing = try? String(contentsOf: fileURL, encoding: .utf8) {
+            entries = Array(existing.split(separator: "\n", omittingEmptySubsequences: false).suffix(maxEntries)).map(String.init)
+        }
+    }
 
     func log(
         _ level: AppLogLevel,
@@ -39,6 +48,13 @@ final class AppLogger {
         if entries.count > maxEntries {
             entries.removeFirst(entries.count - maxEntries)
         }
+        if let existing = try? String(contentsOf: fileURL, encoding: .utf8) {
+            let lines = Array(existing.split(separator: "\n", omittingEmptySubsequences: false).suffix(maxEntries - 1))
+            let content = (lines + [Substring(line)]).joined(separator: "\n") + "\n"
+            try? content.write(to: fileURL, atomically: true, encoding: .utf8)
+        } else {
+            try? (line + "\n").write(to: fileURL, atomically: true, encoding: .utf8)
+        }
         lock.unlock()
 
         switch level {
@@ -56,12 +72,16 @@ final class AppLogger {
     func exportText() -> String {
         lock.lock()
         defer { lock.unlock() }
+        if let persisted = try? String(contentsOf: fileURL, encoding: .utf8), !persisted.isEmpty {
+            return persisted
+        }
         return entries.joined(separator: "\n")
     }
 
     func clear() {
         lock.lock()
         entries.removeAll()
+        try? FileManager.default.removeItem(at: fileURL)
         lock.unlock()
     }
 
