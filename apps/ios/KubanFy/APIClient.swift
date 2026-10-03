@@ -592,6 +592,15 @@ final class APIClient {
         try offlineCacheDirectory().appendingPathComponent(entry.fileName)
     }
 
+    private func clearOfflineCache() {
+        for entry in loadOfflineCacheIndex() {
+            if let url = try? offlineCacheURL(for: entry) {
+                try? FileManager.default.removeItem(at: url)
+            }
+        }
+        keychain.remove("offline_cache_index")
+    }
+
     private func removeOfflineCacheEntry(_ entry: OfflineCacheEntry) {
         if let url = try? offlineCacheURL(for: entry) {
             try? FileManager.default.removeItem(at: url)
@@ -721,6 +730,7 @@ final class APIClient {
         keychain.remove("access")
         keychain.remove("refresh")
         keychain.remove("cached_user")
+        clearOfflineCache()
     }
 
     func cachedUser() -> UserResponse? {
