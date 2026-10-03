@@ -91,8 +91,8 @@ class LocalStorage(StorageProvider):
         started = time.perf_counter()
         await asyncio.to_thread(_write)
         logger.info(
-            "storage.put",
-            event="local_object_written",
+            "local_object_written",
+            category="storage.put",
             bucket=bucket.value,
             key_fingerprint=self._key_fingerprint(key),
             size_bytes=size,
@@ -114,8 +114,8 @@ class LocalStorage(StorageProvider):
         path = self._path(key, bucket)
         if not path.is_file():
             logger.warning(
-                "storage.get",
-                event="local_object_missing",
+                "local_object_missing",
+                category="storage.get",
                 bucket=bucket.value,
                 key_fingerprint=self._key_fingerprint(key),
             )
@@ -124,8 +124,8 @@ class LocalStorage(StorageProvider):
         started = time.perf_counter()
         data = await asyncio.to_thread(path.read_bytes)
         logger.info(
-            "storage.get",
-            event="local_object_read",
+            "local_object_read",
+            category="storage.get",
             bucket=bucket.value,
             key_fingerprint=self._key_fingerprint(key),
             size_bytes=len(data),
@@ -144,8 +144,8 @@ class LocalStorage(StorageProvider):
         fingerprint = self._key_fingerprint(key)
         if not path.is_file():
             logger.error(
-                "storage.stream",
-                event="local_stream_missing",
+                "local_stream_missing",
+                category="storage.stream",
                 bucket=bucket.value,
                 key_fingerprint=fingerprint,
             )
@@ -156,8 +156,8 @@ class LocalStorage(StorageProvider):
         chunks = 0
         first_byte_ms: float | None = None
         logger.info(
-            "storage.stream",
-            event="local_stream_opening",
+            "local_stream_opening",
+            category="storage.stream",
             bucket=bucket.value,
             key_fingerprint=fingerprint,
             file_size_bytes=path.stat().st_size,
@@ -168,8 +168,8 @@ class LocalStorage(StorageProvider):
             f = await asyncio.to_thread(path.open, "rb")
         except Exception as exc:
             logger.exception(
-                "storage.stream",
-                event="local_stream_open_failed",
+                "local_stream_open_failed",
+                category="storage.stream",
                 bucket=bucket.value,
                 key_fingerprint=fingerprint,
                 error_type=type(exc).__name__,
@@ -184,8 +184,8 @@ class LocalStorage(StorageProvider):
                 if not chunk:
                     elapsed_ms = round((time.perf_counter() - started) * 1000, 2)
                     logger.info(
-                        "storage.stream",
-                        event="local_stream_completed",
+                        "local_stream_completed",
+                        category="storage.stream",
                         bucket=bucket.value,
                         key_fingerprint=fingerprint,
                         chunks=chunks,
@@ -200,8 +200,8 @@ class LocalStorage(StorageProvider):
                 if first_byte_ms is None:
                     first_byte_ms = round((time.perf_counter() - started) * 1000, 2)
                     logger.info(
-                        "storage.stream",
-                        event="local_stream_first_byte",
+                        "local_stream_first_byte",
+                        category="storage.stream",
                         bucket=bucket.value,
                         key_fingerprint=fingerprint,
                         bytes_sent=total_sent,
@@ -209,8 +209,8 @@ class LocalStorage(StorageProvider):
                     )
                 elif read_ms >= 250:
                     logger.warning(
-                        "storage.stream",
-                        event="local_stream_slow_read",
+                        "local_stream_slow_read",
+                        category="storage.stream",
                         bucket=bucket.value,
                         key_fingerprint=fingerprint,
                         chunk_index=chunks,
@@ -220,8 +220,8 @@ class LocalStorage(StorageProvider):
                 yield chunk
         except asyncio.CancelledError:
             logger.warning(
-                "storage.stream",
-                event="local_stream_cancelled",
+                "local_stream_cancelled",
+                category="storage.stream",
                 bucket=bucket.value,
                 key_fingerprint=fingerprint,
                 chunks=chunks,
@@ -231,8 +231,8 @@ class LocalStorage(StorageProvider):
             raise
         except Exception as exc:
             logger.exception(
-                "storage.stream",
-                event="local_stream_failed",
+                "local_stream_failed",
+                category="storage.stream",
                 bucket=bucket.value,
                 key_fingerprint=fingerprint,
                 chunks=chunks,
@@ -287,8 +287,8 @@ class LocalStorage(StorageProvider):
         path = self._path(key, bucket)
         if not path.is_file():
             logger.error(
-                "storage.size",
-                event="local_object_missing",
+                "local_object_missing",
+                category="storage.size",
                 bucket=bucket.value,
                 key_fingerprint=self._key_fingerprint(key),
             )
@@ -330,7 +330,7 @@ class LocalStorage(StorageProvider):
 
     def verify_delivery_token(self, token: str) -> tuple[StorageBucket, str, int]:
         if not self.signing_secret:
-            logger.error("storage.delivery", event="local_delivery_secret_missing")
+            logger.error("local_delivery_secret_missing", category="storage.delivery")
             raise StorageError("Local delivery signing secret is not configured")
         try:
             encoded, provided_sig = token.split(".", 1)
@@ -350,22 +350,22 @@ class LocalStorage(StorageProvider):
             expires_at = int(payload["e"])
         except (binascii.Error, ValueError, KeyError, TypeError, json.JSONDecodeError, UnicodeDecodeError) as exc:
             logger.warning(
-                "storage.delivery",
-                event="local_delivery_token_invalid",
+                "local_delivery_token_invalid",
+                category="storage.delivery",
                 error_type=type(exc).__name__,
             )
             raise StorageError("Invalid storage delivery token", status_code=404) from exc
         if not key or not key.endswith(".kby") or expires_at < int(time.time()):
             logger.warning(
-                "storage.delivery",
-                event="local_delivery_token_expired_or_invalid",
+                "local_delivery_token_expired_or_invalid",
+                category="storage.delivery",
                 bucket=bucket.value if "bucket" in locals() else None,
                 key_fingerprint=self._key_fingerprint(key) if key else None,
             )
             raise StorageError("Storage delivery token expired or invalid", status_code=404)
         logger.info(
-            "storage.delivery",
-            event="local_delivery_token_verified",
+            "local_delivery_token_verified",
+            category="storage.delivery",
             bucket=bucket.value,
             key_fingerprint=self._key_fingerprint(key),
             expires_at=expires_at,
@@ -389,8 +389,8 @@ class LocalStorage(StorageProvider):
             token = self._delivery_token(key=key, bucket=bucket, expires_at=expires_at)
             url = f"{self.public_base_url}/v1/music/local-delivery/{token}"
             logger.info(
-                "storage.delivery",
-                event="local_delivery_url_issued",
+                "local_delivery_url_issued",
+                category="storage.delivery",
                 bucket=bucket.value,
                 key_fingerprint=self._key_fingerprint(key),
                 expires_at=expires_at,
