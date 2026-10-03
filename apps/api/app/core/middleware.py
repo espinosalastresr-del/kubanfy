@@ -182,8 +182,8 @@ class RequestContextMiddleware(BaseHTTPMiddleware):
                 logger.warning if status_code >= 400 else logger.info
             )
             log_method(
-                "http.response",
-                event=response_event,
+                response_event,
+                category="http.response",
                 request_id=request_id,
                 correlation_id=correlation_id,
                 method=method,
