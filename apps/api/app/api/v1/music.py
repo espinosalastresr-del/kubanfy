@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import time
 from uuid import UUID
 
 from fastapi import APIRouter, HTTPException, Query, Request
@@ -155,6 +156,17 @@ async def music_play(
     quality: str = Query("low"),
 ) -> MusicPlaybackResponse:
     """Return a short-lived signed URL for authenticated streaming playback."""
+    started = time.perf_counter()
+    request_id = getattr(request.state, "request_id", None)
+    logger = __import__("app.core.logging", fromlist=["get_logger"]).get_logger(__name__)
+    logger.info(
+        "playback.authorize",
+        event="playback_authorization_started",
+        request_id=request_id,
+        track_id=str(track_id),
+        quality=quality,
+        user_id=str(user.id),
+    )
     geo = GeoService()
     ip = request.client.host if request.client else None
     real_ip = geo.resolve_client_ip(ip, forwarded_for=request.headers.get("x-forwarded-for"))
@@ -169,9 +181,31 @@ async def music_play(
         user_id=user.id,
     )
     if result.signed_url is None:
+        logger.error(
+            "playback.authorize",
+            event="playback_authorization_missing_url",
+            request_id=request_id,
+            track_id=str(track_id),
+            quality=quality,
+            user_id=str(user.id),
+            elapsed_ms=round((time.perf_counter() - started) * 1000, 2),
+        )
         from app.core.exceptions import NotFoundError
 
         raise NotFoundError("Playable audio URL unavailable")
+    logger.info(
+        "playback.authorize",
+        event="playback_authorization_succeeded",
+        request_id=request_id,
+        track_id=str(track_id),
+        quality=result.quality,
+        storage_bucket=result.storage_bucket.value,
+        content_hash=result.content_hash,
+        storage_key_present=bool(result.storage_key),
+        signed_url_expires_in=result.signed_url.expires_in_seconds,
+        elapsed_ms=round((time.perf_counter() - started) * 1000, 2),
+        user_id=str(user.id),
+    )
     return MusicPlaybackResponse(
         url=result.signed_url.url,
         expires_in_seconds=result.signed_url.expires_in_seconds,
@@ -293,6 +327,16 @@ async def music_offline_bootstrap(
     small offline-first bootstrap set and still uses the normal published-track,
     entitlement, KBY, storage, and device-binding pipeline.
     """
+    started = time.perf_counter()
+    request_id = getattr(request.state, "request_id", None)
+    logger.info(
+        "offline.bootstrap",
+        event="offline_bootstrap_started",
+        request_id=request_id,
+        user_id=str(user.id),
+        limit=limit,
+        device_id_present=bool(request.headers.get("X-Device-ID", "").strip()),
+    )
     device_id = request.headers.get("X-Device-ID", "").strip()
     if not device_id:
         from app.core.exceptions import ValidationError
@@ -326,7 +370,22 @@ async def music_offline_bootstrap(
         )
     ).all()
 
+    logger.info(
+        "offline.bootstrap",
+        event="offline_bootstrap_tracks_selected",
+        request_id=request_id,
+        user_id=str(user.id),
+        selected_count=len(tracks),
+        track_ids=[str(track.id) for track in tracks],
+    )
     if not tracks:
+        logger.warning(
+            "offline.bootstrap",
+            event="offline_bootstrap_no_tracks",
+            request_id=request_id,
+            user_id=str(user.id),
+            elapsed_ms=round((time.perf_counter() - started) * 1000, 2),
+        )
         return []
 
     entitlement = EntitlementService(session)
@@ -335,18 +394,37 @@ async def music_offline_bootstrap(
     response: list[MusicOfflineBootstrapResponse] = []
 
     for track in tracks:
-        await entitlement.require_track_access(user.id, track.id)
-        playback = await engine.download_by_track_id(
+        track_started = time.perf_counter()
+        try:
+            logger.info(
+                "offline.bootstrap",
+                event="offline_bootstrap_track_started",
+                request_id=request_id,
+                user_id=str(user.id),
+                track_id=str(track.id),
+            )
+            await entitlement.require_track_access(user.id, track.id)
+            playback = await engine.download_by_track_id(
             track_id=track.id,
             quality="low",
             user_id=user.id,
         )
-        if (
-            playback.signed_url is None
-            or playback.content_hash is None
-            or not playback.kby_key
-        ):
-            continue
+            if (
+                playback.signed_url is None
+                or playback.content_hash is None
+                or not playback.kby_key
+            ):
+                logger.warning(
+                    "offline.bootstrap",
+                    event="offline_bootstrap_track_incomplete",
+                    request_id=request_id,
+                    user_id=str(user.id),
+                    track_id=str(track.id),
+                    signed_url_present=playback.signed_url is not None,
+                    content_hash_present=playback.content_hash is not None,
+                    kby_key_present=bool(playback.kby_key),
+                )
+                continue
 
         asset = await session.scalar(
             select(AudioAsset)
@@ -359,31 +437,69 @@ async def music_offline_bootstrap(
             )
             .order_by(AudioAsset.version.desc())
         )
-        if asset is None:
-            continue
+            if asset is None:
+                logger.warning(
+                    "offline.bootstrap",
+                    event="offline_bootstrap_asset_missing",
+                    request_id=request_id,
+                    user_id=str(user.id),
+                    track_id=str(track.id),
+                    content_hash=playback.content_hash,
+                )
+                continue
 
-        license_row, offline_license = await license_service.issue_bootstrap(
+            license_row, offline_license = await license_service.issue_bootstrap(
             user_id=user.id,
             device_id=device_id,
             track_id=track.id,
             quality="low",
         )
-        response.append(
-            MusicOfflineBootstrapResponse(
-                track_id=track.id,
-                title=track.title,
-                duration=track.duration,
-                url=playback.signed_url.url,
-                expires_in_seconds=playback.signed_url.expires_in_seconds,
-                quality="low",
-                content_hash=playback.content_hash,
-                kby_key=playback.kby_key,
-                asset_version=asset.version,
-                offline_license=offline_license,
-                offline_license_expires_at=license_row.expires_at.isoformat(),
+            response.append(
+                MusicOfflineBootstrapResponse(
+                    track_id=track.id,
+                    title=track.title,
+                    duration=track.duration,
+                    url=playback.signed_url.url,
+                    expires_in_seconds=playback.signed_url.expires_in_seconds,
+                    quality="low",
+                    content_hash=playback.content_hash,
+                    kby_key=playback.kby_key,
+                    asset_version=asset.version,
+                    offline_license=offline_license,
+                    offline_license_expires_at=license_row.expires_at.isoformat(),
+                )
             )
-        )
+            logger.info(
+                "offline.bootstrap",
+                event="offline_bootstrap_track_succeeded",
+                request_id=request_id,
+                user_id=str(user.id),
+                track_id=str(track.id),
+                asset_version=asset.version,
+                content_hash=playback.content_hash,
+                elapsed_ms=round((time.perf_counter() - track_started) * 1000, 2),
+            )
+        except Exception as exc:
+            logger.exception(
+                "offline.bootstrap",
+                event="offline_bootstrap_track_failed",
+                request_id=request_id,
+                user_id=str(user.id),
+                track_id=str(track.id),
+                elapsed_ms=round((time.perf_counter() - track_started) * 1000, 2),
+                error_type=type(exc).__name__,
+                error=str(exc)[:500],
+            )
 
+    logger.info(
+        "offline.bootstrap",
+        event="offline_bootstrap_completed",
+        request_id=request_id,
+        user_id=str(user.id),
+        requested_limit=limit,
+        returned_count=len(response),
+        elapsed_ms=round((time.perf_counter() - started) * 1000, 2),
+    )
     return response
 
 
@@ -531,19 +647,89 @@ async def music_search(
 
 
 @router.get("/local-delivery/{token}")
-async def local_storage_delivery(token: str):
-    """Deliver a signed staging-local KBY object over HTTPS.
-
-    Authorization has already happened before the URL is issued. The token
-    authenticates only this exact stored KBY object until its expiry.
-    """
+async def local_storage_delivery(request: Request, token: str):
+    """Deliver a signed staging-local KBY object over HTTPS."""
+    started = time.perf_counter()
+    request_id = getattr(request.state, "request_id", None)
+    logger.info(
+        "playback.delivery",
+        event="local_delivery_started",
+        request_id=request_id,
+        token_length=len(token),
+    )
     storage = get_storage()
     if not isinstance(storage, LocalStorage):
+        logger.error(
+            "playback.delivery",
+            event="local_delivery_backend_unavailable",
+            request_id=request_id,
+            backend=type(storage).__name__,
+        )
         raise HTTPException(status_code=404, detail="Local delivery is unavailable")
-    bucket, key, _ = storage.verify_delivery_token(token)
+
+    bucket, key, expires_at = storage.verify_delivery_token(token)
+    key_fingerprint = storage._key_fingerprint(key)
     total = await storage.size(key, bucket=bucket)
+    logger.info(
+        "playback.delivery",
+        event="local_delivery_authorized",
+        request_id=request_id,
+        bucket=bucket.value,
+        key_fingerprint=key_fingerprint,
+        file_size_bytes=total,
+        expires_at=expires_at,
+        elapsed_ms=round((time.perf_counter() - started) * 1000, 2),
+    )
+
+    async def delivery_stream():
+        stream_started = time.perf_counter()
+        bytes_seen = 0
+        chunks = 0
+        try:
+            async for chunk in storage.stream(key, bucket=bucket, chunk_size=65536):
+                chunks += 1
+                bytes_seen += len(chunk)
+                yield chunk
+        except asyncio.CancelledError:
+            logger.warning(
+                "playback.delivery",
+                event="local_delivery_cancelled",
+                request_id=request_id,
+                bucket=bucket.value,
+                key_fingerprint=key_fingerprint,
+                chunks=chunks,
+                bytes_sent=bytes_seen,
+                elapsed_ms=round((time.perf_counter() - stream_started) * 1000, 2),
+            )
+            raise
+        except Exception as exc:
+            logger.exception(
+                "playback.delivery",
+                event="local_delivery_stream_failed",
+                request_id=request_id,
+                bucket=bucket.value,
+                key_fingerprint=key_fingerprint,
+                chunks=chunks,
+                bytes_sent=bytes_seen,
+                elapsed_ms=round((time.perf_counter() - stream_started) * 1000, 2),
+                error_type=type(exc).__name__,
+                error=str(exc)[:500],
+            )
+            raise
+        else:
+            logger.info(
+                "playback.delivery",
+                event="local_delivery_completed",
+                request_id=request_id,
+                bucket=bucket.value,
+                key_fingerprint=key_fingerprint,
+                chunks=chunks,
+                bytes_sent=bytes_seen,
+                elapsed_ms=round((time.perf_counter() - stream_started) * 1000, 2),
+            )
+
     return StreamingResponse(
-        storage.stream(key, bucket=bucket, chunk_size=65536),
+        delivery_stream(),
         media_type="application/vnd.kubanfy.kby",
         headers={
             "Content-Length": str(total),
