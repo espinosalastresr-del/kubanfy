@@ -407,6 +407,27 @@ class MusicEngine:
         if not asset.storage_key.endswith(".kby"):
             raise NotFoundError("Track asset is not in protected KBY format")
 
+        # Catalog integrity guard: the playable asset must describe the same
+        # recording represented by the Track metadata. Without this check, a
+        # stale/wrong AudioAsset row can make one published track play another
+        # track's bytes while the UI still displays Track.duration.
+        if track.duration is not None and asset.duration is not None:
+            expected = float(track.duration)
+            actual = float(asset.duration)
+            tolerance = max(5.0, expected * 0.05)
+            if abs(expected - actual) > tolerance:
+                logger.error(
+                    "playback_asset_duration_mismatch",
+                    category="playback.integrity",
+                    track_id=str(track_id),
+                    track_duration=expected,
+                    asset_duration=actual,
+                    asset_version=asset.version,
+                    asset_quality=asset.quality.value,
+                    content_hash=asset.content_hash,
+                )
+                raise NotFoundError("Track audio asset does not match track metadata")
+
         signed = await self.storage.signed_url(
             asset.storage_key,
             bucket=StorageBucket.PERMANENT,
