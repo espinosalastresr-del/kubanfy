@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import asyncio
+import hashlib
 import time
 from uuid import UUID
 
@@ -11,6 +13,7 @@ from sqlalchemy import func, or_, select
 
 from app.api.deps import CurrentUser, DbSession, OptionalUser
 from app.core.exceptions import AuthError
+from app.core.logging import get_logger
 from app.providers.registry import ProviderManager, create_default_registry
 from app.schemas.music import (
     MusicDownloadRequest,
@@ -51,6 +54,7 @@ def _audio_media_type(result) -> str:
 
 
 _manager = ProviderManager(create_default_registry(include_mock=False))
+logger = get_logger(__name__)
 
 
 @router.post("/update", response_model=MusicUpdateResponse)
@@ -158,7 +162,6 @@ async def music_play(
     """Return a short-lived signed URL for authenticated streaming playback."""
     started = time.perf_counter()
     request_id = getattr(request.state, "request_id", None)
-    logger = __import__("app.core.logging", fromlist=["get_logger"]).get_logger(__name__)
     logger.info(
         "playback.authorize",
         event="playback_authorization_started",
@@ -668,7 +671,7 @@ async def local_storage_delivery(request: Request, token: str):
         raise HTTPException(status_code=404, detail="Local delivery is unavailable")
 
     bucket, key, expires_at = storage.verify_delivery_token(token)
-    key_fingerprint = storage._key_fingerprint(key)
+    key_fingerprint = hashlib.sha256(key.encode("utf-8")).hexdigest()[:16]
     total = await storage.size(key, bucket=bucket)
     logger.info(
         "playback.delivery",
