@@ -771,6 +771,14 @@ final class APIClient {
     }
 
     private func performRequest(url: URL, method: String = "GET", body: Data? = nil, allowRefresh: Bool = true) async throws -> Data {
+        let requestID = UUID().uuidString
+        let startedAt = Date()
+        let endpoint = "\(method) \(url.path)"
+        AppLogger.shared.log(.debug, event: "http.request", message: "Solicitud iniciada", context: [
+            "request_id": requestID,
+            "endpoint": endpoint
+        ])
+
         var request = URLRequest(url: url)
         request.httpMethod = method
         request.httpBody = body
@@ -781,19 +789,64 @@ final class APIClient {
 
         do {
             let (data, response) = try await session.data(for: request)
-            guard let http = response as? HTTPURLResponse else { throw APIError.invalidURL }
+            guard let http = response as? HTTPURLResponse else {
+                AppLogger.shared.log(.error, event: "http.invalid_response", message: "La respuesta no es HTTP", context: [
+                    "request_id": requestID,
+                    "endpoint": endpoint
+                ])
+                throw APIError.invalidURL
+            }
+
+            let elapsedMs = String(Int(Date().timeIntervalSince(startedAt) * 1000))
+            AppLogger.shared.log(
+                (200..<300).contains(http.statusCode) ? .debug : .error,
+                event: "http.response",
+                message: "Respuesta HTTP recibida",
+                context: [
+                    "request_id": requestID,
+                    "endpoint": endpoint,
+                    "status": String(http.statusCode),
+                    "elapsed_ms": elapsedMs,
+                    "bytes": String(data.count)
+                ]
+            )
+
             guard (200..<300).contains(http.statusCode) else {
                 if http.statusCode == 401, allowRefresh, keychain.load("access") != nil, keychain.load("refresh") != nil {
+                    AppLogger.shared.log(.warning, event: "auth.refresh", message: "HTTP 401; intentando renovar sesión", context: [
+                        "request_id": requestID,
+                        "endpoint": endpoint
+                    ])
                     do {
                         try await refresh()
                         return try await performRequest(url: url, method: method, body: body, allowRefresh: false)
-                    } catch { logout() }
+                    } catch {
+                        AppLogger.shared.log(.error, event: "auth.refresh_failed", message: "No se pudo renovar la sesión", context: [
+                            "request_id": requestID,
+                            "error": String(describing: error)
+                        ])
+                        logout()
+                    }
                 }
                 let message = (try? JSONDecoder().decode(APIErrorEnvelope.self, from: data))?.error.message ?? "Error HTTP \(http.statusCode)"
                 throw APIError.http(http.statusCode, message)
             }
             return data
-        } catch { throw mapNetworkError(error) }
+        } catch {
+            let mapped = mapNetworkError(error)
+            if !(mapped is APIError && {
+                if case APIError.http = mapped { return true }
+                return false
+            }()) {
+                AppLogger.shared.log(.error, event: "http.failure", message: "Solicitud fallida", context: [
+                    "request_id": requestID,
+                    "endpoint": endpoint,
+                    "elapsed_ms": String(Int(Date().timeIntervalSince(startedAt) * 1000)),
+                    "error": String(describing: mapped)
+                ])
+            }
+            throw mapped
+        }
     }
 
     private func mapNetworkError(_ error: Error) -> Error {
