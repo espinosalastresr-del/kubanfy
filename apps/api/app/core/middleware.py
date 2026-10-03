@@ -1,4 +1,4 @@
-"""ASGI middleware: request ID, correlation, timing, Prometheus."""
+"""ASGI middleware: request ID, correlation, timing, Prometheus and structured request logs."""
 
 from __future__ import annotations
 
@@ -18,7 +18,7 @@ logger = get_logger(__name__)
 
 
 class RequestContextMiddleware(BaseHTTPMiddleware):
-    """Attach X-Request-ID / X-Correlation-ID and record metrics."""
+    """Attach request context, record metrics and emit one start/end trace per request."""
 
     def __init__(self, app: ASGIApp) -> None:
         super().__init__(app)
@@ -32,24 +32,65 @@ class RequestContextMiddleware(BaseHTTPMiddleware):
 
         start = time.perf_counter()
         status_code = 500
+        response: Response | None = None
+        failed = False
+
+        path = normalize_path(request.url.path)
+        method = request.method
+
+        logger.info(
+            "http.request",
+            event="request_started",
+            request_id=request_id,
+            correlation_id=correlation_id,
+            method=method,
+            path=path,
+            query_keys=sorted(request.query_params.keys()),
+            user_agent=(request.headers.get("user-agent") or "")[:160],
+            content_length=request.headers.get("content-length"),
+        )
+
         try:
             response = await call_next(request)
             status_code = response.status_code
             return response
-        except Exception:
+        except Exception as exc:
+            failed = True
             status_code = 500
+            logger.exception(
+                "http.request",
+                event="request_failed",
+                request_id=request_id,
+                correlation_id=correlation_id,
+                method=method,
+                path=path,
+                error_type=type(exc).__name__,
+                error=str(exc)[:500],
+            )
             raise
         finally:
-            duration = time.perf_counter() - start
-            path = normalize_path(request.url.path)
-            method = request.method
-            # Skip high-cardinality noise for metrics endpoint itself
+            duration_ms = round((time.perf_counter() - start) * 1000, 2)
+
             if not path.startswith("/metrics"):
                 HTTP_REQUESTS.labels(method=method, path=path, status=str(status_code)).inc()
-                HTTP_LATENCY.labels(method=method, path=path).observe(duration)
+                HTTP_LATENCY.labels(method=method, path=path).observe(duration_ms / 1000)
 
-            # Always try to set headers on successful response
-            # (on exception FastAPI error handlers build a new response)
+            logger.info(
+                "http.response",
+                event="request_completed",
+                request_id=request_id,
+                correlation_id=correlation_id,
+                method=method,
+                path=path,
+                status_code=status_code,
+                elapsed_ms=duration_ms,
+                response_bytes=(
+                    response.headers.get("content-length")
+                    if response is not None
+                    else None
+                ),
+                failed=failed,
+            )
 
 
 class RequestIdHeaderMiddleware(BaseHTTPMiddleware):
@@ -76,7 +117,6 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
             "Permissions-Policy",
             "geolocation=(), microphone=(), camera=()",
         )
-        # HSTS only meaningful behind HTTPS terminators in production
         if request.url.scheme == "https":
             response.headers.setdefault(
                 "Strict-Transport-Security",
