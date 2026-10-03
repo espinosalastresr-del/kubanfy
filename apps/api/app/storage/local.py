@@ -295,8 +295,8 @@ class LocalStorage(StorageProvider):
             raise StorageError("Object not found", status_code=404)
         size = await asyncio.to_thread(lambda: path.stat().st_size)
         logger.debug(
-            "storage.size",
-            event="local_object_size",
+            "local_object_size",
+            category="storage.size",
             bucket=bucket.value,
             key_fingerprint=self._key_fingerprint(key),
             size_bytes=size,
