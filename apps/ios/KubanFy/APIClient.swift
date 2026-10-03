@@ -834,10 +834,11 @@ final class APIClient {
             return data
         } catch {
             let mapped = mapNetworkError(error)
-            if !(mapped is APIError && {
-                if case APIError.http = mapped { return true }
-                return false
-            }()) {
+            var isHTTPError = false
+            if case APIError.http = mapped {
+                isHTTPError = true
+            }
+            if !isHTTPError {
                 AppLogger.shared.log(.error, event: "http.failure", message: "Solicitud fallida", context: [
                     "request_id": requestID,
                     "endpoint": endpoint,
