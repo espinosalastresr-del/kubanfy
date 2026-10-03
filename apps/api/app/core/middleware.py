@@ -46,8 +46,8 @@ class RequestContextMiddleware(BaseHTTPMiddleware):
         method = request.method
 
         logger.info(
-            "http.request",
-            event="request_started",
+            "request_started",
+            category="http.request",
             request_id=request_id,
             correlation_id=correlation_id,
             method=method,
@@ -82,8 +82,8 @@ class RequestContextMiddleware(BaseHTTPMiddleware):
                                     2,
                                 )
                                 logger.info(
-                                    "http.stream",
-                                    event="stream_first_byte",
+                                    "stream_first_byte",
+                                    category="http.stream",
                                     request_id=request_id,
                                     correlation_id=correlation_id,
                                     method=method,
@@ -96,8 +96,8 @@ class RequestContextMiddleware(BaseHTTPMiddleware):
                             yield chunk
                     except asyncio.CancelledError:
                         logger.warning(
-                            "http.stream",
-                            event="stream_cancelled",
+                            "stream_cancelled",
+                            category="http.stream",
                             request_id=request_id,
                             correlation_id=correlation_id,
                             method=method,
@@ -114,8 +114,8 @@ class RequestContextMiddleware(BaseHTTPMiddleware):
                         raise
                     except Exception as exc:
                         logger.exception(
-                            "http.stream",
-                            event="stream_failed",
+                            "stream_failed",
+                            category="http.stream",
                             request_id=request_id,
                             correlation_id=correlation_id,
                             method=method,
@@ -134,8 +134,8 @@ class RequestContextMiddleware(BaseHTTPMiddleware):
                         raise
                     else:
                         logger.info(
-                            "http.stream",
-                            event="stream_completed",
+                            "stream_completed",
+                            category="http.stream",
                             request_id=request_id,
                             correlation_id=correlation_id,
                             method=method,
@@ -157,8 +157,8 @@ class RequestContextMiddleware(BaseHTTPMiddleware):
             failed = True
             status_code = 500
             logger.exception(
-                "http.request",
-                event="request_failed",
+                "request_failed",
+                category="http.request",
                 request_id=request_id,
                 correlation_id=correlation_id,
                 method=method,
