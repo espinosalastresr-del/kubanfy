@@ -61,6 +61,7 @@ class MusicPlaybackResponse(BaseModel):
     kby_version: int = 1
     content_type: str | None = None
     streaming_format: str | None = None
+    asset_version: int | None = None
 
 
 class MusicOfflineBootstrapResponse(BaseModel):
