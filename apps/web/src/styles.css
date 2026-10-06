@@ -66,7 +66,16 @@ a{color:inherit}
 .primary-button:hover{transform:translateY(-2px);box-shadow:0 16px 34px rgba(217,244,90,.2);filter:saturate(1.08)}
 .primary-button:active{transform:translateY(0) scale(.98)}
 .login-button{width:100%}.button-arrow{font-size:18px;transition:transform .22s var(--ease)}.primary-button:hover .button-arrow{transform:translateX(4px)}
-.form-notice{font-size:12px;color:var(--accent-2);background:rgba(141,225,208,.07);border:1px solid rgba(141,225,208,.18);border-radius:12px;padding:10px 12px;margin-bottom:12px}\n.form-status{font-size:12px;color:var(--danger);background:rgba(255,143,156,.07);border:1px solid rgba(255,143,156,.18);border-radius:12px;padding:10px 12px;margin-bottom:12px}
+.login-button.is-loading{cursor:wait;filter:saturate(.92)}
+.button-spinner{width:17px;height:17px;border:2px solid rgba(16,19,13,.24);border-top-color:#10130d;border-radius:50%;animation:spin .72s linear infinite;flex:0 0 17px}
+.view-transition{min-height:100svh}
+.login-view{animation:viewIn .65s var(--ease) both}
+.login-view.view-exit{animation:viewExit .65s var(--ease) both;pointer-events:none}
+.dashboard-view{animation:dashboardReveal .85s var(--ease) both;position:relative;isolation:isolate}
+.dashboard-view:before{content:"";position:fixed;inset:-12%;z-index:100;pointer-events:none;background:linear-gradient(115deg,rgba(169,152,255,.42),rgba(217,244,90,.18) 42%,rgba(141,225,208,.34) 72%,transparent);filter:blur(24px);opacity:0;transform:translateX(-28%) scale(1.08);animation:gradientReveal .85s var(--ease) both}
+
+.form-notice{font-size:12px;color:var(--accent-2);background:rgba(141,225,208,.07);border:1px solid rgba(141,225,208,.18);border-radius:12px;padding:10px 12px;margin-bottom:12px}
+.form-status{font-size:12px;color:var(--danger);background:rgba(255,143,156,.07);border:1px solid rgba(255,143,156,.18);border-radius:12px;padding:10px 12px;margin-bottom:12px}
 .auth-divider{display:flex;align-items:center;gap:12px;color:var(--subtle);font-size:11px;margin:24px 0}.auth-divider:before,.auth-divider:after{content:"";height:1px;flex:1;background:var(--border)}
 .auth-divider span{padding:0 4px}
 .signup-prompt{text-align:center;color:var(--muted);font-size:12px;margin:0}.auth-footnote{text-align:center;color:var(--subtle);font-size:10px;margin:17px 10px}
@@ -82,6 +91,12 @@ a{color:inherit}
 .track-art{width:58px;height:58px;flex:0 0 58px;border-radius:14px;overflow:hidden;background:linear-gradient(135deg,rgba(217,244,90,.18),rgba(169,152,255,.2));display:grid;place-items:center}.track-art img{width:100%;height:100%;object-fit:cover}.track-info{min-width:0;flex:1}.track-info strong,.track-info span{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.track-info span{color:var(--muted);font-size:12px;margin-top:4px}.play-button{width:42px;height:42px;flex:0 0 42px;border-radius:50%;background:var(--surface-light);color:var(--text);transition:transform .2s var(--ease),background .2s}.play-button:hover{background:var(--accent);color:#10130d;transform:scale(1.05)}.secondary-button{border-radius:13px;padding:9px 12px;background:var(--surface-light);border:1px solid var(--border);color:var(--text);font-size:12px}
 .player{position:fixed;left:12px;right:12px;bottom:max(12px,env(safe-area-inset-bottom));z-index:30;display:flex;align-items:center;gap:10px;padding:9px 10px;border-radius:20px}.audio-host{flex:1;min-width:0}.audio-host audio{width:100%}
 @keyframes rise{from{opacity:0;transform:translateY(18px) scale(.985)}to{opacity:1;transform:none}}
+@keyframes spin{to{transform:rotate(360deg)}}
+@keyframes viewIn{from{opacity:0;filter:blur(12px);transform:scale(1.015)}to{opacity:1;filter:blur(0);transform:none}}
+@keyframes viewExit{from{opacity:1;filter:blur(0);transform:none}to{opacity:0;filter:blur(16px);transform:scale(.985)}}
+@keyframes dashboardReveal{from{opacity:0;filter:blur(13px);transform:scale(1.018)}55%{opacity:1;filter:blur(3px);transform:scale(1.006)}to{opacity:1;filter:blur(0);transform:none}}
+@keyframes gradientReveal{0%{opacity:.9;transform:translateX(-28%) scale(1.08)}55%{opacity:.42;transform:translateX(6%) scale(1.03)}100%{opacity:0;transform:translateX(28%) scale(1)}}
+
 @keyframes float{0%,100%{transform:translate3d(0,0,0)}50%{transform:translate3d(0,20px,0)}}
 @keyframes bars{0%,100%{transform:scaleY(.7)}50%{transform:scaleY(1.12)}}
 @media(max-width:560px){
