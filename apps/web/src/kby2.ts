@@ -57,7 +57,7 @@ export async function decryptChunk(
   aad.set(headerBytes, 5);
   new DataView(aad.buffer).setUint32(5 + headerBytes.length, index);
   new DataView(aad.buffer).setUint32(9 + headerBytes.length, len);
-  const plain = await crypto.subtle.decrypt({ name: "AES-GCM", iv: nonce, additionalData: aad, tagLength: 128 }, key, ciphertext.slice().buffer);
+  const plain = await crypto.subtle.decrypt({ name: "AES-GCM", iv: nonce.slice().buffer, additionalData: aad.slice().buffer, tagLength: 128 }, key, ciphertext.slice().buffer);
   return new Uint8Array(plain);
 }
 
