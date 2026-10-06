@@ -374,7 +374,7 @@ class ArtistUploadService:
             generation = f"v{next_version}"
             master_key = f"artists/{artist_id}/tracks/{track_id}/{generation}/master/{probe.content_hash[:16]}.{ext or 'bin'}"
             master_bytes = tmp_path.read_bytes()
-            master_kby = pack(
+            master_kby, master_kby_v2 = _pack_dual(
                 master_bytes,
                 content_hash=probe.content_hash,
                 quality=AudioQuality.LOSSLESS.value,
