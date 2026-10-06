@@ -39,11 +39,7 @@ export class KubanFyApiContainer extends Container {
 }
 
 export default {
-  async fetch(request: Request, _workerEnv: typeof env) {
-    return getContainer(
-      // @ts-expect-error Wrangler generates this binding at deploy time.
-      env.KUBANFY_API_CONTAINER,
-      "staging-api"
-    ).fetch(request);
+  async fetch(request: Request, workerEnv: typeof env) {
+    return getContainer(workerEnv.KUBANFY_API_CONTAINER, "staging-api").fetch(request);
   }
 };
