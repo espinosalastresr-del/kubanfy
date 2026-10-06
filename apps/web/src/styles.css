@@ -66,7 +66,7 @@ a{color:inherit}
 .primary-button:hover{transform:translateY(-2px);box-shadow:0 16px 34px rgba(217,244,90,.2);filter:saturate(1.08)}
 .primary-button:active{transform:translateY(0) scale(.98)}
 .login-button{width:100%}.button-arrow{font-size:18px;transition:transform .22s var(--ease)}.primary-button:hover .button-arrow{transform:translateX(4px)}
-.form-status{font-size:12px;color:var(--danger);background:rgba(255,143,156,.07);border:1px solid rgba(255,143,156,.18);border-radius:12px;padding:10px 12px;margin-bottom:12px}
+.form-notice{font-size:12px;color:var(--accent-2);background:rgba(141,225,208,.07);border:1px solid rgba(141,225,208,.18);border-radius:12px;padding:10px 12px;margin-bottom:12px}\n.form-status{font-size:12px;color:var(--danger);background:rgba(255,143,156,.07);border:1px solid rgba(255,143,156,.18);border-radius:12px;padding:10px 12px;margin-bottom:12px}
 .auth-divider{display:flex;align-items:center;gap:12px;color:var(--subtle);font-size:11px;margin:24px 0}.auth-divider:before,.auth-divider:after{content:"";height:1px;flex:1;background:var(--border)}
 .auth-divider span{padding:0 4px}
 .signup-prompt{text-align:center;color:var(--muted);font-size:12px;margin:0}.auth-footnote{text-align:center;color:var(--subtle);font-size:10px;margin:17px 10px}
