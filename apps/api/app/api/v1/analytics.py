@@ -170,6 +170,7 @@ async def start_playback(
         track_id=body.track_id,
         quality=body.quality,
         country=country,
+        platform=(request.headers.get("X-KubanFy-Platform") or "mobile").lower(),
     )
     return {
         "playback_token": token,
