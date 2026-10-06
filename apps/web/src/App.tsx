@@ -1,5 +1,5 @@
 import { FormEvent, useEffect, useRef, useState } from "react";
-import { clearTokens, login, me, register, searchTracks } from "./api";
+import { clearTokens, discoveryHome, login, me, register, searchTracks } from "./api";
 import { KbyPlayer } from "./player";
 
 function EyeIcon({ hidden }: { hidden: boolean }) {
@@ -18,7 +18,7 @@ function LogoMark() {
   return <div className="logo-mark" aria-hidden="true"><span /><span /><span /></div>;
 }
 
-function LoginView({ onLogin, onRegister, initialEmail }: { onLogin: (email: string, password: string) => Promise<void>; onRegister: () => void; initialEmail: string }) {
+function LoginView({ onLogin, onRegister, initialEmail, status }: { onLogin: (email: string, password: string) => Promise<void>; onRegister: () => void; initialEmail: string; status: string }) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -93,7 +93,7 @@ function LoginView({ onLogin, onRegister, initialEmail }: { onLogin: (email: str
           </label>
 
           <div className="form-meta">
-            <a href="#recuperar" onClick={e => { e.preventDefault(); alert("La recuperación de contraseña estará disponible próximamente."); }}>¿Olvidaste tu contraseña?</a>
+            <a href="#recuperar" onClick={e => { e.preventDefault(); setNotice("La recuperación de contraseña estará disponible próximamente."); }}>¿Olvidaste tu contraseña?</a>
           </div>
 
           {notice && <div className="form-notice" role="status">{notice}</div>}
@@ -200,12 +200,20 @@ function RegisterView({ onBack, onRegistered }: { onBack: () => void; onRegister
   </main>;
 }
 
+function formatDuration(seconds: number | null | undefined) {
+  if (!seconds || seconds < 0) return "—";
+  const minutes = Math.floor(seconds / 60);
+  const remainder = Math.floor(seconds % 60).toString().padStart(2, "0");
+  return `${minutes}:${remainder}`;
+}
+
 export default function App() {
   const [user, setUser] = useState<unknown>(null);
   const [authMode, setAuthMode] = useState<"login" | "register">("login");
   const [registeredEmail, setRegisteredEmail] = useState("");
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<any[]>([]);
+  const [home, setHome] = useState<Awaited<ReturnType<typeof discoveryHome>> | null>(null);
   const [status, setStatus] = useState("Listo");
   const [transitioning, setTransitioning] = useState(false);
   const player = useRef(new KbyPlayer()).current;
@@ -215,6 +223,16 @@ export default function App() {
     void me().then(setUser).catch(() => {});
     return () => player.stop();
   }, [player]);
+
+  useEffect(() => {
+    if (!user) return;
+    let cancelled = false;
+    setStatus("Cargando tu música…");
+    void discoveryHome()
+      .then(data => { if (!cancelled) { setHome(data); setStatus("Listo"); } })
+      .catch(e => { if (!cancelled) setStatus(e instanceof Error ? e.message : "No pudimos cargar tu inicio."); });
+    return () => { cancelled = true; };
+  }, [user]);
 
   async function doLogin(email: string, password: string) {
     try {
@@ -263,7 +281,7 @@ export default function App() {
 
     return (
       <div className={`view-transition login-view${transitioning ? " view-exit" : ""}`}>
-        <LoginView onLogin={doLogin} onRegister={() => setAuthMode("register")} initialEmail={registeredEmail} />
+        <LoginView onLogin={doLogin} onRegister={() => setAuthMode("register")} initialEmail={registeredEmail} status={status} />
       </div>
     );
   }
@@ -277,9 +295,9 @@ export default function App() {
     <section className="content">
       <div className="hero glass">
         <div>
-          <span className="eyebrow">DESCUBRE</span>
-          <h1>Encuentra tu próxima canción.</h1>
-          <p>Música pensada para tu conexión.</p>
+          <span className="eyebrow">KUBANFY · ${home?.country ?? "CUBA"}</span>
+          <h1>Tu música, <em>a tu manera.</em></h1>
+          <p>Descubre lo que está sonando y encuentra algo nuevo para escuchar.</p>
         </div>
       </div>
 
@@ -293,13 +311,67 @@ export default function App() {
         </div>
       </div>
 
-      {results.length > 0 && <div className="results">
-        {results.map((r) => <article className="glass track" key={r.provider_track_id}>
-          <div className="track-art">{r.artwork ? <img src={r.artwork} alt="" /> : <LogoMark />}</div>
-          <div className="track-info"><strong>{r.title}</strong><span>{r.artists.join(", ")}</span></div>
-          {r.track_id && <button className="play-button" onClick={() => void play(r.track_id)} aria-label={`Reproducir ${r.title}`}>▶</button>}
-        </article>)}
-      </div>}
+      {results.length > 0 && (
+        <section className="discovery-section">
+          <div className="section-heading"><div><span className="eyebrow">RESULTADOS</span><h2>Encontrado para ti</h2></div></div>
+          <div className="results">
+            {results.map(r => <article className="glass track" key={r.provider_track_id}>
+              <div className="track-art">{r.artwork ? <img src={r.artwork} alt="" /> : <LogoMark />}</div>
+              <div className="track-info"><strong>{r.title}</strong><span>{r.artists.join(", ")}</span></div>
+              {r.track_id && <button className="play-button" onClick={() => void play(r.track_id)} aria-label={`Reproducir ${r.title}`}>▶</button>}
+            </article>)}
+          </div>
+        </section>
+      )}
+
+      {home && (
+        <>
+          <section className="discovery-section">
+            <div className="section-heading">
+              <div><span className="eyebrow">PARA EMPEZAR</span><h2>Tendencias</h2></div>
+            </div>
+            <div className="featured-grid">
+              {home.trending.slice(0, 5).map((track, index) => (
+                <button className="featured-track glass" key={track.track_id} onClick={() => void play(track.track_id)}>
+                  <span className="featured-number">{String(index + 1).padStart(2, "0")}</span>
+                  <span className="featured-title">{track.title || "Sin título"}</span>
+                  <span className="featured-play">▶</span>
+                </button>
+              ))}
+            </div>
+          </section>
+
+          <section className="discovery-section">
+            <div className="section-heading">
+              <div><span className="eyebrow">RECIÉN LLEGADO</span><h2>Nuevos lanzamientos</h2></div>
+            </div>
+            <div className="release-row">
+              {home.new_releases.slice(0, 8).map(track => (
+                <button className="release-card glass" key={track.id} onClick={() => void play(track.id)}>
+                  <span className="release-art"><LogoMark /></span>
+                  <strong>{track.title}</strong>
+                  <span>{formatDuration(track.duration)}</span>
+                </button>
+              ))}
+            </div>
+          </section>
+
+          <section className="discovery-section">
+            <div className="section-heading">
+              <div><span className="eyebrow">ESCENA LOCAL</span><h2>Artistas de ${home.country}</h2></div>
+            </div>
+            <div className="artist-row">
+              {home.local_artists.slice(0, 10).map(artist => (
+                <div className="artist-card glass" key={artist.id}>
+                  <span className="artist-avatar"><LogoMark /></span>
+                  <strong>{artist.name}</strong>
+                  {artist.verified && <span>Verificado</span>}
+                </div>
+              ))}
+            </div>
+          </section>
+        </>
+      )}
 
       <div className="player glass"><div className="audio-host" ref={el => { if (el && !el.contains(player.element)) el.appendChild(player.element); }} /><button className="secondary-button" onClick={() => { clearTokens(); location.reload(); }}>Salir</button></div>
     </section>
