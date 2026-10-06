@@ -679,6 +679,7 @@ async def local_storage_delivery(request: Request, token: str):
     bucket, key, expires_at = storage.verify_delivery_token(token)
     key_fingerprint = hashlib.sha256(key.encode("utf-8")).hexdigest()[:16]
     total = await storage.size(key, bucket=bucket)
+    is_kby2 = key.endsWith(".kby2")
     logger.info(
         "local_delivery_authorized",
         category="playback.delivery",
@@ -737,10 +738,38 @@ async def local_storage_delivery(request: Request, token: str):
                 elapsed_ms=round((time.perf_counter() - stream_started) * 1000, 2),
             )
 
+    range_header = request.headers.get("range")
+    if range_header:
+        from app.services.http_range import parse_bytes_range
+        from fastapi.responses import Response
+
+        try:
+            start, end = parse_bytes_range(range_header, total)
+        except ValueError as exc:
+            raise HTTPException(
+                status_code=416,
+                detail="Invalid Range",
+                headers={"Content-Range": f"bytes */{total}"},
+            ) from exc
+        data = await storage.get_range(key, start, end, bucket=bucket)
+        return Response(
+            content=data,
+            status_code=206,
+            media_type="application/vnd.kubanfy.kby2" if is_kby2 else "application/vnd.kubanfy.kby",
+            headers={
+                "Accept-Ranges": "bytes",
+                "Content-Range": f"bytes {start}-{end}/{total}",
+                "Content-Length": str(len(data)),
+                "Cache-Control": "private, no-store",
+                "X-Content-Type-Options": "nosniff",
+            },
+        )
+
     return StreamingResponse(
         delivery_stream(),
-        media_type="application/vnd.kubanfy.kby",
+        media_type="application/vnd.kubanfy.kby2" if is_kby2 else "application/vnd.kubanfy.kby",
         headers={
+            "Accept-Ranges": "bytes",
             "Content-Length": str(total),
             "Cache-Control": "private, no-store",
             "X-Content-Type-Options": "nosniff",
