@@ -470,12 +470,16 @@ export default function App() {
             </div>
             <div className="featured-grid">
               {home.trending.slice(0, 5).map((track, index) => (
-                <button className="featured-track glass" key={track.track_id} onClick={() => void play(track.track_id)}>
+                <article className="featured-track glass" key={track.track_id}>
                   <span className="featured-number">{String(index + 1).padStart(2, "0")}</span>
-                  <span className="featured-title">{track.title || "Sin título"}</span>
-                  <span className="featured-play">▶</span>
-                  <span className={`featured-heart${favorites.has(track.track_id) ? " is-active" : ""}`} onClick={e => { e.stopPropagation(); void toggleFavorite(track.track_id); }}><HeartIcon filled={favorites.has(track.track_id)} /></span>
-                </button>
+                  <button className="featured-main" onClick={() => void play(track.track_id)} aria-label={`Reproducir ${track.title || "Sin título"}`}>
+                    <span className="featured-title">{track.title || "Sin título"}</span>
+                  </button>
+                  <div className="featured-actions">
+                    <button className={`featured-action${favorites.has(track.track_id) ? " is-active" : ""}`} onClick={() => void toggleFavorite(track.track_id)} aria-label={favorites.has(track.track_id) ? "Quitar de favoritos" : "Añadir a favoritos"}><HeartIcon filled={favorites.has(track.track_id)} /></button>
+                    <button className="featured-action featured-play" onClick={() => void play(track.track_id)} aria-label={`Reproducir ${track.title || "Sin título"}`}>▶</button>
+                  </div>
+                </article>
               ))}
             </div>
           </section>
@@ -486,12 +490,17 @@ export default function App() {
             </div>
             <div className="release-row">
               {home.new_releases.slice(0, 8).map(track => (
-                <button className="release-card glass" key={track.id} onClick={() => void play(track.id)}>
-                  <span className="release-art"><LogoMark /></span>
-                  <strong>{track.title}</strong>
-                  <span>{formatDuration(track.duration)}</span>
-                  <span className={`release-heart${favorites.has(track.id) ? " is-active" : ""}`} onClick={e => { e.stopPropagation(); void toggleFavorite(track.id); }}><HeartIcon filled={favorites.has(track.id)} /></span>
-                </button>
+                <article className="release-card glass" key={track.id}>
+                  <button className="release-main" onClick={() => void play(track.id)} aria-label={`Reproducir ${track.title}`}>
+                    <span className="release-art"><LogoMark /></span>
+                    <strong>{track.title}</strong>
+                    <span>{formatDuration(track.duration)}</span>
+                  </button>
+                  <div className="release-actions">
+                    <button className={`release-action${favorites.has(track.id) ? " is-active" : ""}`} onClick={() => void toggleFavorite(track.id)} aria-label={favorites.has(track.id) ? "Quitar de favoritos" : "Añadir a favoritos"}><HeartIcon filled={favorites.has(track.id)} /></button>
+                    <button className="release-action" onClick={() => void play(track.id)} aria-label={`Reproducir ${track.title}`}>▶</button>
+                  </div>
+                </article>
               ))}
             </div>
           </section>
