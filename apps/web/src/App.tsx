@@ -408,7 +408,7 @@ export default function App() {
       <button className={section === "library" ? "active" : ""} onClick={() => setSection("library")}><LibraryIcon />Biblioteca</button>
     </nav>
 
-      {section === "home" && <>
+      {section === "home" && <div className="home-content">
       <div className="hero glass">
         <div>
           <span className="eyebrow">KUBANFY · {home?.country ?? "CUBA"}</span>
@@ -499,7 +499,7 @@ export default function App() {
               ))}
             </div>
           </section>
-        </>
+        </div>
       )}
 
       {section === "library" && (
