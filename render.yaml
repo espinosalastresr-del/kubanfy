@@ -68,10 +68,16 @@ services:
     runtime: static
     buildCommand: cd apps/web && corepack enable && corepack pnpm install --no-frozen-lockfile && corepack pnpm build
     staticPublishPath: apps/web/dist
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html
     pullRequestPreviewsEnabled: true
     envVars:
       - key: VITE_API_BASE_URL
         value: https://kubanfy-api-staging.onrender.com
+      - key: NODE_VERSION
+        value: "22.23.3"
 
   - type: keyvalue
     name: kubanfy-staging-cache
