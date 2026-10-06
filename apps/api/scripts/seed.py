@@ -12,6 +12,7 @@ import io
 import math
 import struct
 import sys
+import tempfile
 import wave
 from pathlib import Path
 
@@ -34,6 +35,8 @@ from app.services.admin import AdminService
 from app.services.audio_validation import AudioValidationService
 from app.services.entitlement import EntitlementService
 from app.services.kby import pack
+from app.services.kby_v2 import pack as pack_v2
+from app.services.transcoding import TranscodingService
 from app.services.rbac import RbacService
 from app.storage import StorageBucket, get_storage
 
@@ -86,53 +89,97 @@ async def _ensure_demo_playable_track(session) -> None:
     audio = _demo_wav_bytes()
     probe = await AudioValidationService(get_settings()).validate_bytes(audio, suffix=".wav")
     storage = get_storage()
+    transcoder = TranscodingService(get_settings())
 
-    for quality in (AudioQuality.LOW, AudioQuality.MEDIUM, AudioQuality.LOSSLESS):
-        source_type = (
-            SourceType.ARTIST_UPLOAD
-            if quality == AudioQuality.LOSSLESS
-            else SourceType.DERIVATIVE
-        )
-        key = f"artists/{artist.id}/demo/connectivity-test/{quality.value}/{probe.content_hash}.kby"
-        if not await storage.exists(key, bucket=StorageBucket.PERMANENT):
-            kby = pack(
-                audio,
-                content_hash=probe.content_hash,
-                quality=quality.value,
-                content_type="audio/wav",
-                settings=get_settings(),
+    with tempfile.TemporaryDirectory(prefix="kubanfy-seed-") as tmp:
+        source_path = Path(tmp) / "demo.wav"
+        source_path.write_bytes(audio)
+        derivatives = {
+            output.quality: output
+            for output in await transcoder.generate_derivatives(
+                source_path,
+                qualities=[AudioQuality.LOW, AudioQuality.MEDIUM],
+                output_dir=Path(tmp) / "derivatives",
             )
-            await storage.put(
-                key,
-                kby,
-                bucket=StorageBucket.PERMANENT,
-                content_type="application/vnd.kubanfy.kby",
-            )
-        asset = await session.scalar(
-            select(AudioAsset).where(
-                AudioAsset.track_id == track.id,
-                AudioAsset.quality == quality,
-                AudioAsset.is_active.is_(True),
-            )
-        )
-        if asset is None:
-            asset = AudioAsset(track_id=track.id, quality=quality)
-            session.add(asset)
+        }
 
-        asset.storage_key = key
-        asset.codec = probe.codec
-        asset.bitrate = (probe.bitrate // 1000) if probe.bitrate else None
-        asset.bit_depth = probe.bit_depth
-        asset.sample_rate = probe.sample_rate
-        asset.channels = probe.channels
-        asset.duration = probe.duration
-        asset.size = probe.size
-        asset.quality = quality
-        asset.source_type = source_type
-        asset.content_hash = probe.content_hash
-        asset.quality_confidence = QualityConfidence.VERIFIED
-        asset.version = 1
-        asset.is_active = True
+        for quality in (AudioQuality.LOW, AudioQuality.MEDIUM, AudioQuality.LOSSLESS):
+            if quality == AudioQuality.LOSSLESS:
+                plaintext = audio
+                content_hash = probe.content_hash
+                codec = probe.codec
+                bitrate = (probe.bitrate // 1000) if probe.bitrate else None
+                sample_rate = probe.sample_rate
+                channels = probe.channels
+                duration = probe.duration
+                content_type = "audio/wav"
+            else:
+                output = derivatives[quality]
+                plaintext = output.path.read_bytes()
+                content_hash = output.probe.content_hash
+                codec = output.probe.codec
+                bitrate = (output.probe.bitrate // 1000) if output.probe.bitrate else None
+                sample_rate = output.probe.sample_rate
+                channels = output.probe.channels
+                duration = output.probe.duration
+                content_type = "audio/mp4"
+
+            key = f"artists/{artist.id}/demo/connectivity-test/{quality.value}/{content_hash}.kby"
+            if not await storage.exists(key, bucket=StorageBucket.PERMANENT):
+                kby = pack(
+                    plaintext,
+                    content_hash=content_hash,
+                    quality=quality.value,
+                    content_type=content_type,
+                    settings=get_settings(),
+                )
+                await storage.put(
+                    key,
+                    kby,
+                    bucket=StorageBucket.PERMANENT,
+                    content_type="application/vnd.kubanfy.kby",
+                )
+            if quality in (AudioQuality.LOW, AudioQuality.MEDIUM):
+                kby2_key = key.rsplit(".kby", 1)[0] + ".kby2"
+                if not await storage.exists(kby2_key, bucket=StorageBucket.PERMANENT):
+                    kby2 = pack_v2(
+                        plaintext,
+                        content_hash=content_hash,
+                        quality=quality.value,
+                        content_type=content_type,
+                        settings=get_settings(),
+                    )
+                    await storage.put(
+                        kby2_key,
+                        kby2,
+                        bucket=StorageBucket.PERMANENT,
+                        content_type="application/vnd.kubanfy.kby2",
+                    )
+
+            asset = await session.scalar(
+                select(AudioAsset).where(
+                    AudioAsset.track_id == track.id,
+                    AudioAsset.quality == quality,
+                    AudioAsset.is_active.is_(True),
+                )
+            )
+            if asset is None:
+                asset = AudioAsset(track_id=track.id, quality=quality)
+                session.add(asset)
+
+            asset.storage_key = key
+            asset.codec = codec
+            asset.bitrate = bitrate
+            asset.sample_rate = sample_rate
+            asset.channels = channels
+            asset.duration = duration
+            asset.size = len(plaintext)
+            asset.quality = quality
+            asset.source_type = SourceType.ARTIST_UPLOAD if quality == AudioQuality.LOSSLESS else SourceType.DERIVATIVE
+            asset.content_hash = content_hash
+            asset.quality_confidence = QualityConfidence.VERIFIED
+            asset.version = 1
+            asset.is_active = True
     await session.flush()
     track.status = TrackStatus.PUBLISHED
     await session.flush()
