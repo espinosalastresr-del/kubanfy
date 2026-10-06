@@ -263,6 +263,7 @@ export default function App() {
   const [newPlaylist, setNewPlaylist] = useState("");
   const [libraryBusy, setLibraryBusy] = useState(false);
   const [playlistMenuTrack, setPlaylistMenuTrack] = useState<string | null>(null);
+  const [activeTrackId, setActiveTrackId] = useState<string | null>(null);
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchBusy, setSearchBusy] = useState(false);
   const [recentSearches, setRecentSearches] = useState<string[]>(() => {
@@ -421,8 +422,20 @@ export default function App() {
   }, [query, searchOpen]);
 
   async function play(id: string) {
-    try { await player.load(id, "low"); }
-    catch (e) { setStatus(e instanceof Error ? e.message : "Error de reproducción"); }
+    try {
+      setActiveTrackId(id);
+      await player.load(id, "low");
+    } catch (e) {
+      setActiveTrackId(null);
+      setStatus(e instanceof Error ? e.message : "Error de reproducción");
+    }
+  }
+
+  function logout() {
+    player.stop();
+    setActiveTrackId(null);
+    clearTokens();
+    location.reload();
   }
 
   if (!user) {
@@ -451,7 +464,10 @@ export default function App() {
   return <div className="view-transition dashboard-view"><main className="app-page">
     <header className="topbar glass">
       <div className="brand-lockup"><LogoMark /><strong>KubanFy</strong></div>
-      <div className="status-pill"><span className="status-dot" />{status}</div>
+      <div className="topbar-actions">
+        <div className="status-pill"><span className="status-dot" />{status}</div>
+        <button className="logout-button" onClick={logout}>Salir</button>
+      </div>
     </header>
 
     <section className="content">
@@ -642,7 +658,12 @@ export default function App() {
         </div>
       )}
 
-      <div className="player glass"><div className="audio-host" ref={el => { if (el && !el.contains(player.element)) el.appendChild(player.element); }} /><button className="secondary-button" onClick={() => { clearTokens(); location.reload(); }}>Salir</button></div>
+      {activeTrackId && (
+        <div className="player glass" aria-label="Reproductor">
+          <div className="audio-host" ref={el => { if (el && !el.contains(player.element)) el.appendChild(player.element); }} />
+          <button className="player-close" onClick={() => { player.stop(); setActiveTrackId(null); }} aria-label="Cerrar reproductor">×</button>
+        </div>
+      )}
     </section>
   </main></div>;
 }
