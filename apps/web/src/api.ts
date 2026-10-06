@@ -19,6 +19,13 @@ export type SearchResult = {
 
 type Tokens = { access_token: string; refresh_token: string; expires_in: number };
 
+export class ApiError extends Error {
+  constructor(public status: number, message: string) {
+    super(message);
+    this.name = "ApiError";
+  }
+}
+
 const API = import.meta.env.VITE_API_BASE_URL || "https://kubanfy-api-staging.onrender.com";
 let accessToken: string | null = null;
 let refreshToken: string | null = sessionStorage.getItem("kubanfy.refresh");
@@ -58,7 +65,7 @@ async function request<T>(path: string, init: RequestInit = {}, retry = true): P
   if (!response.ok) {
     let detail = response.statusText;
     try { const body = await response.json(); detail = body.detail || detail; } catch {}
-    throw new Error(detail);
+    throw new ApiError(response.status, detail);
   }
   return response.status === 204 ? (undefined as T) : response.json();
 }
@@ -131,4 +138,37 @@ export async function heartbeat(token: string, positionSeconds: number, paused: 
       paused,
     }),
   });
+}
+
+export type Favorite = { id: string; target_type: "track" | "artist" | "release"; target_id: string; created_at: string };
+export type Playlist = { id: string; name: string; description: string | null; visibility: "private" | "public"; created_at: string; updated_at: string };
+
+export async function listFavorites() {
+  return request<Favorite[]>("/v1/favorites");
+}
+export async function addFavorite(targetId: string) {
+  return request<Favorite>("/v1/favorites", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ target_type: "track", target_id: targetId }),
+  });
+}
+export async function removeFavorite(targetId: string) {
+  return request<void>(`/v1/favorites/track/${targetId}`, { method: "DELETE" });
+}
+export async function listPlaylists() {
+  return request<Playlist[]>("/v1/playlists");
+}
+export async function createPlaylist(name: string) {
+  return request<Playlist>("/v1/playlists", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name, visibility: "private" }),
+  });
+}
+export async function deletePlaylist(id: string) {
+  return request<void>(`/v1/playlists/${id}`, { method: "DELETE" });
+}
+export async function addTrackToPlaylist(playlistId: string, trackId: string) {
+  return request<void>(`/v1/playlists/${playlistId}/tracks/${trackId}`, { method: "POST" });
 }
