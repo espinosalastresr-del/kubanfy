@@ -110,6 +110,14 @@ class EngagementService:
         )
         if row is None:
             raise AuthError("Invalid playback session")
+
+        current_asset = await self._asset(row.track_id, row.quality)
+        if current_asset.version != row.asset_version or current_asset.content_hash != row.content_hash:
+            raise AuthError("Playback asset changed; issue a new playback session")
+        if row.user_id is not None:
+            ent = EntitlementService(self.session)
+            await ent.require_track_access(row.user_id, row.track_id)
+            await ent.require_quality_access(row.user_id, row.quality)
         now = datetime.now(UTC)
         if row.qualified_at is not None:
             return row
@@ -154,6 +162,9 @@ class EngagementService:
             select(AnalyticsEvent).where(AnalyticsEvent.event_id == event_id)
         )
         if existing is None:
+            platform = str((row.metadata_json or {}).get("platform", "mobile")).lower()
+            if platform not in {"web", "ios", "android", "mobile"}:
+                platform = "web"
             self.session.add(
                 AnalyticsEvent(
                     event_id=event_id,
@@ -163,7 +174,7 @@ class EngagementService:
                     track_id=row.track_id,
                     event_type="play_qualified",
                     country=row.country,
-                    platform="mobile",
+                    platform=platform,
                     metadata_json={
                         "qualified_ms": row.listened_ms,
                         "asset_version": row.asset_version,
