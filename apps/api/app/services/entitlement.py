@@ -192,11 +192,11 @@ class EntitlementService:
         """Idempotent seed of FREE/PREMIUM/FAMILY/STUDENT plans (no prices hardcoded as product truth)."""
         defaults = [
             (PlanCode.FREE.value, "Free", {"downloads": False, "quality_max": "low"}),
-            (PlanCode.PREMIUM.value, "Premium", {"downloads": True, "quality_max": "lossless"}),
+            (PlanCode.PREMIUM.value, "Premium", {"downloads": True, "quality_max": "medium"}),
             (
                 PlanCode.FAMILY.value,
                 "Family",
-                {"downloads": True, "quality_max": "lossless", "seats": 6},
+                {"downloads": True, "quality_max": "medium", "seats": 6},
             ),
             (PlanCode.STUDENT.value, "Student", {"downloads": True, "quality_max": "lossless"}),
         ]
