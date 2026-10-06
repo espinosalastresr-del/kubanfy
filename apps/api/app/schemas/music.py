@@ -58,6 +58,7 @@ class MusicPlaybackResponse(BaseModel):
     track_id: UUID
     content_hash: str | None = None
     kby_key: str
+    kby_version: int = 1
 
 
 class MusicOfflineBootstrapResponse(BaseModel):
