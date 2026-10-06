@@ -135,3 +135,44 @@ a{color:inherit}
 @media(prefers-reduced-transparency:reduce){
   .glass{background:var(--surface-strong);backdrop-filter:none;-webkit-backdrop-filter:none}
 }
+
+.form-status{
+  display:flex;
+  align-items:flex-start;
+  gap:10px;
+  width:100%;
+  box-sizing:border-box;
+  margin:14px 0 2px;
+  padding:12px 14px;
+  border:1px solid rgba(255,104,135,.42);
+  border-radius:15px;
+  background:linear-gradient(135deg,rgba(255,71,110,.14),rgba(255,132,96,.08));
+  color:#fff1f4;
+  font-size:13px;
+  line-height:1.4;
+  font-weight:600;
+  text-align:left;
+  box-shadow:0 8px 24px rgba(255,55,100,.08),inset 0 1px 0 rgba(255,255,255,.05);
+  animation:statusIn .22s ease-out;
+}
+.form-status::before{
+  content:"!";
+  display:grid;
+  place-items:center;
+  width:20px;
+  height:20px;
+  flex:0 0 20px;
+  border-radius:50%;
+  background:rgba(255,104,135,.2);
+  color:#ff9bb0;
+  font-size:12px;
+  font-weight:900;
+}
+.form-status + .login-button{margin-top:14px}
+@keyframes statusIn{
+  from{opacity:0;transform:translateY(-4px)}
+  to{opacity:1;transform:none}
+}
+@media(prefers-reduced-motion:reduce){
+  .form-status{animation:none}
+}
