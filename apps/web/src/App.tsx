@@ -248,7 +248,8 @@ export default function App() {
       setTransitioning(false);
     } catch (e) {
       setTransitioning(false);
-      setStatus(e instanceof Error ? e.message : "No pudimos iniciar sesión.");
+      const message = e instanceof Error ? e.message : "No pudimos iniciar sesión.";
+      setStatus(message);
       throw e;
     }
   }
