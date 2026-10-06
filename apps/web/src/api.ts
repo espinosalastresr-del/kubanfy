@@ -20,7 +20,13 @@ export type SearchResult = {
 type Tokens = { access_token: string; refresh_token: string; expires_in: number };
 
 export class ApiError extends Error {
-  constructor(public status: number, message: string) {
+  constructor(
+    public status: number,
+    message: string,
+    public code = "HTTP_ERROR",
+    public details: Record<string, unknown> = {},
+    public requestId?: string,
+  ) {
     super(message);
     this.name = "ApiError";
   }
@@ -64,8 +70,22 @@ async function request<T>(path: string, init: RequestInit = {}, retry = true): P
   }
   if (!response.ok) {
     let detail = response.statusText;
-    try { const body = await response.json(); detail = body.detail || detail; } catch {}
-    throw new ApiError(response.status, detail);
+    let code = "HTTP_ERROR";
+    let details: Record<string, unknown> = {};
+    try {
+      const body = await response.json();
+      const error = body?.error;
+      detail = error?.message || body?.detail || detail;
+      code = error?.code || code;
+      details = error?.details || {};
+    } catch {}
+    throw new ApiError(
+      response.status,
+      detail,
+      code,
+      details,
+      response.headers.get("X-Request-ID") || undefined,
+    );
   }
   return response.status === 204 ? (undefined as T) : response.json();
 }
