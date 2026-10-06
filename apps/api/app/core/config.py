@@ -76,7 +76,7 @@ class Settings(BaseSettings):
     r2_cache_bucket: str = "kubanfy-cache"
     r2_permanent_bucket: str = "kubanfy-permanent"
     r2_region: str = "auto"
-    r2_signed_url_expiry_seconds: int = 3600
+    r2_signed_url_expiry_seconds: int = 900
     # Public HTTPS origin used only for staging local-storage delivery.
     public_base_url: str = ""
     staging_use_local_storage: bool = False
