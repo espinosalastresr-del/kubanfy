@@ -1,0 +1,16 @@
+{
+  "name": "@kubanfy/cloudflare-api",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "deploy": "wrangler deploy",
+    "dev": "wrangler dev",
+    "typecheck": "wrangler types && tsc --noEmit"
+  },
+  "devDependencies": {
+    "@cloudflare/containers": "^0.2.0",
+    "typescript": "^5.9.0",
+    "wrangler": "^4.136.0"
+  }
+}
