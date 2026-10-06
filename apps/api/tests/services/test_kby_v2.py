@@ -1,6 +1,6 @@
+import hashlib
 from types import SimpleNamespace
 
-import hashlib
 import pytest
 from cryptography.exceptions import InvalidTag
 
