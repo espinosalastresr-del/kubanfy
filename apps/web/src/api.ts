@@ -93,14 +93,20 @@ export async function playback(trackId: string, quality: "low" | "medium") {
 }
 
 export async function startPlayback(trackId: string, quality: string) {
-  return request<{ session_id: string; token: string; qualified: boolean }>("/v1/analytics/playback/start", {
+  return request<{ playback_token: string; playback_session_id: string; heartbeat_interval_seconds: number; qualifying_listen_seconds: number; asset_version: number; content_hash: string }>("/v1/analytics/playback/start", {
     method: "POST", headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ track_id: trackId, quality }),
   });
 }
 
-export async function heartbeat(body: unknown) {
-  return request<unknown>("/v1/analytics/playback/heartbeat", {
-    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
+export async function heartbeat(token: string, positionSeconds: number, paused: boolean) {
+  return request<{ qualified: boolean; listened_ms: number; suspicious_score: number }>("/v1/analytics/playback/heartbeat", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      token,
+      position_ms: Math.max(0, Math.round(positionSeconds * 1000)),
+      paused,
+    }),
   });
 }
