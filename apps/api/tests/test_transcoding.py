@@ -46,6 +46,10 @@ async def test_transcode_low(service: TranscodingService, tmp_path: Path) -> Non
     assert out.probe.duration is not None
     assert out.probe.duration >= 1.0
     assert out.codec == "aac"
+    data = out.path.read_bytes()
+    assert b"ftyp" in data[:256]
+    assert b"moov" in data[:4096]
+    assert b"moof" in data
 
 
 @pytest.mark.asyncio
@@ -55,6 +59,10 @@ async def test_transcode_medium(service: TranscodingService, tmp_path: Path) -> 
     out = await service.transcode_to_quality(src, AudioQuality.MEDIUM, output_dir=tmp_path / "out")
     assert out.path.is_file()
     assert out.bitrate_kbps is not None
+    data = out.path.read_bytes()
+    assert b"ftyp" in data[:256]
+    assert b"moov" in data[:4096]
+    assert b"moof" in data
 
 
 @pytest.mark.asyncio
