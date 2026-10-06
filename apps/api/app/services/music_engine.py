@@ -432,6 +432,10 @@ class MusicEngine:
 
         if kby_version not in (1, 2):
             raise NotFoundError("Unsupported KBY version")
+        if kby_version == 2 and aq == AudioQuality.LOSSLESS:
+            raise NotFoundError("KBY v2 streaming requires low or medium quality")
+        if kby_version == 2 and (asset.codec or "").lower() != "aac":
+            raise NotFoundError("Track asset is not compatible with KBY v2 web streaming")
 
         delivery_key = asset.storage_key
         if kby_version == 2:
