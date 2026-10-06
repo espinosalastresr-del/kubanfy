@@ -23,7 +23,8 @@ function LoginView({ onLogin, status }: { onLogin: (email: string, password: str
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [submitted, setSubmitted] = useState(false);\n  const [notice, setNotice] = useState("");
+  const [submitted, setSubmitted] = useState(false);
+  const [notice, setNotice] = useState("");
 
   async function submit(event: FormEvent) {
     event.preventDefault();
