@@ -1,5 +1,5 @@
 import { FormEvent, useEffect, useRef, useState } from "react";
-import { clearTokens, login, me, searchTracks } from "./api";
+import { clearTokens, login, me, register, searchTracks } from "./api";
 import { KbyPlayer } from "./player";
 
 function EyeIcon({ hidden }: { hidden: boolean }) {
@@ -18,13 +18,17 @@ function LogoMark() {
   return <div className="logo-mark" aria-hidden="true"><span /><span /><span /></div>;
 }
 
-function LoginView({ onLogin, status }: { onLogin: (email: string, password: string) => Promise<void>; status: string }) {
+function LoginView({ onLogin, onRegister, initialEmail }: { onLogin: (email: string, password: string) => Promise<void>; onRegister: () => void; initialEmail: string }) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [busy, setBusy] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [notice, setNotice] = useState("");
+  
+  useEffect(() => {
+    setEmail(initialEmail);
+  }, [initialEmail]);
 
   async function submit(event: FormEvent) {
     event.preventDefault();
@@ -114,7 +118,7 @@ function LoginView({ onLogin, status }: { onLogin: (email: string, password: str
 
         <div className="auth-divider"><span>o</span></div>
 
-        <p className="signup-prompt">¿Todavía no tienes cuenta? <a href="#registro" onClick={e => { e.preventDefault(); setNotice("El registro estará disponible próximamente."); }}>Crear cuenta</a></p>
+        <p className="signup-prompt">¿Todavía no tienes cuenta? <a href="#registro" onClick={e => { e.preventDefault(); onRegister(); }}>Crear cuenta</a></p>
       </div>
 
       <p className="auth-footnote">KubanFy está diseñado para consumir menos datos y seguir sonando.</p>
@@ -122,8 +126,84 @@ function LoginView({ onLogin, status }: { onLogin: (email: string, password: str
   </main>;
 }
 
+function RegisterView({ onBack, onRegistered }: { onBack: () => void; onRegistered: (email: string) => void }) {
+  const [name, setName] = useState("");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [confirmation, setConfirmation] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [submitted, setSubmitted] = useState(false);
+  const [error, setError] = useState("");
+
+  async function submit(event: FormEvent) {
+    event.preventDefault();
+    setSubmitted(true);
+    setError("");
+    if (!name.trim() || !email.includes("@") || password.length < 8 || password !== confirmation) return;
+    setBusy(true);
+    try {
+      await register(email.trim(), password, name.trim());
+      onRegistered(email.trim());
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "No pudimos crear la cuenta.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return <main className="auth-page">
+    <div className="ambient ambient-one" />
+    <div className="ambient ambient-two" />
+    <section className="auth-shell">
+      <div className="auth-brand"><LogoMark /><span>KubanFy</span></div>
+      <div className="glass auth-card">
+        <div className="auth-heading">
+          <span className="eyebrow">ÚNETE A KUBANFY</span>
+          <h1>Crea tu <em>cuenta.</em></h1>
+          <p>Empieza a escuchar música cubana pensada para conexiones reales.</p>
+        </div>
+        <form onSubmit={submit} noValidate>
+          <label className="field">
+            <span>Nombre</span>
+            <input type="text" autoComplete="name" value={name} onChange={e => setName(e.target.value)} placeholder="Tu nombre" required />
+            {submitted && !name.trim() && <small>Introduce tu nombre.</small>}
+          </label>
+          <label className="field">
+            <span>Correo electrónico</span>
+            <input type="email" inputMode="email" autoComplete="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="tu@email.com" required />
+            {submitted && !email.includes("@") && <small>Introduce un correo electrónico válido.</small>}
+          </label>
+          <label className="field">
+            <span>Contraseña</span>
+            <div className="password-field">
+              <input type={showPassword ? "text" : "password"} autoComplete="new-password" value={password} onChange={e => setPassword(e.target.value)} placeholder="Mínimo 8 caracteres" required />
+              <button type="button" className="icon-button" onClick={() => setShowPassword(v => !v)} aria-label={showPassword ? "Ocultar contraseña" : "Mostrar contraseña"}><EyeIcon hidden={showPassword} /></button>
+            </div>
+            {submitted && password.length < 8 && <small>La contraseña debe tener al menos 8 caracteres.</small>}
+          </label>
+          <label className="field">
+            <span>Repetir contraseña</span>
+            <input type={showPassword ? "text" : "password"} autoComplete="new-password" value={confirmation} onChange={e => setConfirmation(e.target.value)} placeholder="Repite tu contraseña" required />
+            {submitted && password !== confirmation && <small>Las contraseñas no coinciden.</small>}
+          </label>
+          {error && <div className="form-status" role="alert">{error}</div>}
+          <button className={`primary-button login-button${busy ? " is-loading" : ""}`} type="submit" disabled={busy} aria-busy={busy}>
+            {busy ? <><span className="button-spinner" aria-hidden="true" /><span>Creando cuenta…</span></> : <><span>Crear cuenta</span><span className="button-arrow">→</span></>}
+          </button>
+        </form>
+        <div className="auth-divider"><span>o</span></div>
+        <p className="signup-prompt"><a href="#login" onClick={e => { e.preventDefault(); onBack(); }}>← Volver a iniciar sesión</a></p>
+      </div>
+      <p className="auth-footnote">Tu cuenta queda protegida por la autenticación de KubanFy.</p>
+    </section>
+  </main>;
+}
+
 export default function App() {
   const [user, setUser] = useState<unknown>(null);
+  const [authMode, setAuthMode] = useState<"login" | "register">("login");
+  const [registeredEmail, setRegisteredEmail] = useState("");
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<any[]>([]);
   const [status, setStatus] = useState("Listo");
@@ -166,9 +246,24 @@ export default function App() {
   }
 
   if (!user) {
+    if (authMode === "register") {
+      return (
+        <div className="view-transition login-view">
+          <RegisterView
+            onBack={() => setAuthMode("login")}
+            onRegistered={email => {
+              setRegisteredEmail(email);
+              setStatus("Cuenta creada. Ya puedes iniciar sesión.");
+              setAuthMode("login");
+            }}
+          />
+        </div>
+      );
+    }
+
     return (
       <div className={`view-transition login-view${transitioning ? " view-exit" : ""}`}>
-        <LoginView onLogin={doLogin} status={status} />
+        <LoginView onLogin={doLogin} onRegister={() => setAuthMode("register")} initialEmail={registeredEmail} />
       </div>
     );
   }
