@@ -355,7 +355,7 @@ class LocalStorage(StorageProvider):
                 error_type=type(exc).__name__,
             )
             raise StorageError("Invalid storage delivery token", status_code=404) from exc
-        if not key or not key.endswith(".kby") or expires_at < int(time.time()):
+        if not key or not (key.endswith(".kby") or key.endswith(".kby2")) or expires_at < int(time.time()):
             logger.warning(
                 "local_delivery_token_expired_or_invalid",
                 category="storage.delivery",
