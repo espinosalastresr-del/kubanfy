@@ -78,6 +78,7 @@ class DownloadResult:
     expires_at: datetime | None = None
     storage_bucket: StorageBucket = StorageBucket.CACHE
     kby_version: int = 1
+    asset_version: int | None = None
 
 
 def _slugify(text: str) -> str:
@@ -460,6 +461,7 @@ class MusicEngine:
             kby_key=key_base64(asset.content_hash),
             storage_bucket=StorageBucket.PERMANENT,
             kby_version=kby_version,
+            asset_version=asset.version,
         )
 
 
