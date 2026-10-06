@@ -41,7 +41,7 @@
     "R2_REGION": "auto",
     "R2_CACHE_BUCKET": "kubanfy-cache-staging",
     "R2_PERMANENT_BUCKET": "kubanfy-permanent-staging",
-    "R2_ENDPOINT": "https://71f97aca36ff6c3e9dc13d6b30549271.r2.cloudflarestorage.com",
+    "R2_ENDPOINT": "https://692849a1e51eea43c2ddbf3cddc42f6f.r2.cloudflarestorage.com",
     "CORS_ORIGINS": "https://kubanfy-web-staging.workers.dev",
     "ALLOWED_HOSTS": "kubanfy-api-staging.workers.dev"
   }
