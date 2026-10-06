@@ -404,8 +404,8 @@ export default function App() {
 
     <section className="content">
     <nav className="app-nav glass" aria-label="Navegación principal">
-      <button className={section === "home" ? "active" : ""} onClick={() => setSection("home")}><span>⌂</span>Inicio</button>
-      <button className={section === "library" ? "active" : ""} onClick={() => setSection("library")}><LibraryIcon />Biblioteca</button>
+      <button className={section === "home" ? "active" : ""} aria-current={section === "home" ? "page" : undefined} onClick={() => setSection("home")}><span>⌂</span>Inicio</button>
+      <button className={section === "library" ? "active" : ""} aria-current={section === "library" ? "page" : undefined} onClick={() => setSection("library")}><LibraryIcon />Biblioteca</button>
     </nav>
 
       {section === "home" && <div className="home-content">
