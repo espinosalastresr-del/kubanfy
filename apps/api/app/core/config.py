@@ -121,7 +121,7 @@ class Settings(BaseSettings):
     # Audio / Quality
     # -------------------------------------------------------------------------
     audio_low_bitrate_kbps: int = 128
-    audio_medium_bitrate_kbps: int = 256
+    audio_medium_bitrate_kbps: int = 320
     qualified_play_seconds: int = 30
     max_upload_size_mb: int = 100
     allowed_audio_extensions: str = "mp3,flac,wav,m4a,aac,ogg"
