@@ -222,3 +222,11 @@ a{color:inherit}
   .library-header{padding:20px}
   .playlist-grid{grid-template-columns:1fr}
 }
+
+.track-actions{display:flex;align-items:center;gap:3px;flex:0 0 auto}
+.track-actions .icon-button svg{width:19px;height:19px;fill:none;stroke:currentColor;stroke-width:1.8}
+.track-actions .play-button{flex:0 0 auto}
+.playlist-popover{position:absolute;right:12px;bottom:58px;z-index:20;display:grid;gap:4px;min-width:190px;max-width:240px;padding:7px;border-radius:15px;box-shadow:0 18px 45px rgba(0,0,0,.38)}
+.playlist-popover button{border:0;background:transparent;color:var(--text);padding:10px 11px;border-radius:10px;text-align:left;font:inherit;font-size:12px;cursor:pointer}
+.playlist-popover button:hover{background:rgba(255,255,255,.07)}
+.results .track{position:relative}
