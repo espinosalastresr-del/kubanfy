@@ -499,8 +499,9 @@ export default function App() {
               ))}
             </div>
           </section>
-        </div>
+        </>
       )}
+      </div>
 
       {section === "library" && (
         <section className="library-page">
