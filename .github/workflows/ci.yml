@@ -89,3 +89,24 @@ jobs:
       - uses: actions/checkout@v4
       - name: Build Dockerfile
         run: docker build -t kubanfy-api:ci -f apps/api/Dockerfile apps/api
+
+  web-build:
+    name: Web PWA build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/web
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: apps/web/package.json
+      - name: Enable pnpm
+        run: corepack enable
+      - name: Install dependencies
+        run: pnpm install --no-frozen-lockfile
+      - name: Build PWA
+        run: pnpm build
