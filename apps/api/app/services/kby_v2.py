@@ -19,13 +19,14 @@ from __future__ import annotations
 
 import hashlib
 import json
+import secrets
 import struct
 from dataclasses import dataclass
 from typing import Any
 
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
-from app.services.kby import MAX_HEADER_SIZE, VERSION as KBY_V1_VERSION, derive_key
+from app.services.kby import MAX_HEADER_SIZE, derive_key
 
 MAGIC = b"KBY2"
 VERSION = 2
@@ -110,9 +111,7 @@ def pack(
     for index in range(chunk_count):
         start = index * chunk_size
         chunk = plaintext[start : start + chunk_size]
-        nonce = hashlib.sha256(
-            key + b":nonce:" + struct.pack(">I", index)
-        ).digest()[:NONCE_SIZE]
+        nonce = secrets.token_bytes(NONCE_SIZE)
         ciphertext = aes.encrypt(
             nonce,
             chunk,
