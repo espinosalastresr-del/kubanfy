@@ -49,7 +49,7 @@ export default function App() {
         <div><strong>{r.title}</strong><span>{r.artists.join(", ")}</span></div>
         {r.track_id && <button onClick={() => void play(r.track_id)}>▶ Reproducir</button>}
       </article>)}</div>
-      <div className="player card"><audio controls ref={el => { if (el) { /* player owns the element */ } }} /><button onClick={() => { clearTokens(); location.reload(); }}>Salir</button></div>
+      <div className="player card"><div className="audio-host" ref={el => { if (el && !el.contains(player.element)) el.appendChild(player.element); }} /><button onClick={() => { clearTokens(); location.reload(); }}>Salir</button></div>
     </section>}
   </main>;
 }
