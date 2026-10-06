@@ -102,6 +102,8 @@ class TranscodingService:
                 "aac",
                 "-b:a",
                 f"{kbps}k",
+                "-movflags",
+                "+frag_keyframe+empty_moov+default_base_moof",
                 "-ar",
                 "44100",
                 "-ac",
