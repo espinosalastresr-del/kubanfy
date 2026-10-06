@@ -51,7 +51,8 @@ export class KbyPlayer {
     });
     this.source = this.media.addSourceBuffer("audio/mp4; codecs=\"mp4a.40.2\"");
     this.onState?.("descifrando…");
-    const playbackSession = await startPlayback(trackId, quality);\n    this.session = { session_id: playbackSession.playback_session_id, token: playbackSession.playback_token };
+    const playbackSession = await startPlayback(trackId, quality);
+    this.session = { session_id: playbackSession.playback_session_id, token: playbackSession.playback_token };
     this.startHeartbeat(trackId, quality);
     void this.pump();
   }
