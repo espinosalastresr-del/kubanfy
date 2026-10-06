@@ -89,6 +89,14 @@ def create_app() -> FastAPI:
     # Exception handlers
     @app.exception_handler(KubanFyError)
     async def kubanfy_error_handler(request: Request, exc: KubanFyError) -> JSONResponse:
+        logger.warning(
+            "api_error",
+            code=exc.code,
+            status_code=exc.status_code,
+            path=request.url.path,
+            method=request.method,
+            details=exc.details,
+        )
         return JSONResponse(
             status_code=exc.status_code,
             content={
