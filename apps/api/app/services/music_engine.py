@@ -77,6 +77,7 @@ class DownloadResult:
     kby_key: str | None = None
     expires_at: datetime | None = None
     storage_bucket: StorageBucket = StorageBucket.CACHE
+    kby_version: int = 1
 
 
 def _slugify(text: str) -> str:
@@ -369,8 +370,9 @@ class MusicEngine:
         track_id: UUID,
         quality: str = "medium",
         user_id: UUID | None = None,
+        kby_version: int = 1,
     ) -> DownloadResult:
-        """Catalog track download — only for first-party published tracks."""
+        """Catalog track delivery; kby_version=2 enables progressive encrypted streaming."""
         try:
             aq = AudioQuality(quality.lower())
         except ValueError:
@@ -428,19 +430,32 @@ class MusicEngine:
                 )
                 raise NotFoundError("Track audio asset does not match track metadata")
 
+        if kby_version not in (1, 2):
+            raise NotFoundError("Unsupported KBY version")
+
+        delivery_key = asset.storage_key
+        if kby_version == 2:
+            delivery_key = delivery_key.rsplit(".kby", 1)[0] + ".kby2"
+            if not await self.storage.exists(
+                delivery_key,
+                bucket=StorageBucket.PERMANENT,
+            ):
+                raise NotFoundError("KBY v2 streaming asset is not available for this track")
+
         signed = await self.storage.signed_url(
-            asset.storage_key,
+            delivery_key,
             bucket=StorageBucket.PERMANENT,
         )
         return DownloadResult(
             signed_url=signed,
-            storage_key=asset.storage_key,
+            storage_key=delivery_key,
             quality=quality,
             from_cache=False,
             track_id=track_id,
             content_hash=asset.content_hash,
             kby_key=key_base64(asset.content_hash),
             storage_bucket=StorageBucket.PERMANENT,
+            kby_version=kby_version,
         )
 
 
