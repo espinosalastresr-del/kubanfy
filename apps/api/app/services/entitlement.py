@@ -198,7 +198,7 @@ class EntitlementService:
                 "Family",
                 {"downloads": True, "quality_max": "medium", "seats": 6},
             ),
-            (PlanCode.STUDENT.value, "Student", {"downloads": True, "quality_max": "lossless"}),
+            (PlanCode.STUDENT.value, "Student", {"downloads": True, "quality_max": "medium"}),
         ]
         for code, name, features in defaults:
             existing = await self.session.scalar(select(Plan).where(Plan.code == code))
