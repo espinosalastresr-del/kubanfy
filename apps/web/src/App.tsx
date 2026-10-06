@@ -14,7 +14,10 @@ function HeartIcon({ filled }: { filled: boolean }) {
   return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20.8 8.7c0 5.4-8.8 10.3-8.8 10.3S3.2 14.1 3.2 8.7A4.7 4.7 0 0 1 12 6.2a4.7 4.7 0 0 1 8.8 2.5Z" fill={filled ? "currentColor" : "none"} /></svg>;
 }
 function LibraryIcon() {
-  return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4v16M10 4v16M15 4v16M19 7v10"/><path d="M3 4h15M3 20h15"/></svg>;
+  return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4v16M10 4v16M15 4v16M19 7v10" /><path d="M3 4h15M3 20h15" /></svg>;
+}
+function PlusIcon() {
+  return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>;
 }
 
 function SearchIcon() {
@@ -408,7 +411,7 @@ export default function App() {
       {section === "home" && <>
       <div className="hero glass">
         <div>
-          <span className="eyebrow">KUBANFY · ${home?.country ?? "CUBA"}</span>
+          <span className="eyebrow">KUBANFY · {home?.country ?? "CUBA"}</span>
           <h1>Tu música, <em>a tu manera.</em></h1>
           <p>Descubre lo que está sonando y encuentra algo nuevo para escuchar.</p>
         </div>
@@ -431,8 +434,18 @@ export default function App() {
             {results.map(r => <article className="glass track" key={r.provider_track_id}>
               <div className="track-art">{r.artwork ? <img src={r.artwork} alt="" /> : <LogoMark />}</div>
               <div className="track-info"><strong>{r.title}</strong><span>{r.artists.join(", ")}</span></div>
-              {r.track_id && <button className={`icon-button favorite-button${favorites.has(r.track_id) ? " is-active" : ""}`} onClick={() => void toggleFavorite(r.track_id)} aria-label={favorites.has(r.track_id) ? "Quitar de favoritos" : "Añadir a favoritos"}><HeartIcon filled={favorites.has(r.track_id)} /></button>
-              <button className="play-button" onClick={() => void play(r.track_id)} aria-label={`Reproducir ${r.title}`}>▶</button>}
+              {r.track_id && (
+                <>
+                  <div className="track-actions">
+                    <button className={`icon-button favorite-button${favorites.has(r.track_id) ? " is-active" : ""}`} onClick={() => void toggleFavorite(r.track_id)} aria-label={favorites.has(r.track_id) ? "Quitar de favoritos" : "Añadir a favoritos"}><HeartIcon filled={favorites.has(r.track_id)} /></button>
+                    <button className="icon-button" onClick={() => setPlaylistMenuTrack(playlistMenuTrack === r.track_id ? null : r.track_id)} aria-label="Añadir a playlist"><PlusIcon /></button>
+                    <button className="play-button" onClick={() => void play(r.track_id)} aria-label={`Reproducir ${r.title}`}>▶</button>
+                  </div>
+                  {playlistMenuTrack === r.track_id && <div className="playlist-popover glass">
+                    {playlists.length === 0 ? <span>Crea una playlist en Biblioteca.</span> : playlists.map(pl => <button key={pl.id} onClick={() => void saveToPlaylist(pl.id, r.track_id)}>{pl.name}</button>)}
+                  </div>}
+                </>
+              )}
             </article>)}
           </div>
         </section>
@@ -474,7 +487,7 @@ export default function App() {
 
           <section className="discovery-section">
             <div className="section-heading">
-              <div><span className="eyebrow">ESCENA LOCAL</span><h2>Artistas de ${home.country}</h2></div>
+              <div><span className="eyebrow">ESCENA LOCAL</span><h2>Artistas de {home.country}</h2></div>
             </div>
             <div className="artist-row">
               {home.local_artists.slice(0, 10).map(artist => (
