@@ -67,6 +67,7 @@ class EngagementService:
         track_id: UUID,
         quality: str,
         country: str | None,
+        platform: str = "mobile",
     ) -> tuple[PlaybackSession, str]:
         if quality not in {q.value for q in AudioQuality}:
             raise ValidationError("Unsupported audio quality")
@@ -90,6 +91,7 @@ class EngagementService:
             content_hash=asset.content_hash,
             quality=quality,
             country=(country or "CU").upper()[:2],
+            metadata_json={"platform": platform},
         )
         self.session.add(row)
         await self.session.flush()
