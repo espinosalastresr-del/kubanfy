@@ -51,7 +51,7 @@ export class KbyPlayer {
     });
     this.source = this.media.addSourceBuffer("audio/mp4; codecs=\"mp4a.40.2\"");
     this.onState?.("descifrando…");
-    this.session = await startPlayback(trackId, quality);
+    const playbackSession = await startPlayback(trackId, quality);\n    this.session = { session_id: playbackSession.playback_session_id, token: playbackSession.playback_token };
     this.startHeartbeat(trackId, quality);
     void this.pump();
   }
@@ -106,13 +106,11 @@ export class KbyPlayer {
 
   private startHeartbeat(trackId: string, quality: string) {
     if (!this.session) return;
-    const send = () => void heartbeat({
-      session_id: this.session!.session_id,
-      token: this.session!.token,
-      track_id: trackId,
-      quality,
-      position_seconds: this.audio.currentTime,
-    }).catch(() => {});
+    const send = () => void heartbeat(
+      this.session!.token,
+      this.audio.currentTime,
+      this.audio.paused,
+    ).catch(() => {});
     send();
     this.timer = window.setInterval(send, 10000);
   }
