@@ -59,6 +59,8 @@ class MusicPlaybackResponse(BaseModel):
     content_hash: str | None = None
     kby_key: str
     kby_version: int = 1
+    content_type: str = "audio/mp4"
+    streaming_format: str = "fmp4"
 
 
 class MusicOfflineBootstrapResponse(BaseModel):
