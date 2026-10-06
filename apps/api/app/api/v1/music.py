@@ -158,6 +158,7 @@ async def music_play(
     session: DbSession,
     user: CurrentUser,
     quality: str = Query("low"),
+    kby_version: int = Query(1, ge=1, le=2),
 ) -> MusicPlaybackResponse:
     """Return a short-lived signed URL for authenticated streaming playback."""
     started = time.perf_counter()
@@ -182,6 +183,7 @@ async def music_play(
         track_id=track_id,
         quality=quality,
         user_id=user.id,
+        kby_version=kby_version,
     )
     if result.signed_url is None:
         logger.error(
@@ -216,6 +218,7 @@ async def music_play(
         track_id=track_id,
         content_hash=result.content_hash,
         kby_key=result.kby_key or "",
+        kby_version=result.kby_version,
     )
 
 
