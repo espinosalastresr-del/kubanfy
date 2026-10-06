@@ -72,6 +72,14 @@ export function getDeviceId() {
   return id;
 }
 
+export async function register(email: string, password: string, displayName: string) {
+  return request<{ id: string; email: string; display_name: string; status: string; email_verified: boolean }>("/v1/auth/register", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email, password, display_name: displayName, language: "es" }),
+  }, false);
+}
+
 export async function login(email: string, password: string) {
   const body = await request<{ user: unknown; tokens: Tokens }>("/v1/auth/login", {
     method: "POST", headers: { "Content-Type": "application/json" },
