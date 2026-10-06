@@ -53,17 +53,28 @@ function LoginView({ onLogin, onRegister, initialEmail }: { onLogin: (email: str
       const message = e instanceof Error ? e.message : "";
       const status = e instanceof ApiError ? e.status : 0;
       if (status === 401 && /invalid email or password/i.test(message)) {
-        setAuthError("No pudimos validar tus datos. Comprueba que el correo sea el que usaste al registrarte y que la contraseña coincida.");
-      } else if (status === 403 && /suspended/i.test(message)) {
+        setAuthError("El correo o la contraseña no son correctos. Comprueba tus datos e inténtalo de nuevo.");
+      } else if (status === 401 && /suspended/i.test(message)) {
         setAuthError("Tu cuenta está suspendida. No puedes iniciar sesión mientras esta restricción esté activa.");
-      } else if (status === 404 || /account not found/i.test(message)) {
-        setAuthError("No encontramos una cuenta con esos datos. Comprueba el correo o crea una cuenta nueva.");
+      } else if (status === 403 && /suspended/i.test(message)) {
+        setAuthError("Tu cuenta está suspendida. Si crees que es un error, contacta con soporte.");
+      } else if (status === 403 && e instanceof ApiError && e.code === "FORBIDDEN") {
+        setAuthError("El servidor rechazó el inicio de sesión. Tu cuenta o esta sesión no tiene permiso para acceder ahora mismo.");
+      } else if (status === 403 && e instanceof ApiError && e.code === "RIGHTS_ERROR") {
+        setAuthError("El acceso de esta cuenta está restringido por sus permisos. Contacta con soporte si esto no debería ocurrir.");
       } else if (status === 429) {
-        setAuthError("Has realizado demasiados intentos. Espera unos minutos antes de volver a intentarlo.");
+        const retry = e instanceof ApiError && typeof e.details.retry_after === "number" ? e.details.retry_after : 0;
+        setAuthError(retry > 0
+          ? `Demasiados intentos. Espera aproximadamente ${Math.ceil(retry / 60)} minuto(s) antes de volver a intentarlo.`
+          : "Demasiados intentos. Espera unos minutos antes de volver a intentarlo.");
+      } else if (status === 404 || /account not found/i.test(message)) {
+        setAuthError("No encontramos una cuenta con ese correo. Comprueba la dirección o crea una cuenta nueva.");
       } else if (!navigator.onLine || /failed to fetch|networkerror|load failed/i.test(message)) {
         setAuthError("No pudimos conectar con KubanFy. Comprueba tu conexión e inténtalo de nuevo.");
+      } else if (e instanceof ApiError && e.requestId) {
+        setAuthError(`KubanFy rechazó la solicitud (código ${e.code}). Inténtalo de nuevo. Si persiste, soporte puede localizarla con el ID ${e.requestId.slice(0, 8)}.`);
       } else {
-        setAuthError("No pudimos iniciar sesión ahora mismo. Inténtalo de nuevo en unos segundos.");
+        setAuthError("KubanFy no pudo completar el inicio de sesión. Inténtalo de nuevo en unos segundos.");
       }
     } finally {
       setBusy(false);
