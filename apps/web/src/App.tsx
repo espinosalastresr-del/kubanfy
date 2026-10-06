@@ -263,6 +263,15 @@ export default function App() {
   const [newPlaylist, setNewPlaylist] = useState("");
   const [libraryBusy, setLibraryBusy] = useState(false);
   const [playlistMenuTrack, setPlaylistMenuTrack] = useState<string | null>(null);
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [searchBusy, setSearchBusy] = useState(false);
+  const [recentSearches, setRecentSearches] = useState<string[]>(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem("kubanfy:recent-searches") || "[]");
+      return Array.isArray(saved) ? saved.filter((item): item is string => typeof item === "string").slice(0, 3) : [];
+    } catch { return []; }
+  });
+  const searchInputRef = useRef<HTMLInputElement>(null);
   const player = useRef(new KbyPlayer()).current;
 
   useEffect(() => {
@@ -374,10 +383,42 @@ export default function App() {
     }
   }
 
-  async function search() {
-    try { setStatus("Buscando…"); setResults(await searchTracks(query)); setStatus("Listo"); }
-    catch (e) { setStatus(e instanceof Error ? e.message : "Error de búsqueda"); }
+  function rememberSearch(value: string) {
+    const normalized = value.trim();
+    if (!normalized) return;
+    setRecentSearches(prev => {
+      const next = [normalized, ...prev.filter(item => item.toLowerCase() !== normalized.toLowerCase())].slice(0, 3);
+      try { localStorage.setItem("kubanfy:recent-searches", JSON.stringify(next)); } catch {}
+      return next;
+    });
   }
+
+  async function search(value = query) {
+    const normalized = value.trim();
+    if (!normalized) { setResults([]); return; }
+    try {
+      setSearchBusy(true);
+      const next = await searchTracks(normalized);
+      setResults(next);
+      rememberSearch(normalized);
+    } catch (e) {
+      setStatus(e instanceof Error ? e.message : "No pudimos completar la búsqueda.");
+    } finally { setSearchBusy(false); }
+  }
+
+  useEffect(() => {
+    if (!searchOpen) return;
+    const timer = window.setTimeout(() => searchInputRef.current?.focus(), 50);
+    return () => window.clearTimeout(timer);
+  }, [searchOpen]);
+
+  useEffect(() => {
+    if (!searchOpen) return;
+    const normalized = query.trim();
+    if (!normalized) { setResults([]); setSearchBusy(false); return; }
+    const timer = window.setTimeout(() => void search(normalized), 300);
+    return () => window.clearTimeout(timer);
+  }, [query, searchOpen]);
 
   async function play(id: string) {
     try { await player.load(id, "low"); }
@@ -428,15 +469,9 @@ export default function App() {
         </div>
       </div>
 
-      <div className="glass search-panel">
-        <div className="search-row">
-          <div className="search-input">
-            <SearchIcon />
-            <input value={query} onChange={e => setQuery(e.target.value)} onKeyDown={e => e.key === "Enter" && void search()} placeholder="Artista, canción o álbum" aria-label="Buscar música" />
-          </div>
-          <button className="primary-button search-button" onClick={() => void search()}>Buscar</button>
-        </div>
-      </div>
+      <button className="glass search-panel search-launcher" onClick={() => setSearchOpen(true)} aria-label="Abrir búsqueda">
+        <div className="search-row"><div className="search-input"><SearchIcon /><span>{query || "Artista, canción o álbum"}</span></div></div>
+      </button>
 
       {results.length > 0 && (
         <section className="discovery-section">
@@ -567,6 +602,44 @@ export default function App() {
             )}
           </section>
         </section>
+      )}
+
+      {searchOpen && (
+        <div className="search-overlay" role="dialog" aria-modal="true" aria-label="Buscar música" onMouseDown={e => { if (e.target === e.currentTarget) setSearchOpen(false); }}>
+          <div className="search-dialog glass">
+            <div className="search-dialog-head">
+              <button className="icon-button search-close" onClick={() => setSearchOpen(false)} aria-label="Cerrar búsqueda">×</button>
+              <strong>Buscar música</strong><span />
+            </div>
+            <div className="search-dialog-input search-input">
+              <SearchIcon />
+              <input ref={searchInputRef} value={query} onChange={e => setQuery(e.target.value)} onKeyDown={e => { if (e.key === "Escape") setSearchOpen(false); }} placeholder="Artista, canción o álbum" aria-label="Buscar música" autoComplete="off" />
+              {query && <button className="search-clear" onClick={() => setQuery("")} aria-label="Borrar búsqueda">×</button>}
+              {searchBusy && <span className="search-spinner" aria-label="Buscando" />}
+            </div>
+            {!query.trim() && recentSearches.length > 0 && (
+              <section className="search-history">
+                <div className="search-dialog-label"><span>ÚLTIMAS BÚSQUEDAS</span><button onClick={() => { setRecentSearches([]); try { localStorage.removeItem("kubanfy:recent-searches"); } catch {} }}>Borrar</button></div>
+                {recentSearches.map(item => <button className="search-history-item" key={item} onClick={() => setQuery(item)}><span className="history-icon">↺</span><span>{item}</span></button>)}
+              </section>
+            )}
+            {query.trim() && (
+              <section className="search-live-results">
+                {searchBusy && results.length === 0 && <div className="search-empty">Buscando…</div>}
+                {!searchBusy && results.length === 0 && <div className="search-empty">No encontramos resultados para «{query.trim()}».</div>}
+                {results.map(r => r.track_id ? (
+                  <article className="search-result-item" key={r.provider_track_id}>
+                    <button className="search-result-main" onClick={() => { void play(r.track_id!); setSearchOpen(false); }}>
+                      <span className="search-result-art">{r.artwork ? <img src={r.artwork} alt="" /> : <LogoMark />}</span>
+                      <span><strong>{r.title}</strong><small>{r.artists.join(", ")}</small></span>
+                    </button>
+                    <button className={`icon-button favorite-button${favorites.has(r.track_id) ? " is-active" : ""}`} onClick={() => void toggleFavorite(r.track_id!)} aria-label={favorites.has(r.track_id) ? "Quitar de favoritos" : "Añadir a favoritos"}><HeartIcon filled={favorites.has(r.track_id)} /></button>
+                  </article>
+                ) : null)}
+              </section>
+            )}
+          </div>
+        </div>
       )}
 
       <div className="player glass"><div className="audio-host" ref={el => { if (el && !el.contains(player.element)) el.appendChild(player.element); }} /><button className="secondary-button" onClick={() => { clearTokens(); location.reload(); }}>Salir</button></div>
