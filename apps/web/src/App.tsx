@@ -18,13 +18,14 @@ function LogoMark() {
   return <div className="logo-mark" aria-hidden="true"><span /><span /><span /></div>;
 }
 
-function LoginView({ onLogin, onRegister, initialEmail, status }: { onLogin: (email: string, password: string) => Promise<void>; onRegister: () => void; initialEmail: string; status: string }) {
+function LoginView({ onLogin, onRegister, initialEmail }: { onLogin: (email: string, password: string) => Promise<void>; onRegister: () => void; initialEmail: string }) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [busy, setBusy] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [notice, setNotice] = useState("");
+  const [authError, setAuthError] = useState("");
   
   useEffect(() => {
     setEmail(initialEmail);
@@ -33,9 +34,17 @@ function LoginView({ onLogin, onRegister, initialEmail, status }: { onLogin: (em
   async function submit(event: FormEvent) {
     event.preventDefault();
     setSubmitted(true);
+    setAuthError("");
     if (!email || !password || !email.includes("@")) return;
     setBusy(true);
-    try { await onLogin(email.trim(), password); } catch { /* status is rendered by the form */ } finally { setBusy(false); }
+    try {
+      await onLogin(email.trim(), password);
+    } catch (e) {
+      const message = e instanceof Error ? e.message : "";
+      setAuthError(/invalid email or password/i.test(message) ? "El correo electrónico o la contraseña no son correctos." : (message || "No pudimos iniciar sesión. Inténtalo de nuevo."));
+    } finally {
+      setBusy(false);
+    }
   }
 
   return <main className="auth-page">
@@ -97,9 +106,7 @@ function LoginView({ onLogin, onRegister, initialEmail, status }: { onLogin: (em
           </div>
 
           {notice && <div className="form-notice" role="status">{notice}</div>}
-          {status !== "Listo" && status !== "Conectado" && status !== "Iniciando sesión…" && (
-            <div className="form-status" role="alert">{status}</div>
-          )}
+          {authError && <div className="form-status" role="alert" aria-live="assertive">{authError}</div>}
 
           <button className={`primary-button login-button${busy ? " is-loading" : ""}`} type="submit" disabled={busy} aria-busy={busy}>
             {busy ? (
@@ -282,7 +289,7 @@ export default function App() {
 
     return (
       <div className={`view-transition login-view${transitioning ? " view-exit" : ""}`}>
-        <LoginView onLogin={doLogin} onRegister={() => setAuthMode("register")} initialEmail={registeredEmail} status={status} />
+        <LoginView onLogin={doLogin} onRegister={() => setAuthMode("register")} initialEmail={registeredEmail} />
       </div>
     );
   }
