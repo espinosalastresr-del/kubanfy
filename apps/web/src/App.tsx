@@ -1,5 +1,5 @@
 import { FormEvent, useEffect, useRef, useState } from "react";
-import { clearTokens, discoveryHome, login, me, register, searchTracks } from "./api";
+import { ApiError, addFavorite, addTrackToPlaylist, clearTokens, createPlaylist, deletePlaylist, discoveryHome, listFavorites, listPlaylists, login, me, register, removeFavorite, searchTracks } from "./api";
 import { KbyPlayer } from "./player";
 
 function EyeIcon({ hidden }: { hidden: boolean }) {
@@ -8,6 +8,13 @@ function EyeIcon({ hidden }: { hidden: boolean }) {
   ) : (
     <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2.5 12S6 6 12 6s9.5 6 9.5 6S18 18 12 18s-9.5-6-9.5-6Z" /><circle cx="12" cy="12" r="2.8" /></svg>
   );
+}
+
+function HeartIcon({ filled }: { filled: boolean }) {
+  return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20.8 8.7c0 5.4-8.8 10.3-8.8 10.3S3.2 14.1 3.2 8.7A4.7 4.7 0 0 1 12 6.2a4.7 4.7 0 0 1 8.8 2.5Z" fill={filled ? "currentColor" : "none"} /></svg>;
+}
+function LibraryIcon() {
+  return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4v16M10 4v16M15 4v16M19 7v10"/><path d="M3 4h15M3 20h15"/></svg>;
 }
 
 function SearchIcon() {
@@ -41,7 +48,20 @@ function LoginView({ onLogin, onRegister, initialEmail }: { onLogin: (email: str
       await onLogin(email.trim(), password);
     } catch (e) {
       const message = e instanceof Error ? e.message : "";
-      setAuthError(/invalid email or password/i.test(message) ? "El correo electrónico o la contraseña no son correctos." : (message || "No pudimos iniciar sesión. Inténtalo de nuevo."));
+      const status = e instanceof ApiError ? e.status : 0;
+      if (status === 401 && /invalid email or password/i.test(message)) {
+        setAuthError("No pudimos validar tus datos. Comprueba que el correo sea el que usaste al registrarte y que la contraseña coincida.");
+      } else if (status === 403 && /suspended/i.test(message)) {
+        setAuthError("Tu cuenta está suspendida. No puedes iniciar sesión mientras esta restricción esté activa.");
+      } else if (status === 404 || /account not found/i.test(message)) {
+        setAuthError("No encontramos una cuenta con esos datos. Comprueba el correo o crea una cuenta nueva.");
+      } else if (status === 429) {
+        setAuthError("Has realizado demasiados intentos. Espera unos minutos antes de volver a intentarlo.");
+      } else if (!navigator.onLine || /failed to fetch|networkerror|load failed/i.test(message)) {
+        setAuthError("No pudimos conectar con KubanFy. Comprueba tu conexión e inténtalo de nuevo.");
+      } else {
+        setAuthError("No pudimos iniciar sesión ahora mismo. Inténtalo de nuevo en unos segundos.");
+      }
     } finally {
       setBusy(false);
     }
@@ -223,6 +243,12 @@ export default function App() {
   const [home, setHome] = useState<Awaited<ReturnType<typeof discoveryHome>> | null>(null);
   const [status, setStatus] = useState("Listo");
   const [transitioning, setTransitioning] = useState(false);
+  const [section, setSection] = useState<"home" | "library">("home");
+  const [favorites, setFavorites] = useState<Set<string>>(new Set());
+  const [playlists, setPlaylists] = useState<Awaited<ReturnType<typeof listPlaylists>>>([]);
+  const [newPlaylist, setNewPlaylist] = useState("");
+  const [libraryBusy, setLibraryBusy] = useState(false);
+  const [playlistMenuTrack, setPlaylistMenuTrack] = useState<string | null>(null);
   const player = useRef(new KbyPlayer()).current;
 
   useEffect(() => {
@@ -238,6 +264,19 @@ export default function App() {
     void discoveryHome()
       .then(data => { if (!cancelled) { setHome(data); setStatus("Listo"); } })
       .catch(e => { if (!cancelled) setStatus(e instanceof Error ? e.message : "No pudimos cargar tu inicio."); });
+    return () => { cancelled = true; };
+  }, [user]);
+
+  useEffect(() => {
+    if (!user) return;
+    let cancelled = false;
+    void Promise.all([listFavorites(), listPlaylists()])
+      .then(([fav, pls]) => {
+        if (cancelled) return;
+        setFavorites(new Set(fav.filter(item => item.target_type === "track").map(item => item.target_id)));
+        setPlaylists(pls);
+      })
+      .catch(e => { if (!cancelled) setStatus(e instanceof Error ? e.message : "No pudimos cargar tu biblioteca."); });
     return () => { cancelled = true; };
   }, [user]);
 
@@ -258,6 +297,66 @@ export default function App() {
       const message = e instanceof Error ? e.message : "No pudimos iniciar sesión.";
       setStatus(message);
       throw e;
+    }
+  }
+
+  async function toggleFavorite(trackId: string) {
+    const wasFavorite = favorites.has(trackId);
+    setFavorites(prev => {
+      const next = new Set(prev);
+      wasFavorite ? next.delete(trackId) : next.add(trackId);
+      return next;
+    });
+    try {
+      if (wasFavorite) await removeFavorite(trackId);
+      else await addFavorite(trackId);
+    } catch (e) {
+      setFavorites(prev => {
+        const next = new Set(prev);
+        wasFavorite ? next.add(trackId) : next.delete(trackId);
+        return next;
+      });
+      setStatus(e instanceof Error ? e.message : "No pudimos actualizar favoritos.");
+    }
+  }
+
+  async function makePlaylist() {
+    const name = newPlaylist.trim();
+    if (!name || libraryBusy) return;
+    setLibraryBusy(true);
+    try {
+      const created = await createPlaylist(name);
+      setPlaylists(prev => [created, ...prev]);
+      setNewPlaylist("");
+      setStatus("Playlist creada");
+    } catch (e) {
+      setStatus(e instanceof Error ? e.message : "No pudimos crear la playlist.");
+    } finally {
+      setLibraryBusy(false);
+    }
+  }
+
+  async function removePlaylist(id: string) {
+    if (libraryBusy) return;
+    setLibraryBusy(true);
+    try {
+      await deletePlaylist(id);
+      setPlaylists(prev => prev.filter(p => p.id !== id));
+      setStatus("Playlist eliminada");
+    } catch (e) {
+      setStatus(e instanceof Error ? e.message : "No pudimos eliminar la playlist.");
+    } finally {
+      setLibraryBusy(false);
+    }
+  }
+
+  async function saveToPlaylist(playlistId: string, trackId: string) {
+    try {
+      await addTrackToPlaylist(playlistId, trackId);
+      setPlaylistMenuTrack(null);
+      setStatus("Añadida a la playlist");
+    } catch (e) {
+      setStatus(e instanceof Error ? e.message : "No pudimos añadir la canción.");
     }
   }
 
@@ -301,6 +400,12 @@ export default function App() {
     </header>
 
     <section className="content">
+    <nav className="app-nav glass" aria-label="Navegación principal">
+      <button className={section === "home" ? "active" : ""} onClick={() => setSection("home")}><span>⌂</span>Inicio</button>
+      <button className={section === "library" ? "active" : ""} onClick={() => setSection("library")}><LibraryIcon />Biblioteca</button>
+    </nav>
+
+      {section === "home" && <>
       <div className="hero glass">
         <div>
           <span className="eyebrow">KUBANFY · ${home?.country ?? "CUBA"}</span>
@@ -326,7 +431,8 @@ export default function App() {
             {results.map(r => <article className="glass track" key={r.provider_track_id}>
               <div className="track-art">{r.artwork ? <img src={r.artwork} alt="" /> : <LogoMark />}</div>
               <div className="track-info"><strong>{r.title}</strong><span>{r.artists.join(", ")}</span></div>
-              {r.track_id && <button className="play-button" onClick={() => void play(r.track_id)} aria-label={`Reproducir ${r.title}`}>▶</button>}
+              {r.track_id && <button className={`icon-button favorite-button${favorites.has(r.track_id) ? " is-active" : ""}`} onClick={() => void toggleFavorite(r.track_id)} aria-label={favorites.has(r.track_id) ? "Quitar de favoritos" : "Añadir a favoritos"}><HeartIcon filled={favorites.has(r.track_id)} /></button>
+              <button className="play-button" onClick={() => void play(r.track_id)} aria-label={`Reproducir ${r.title}`}>▶</button>}
             </article>)}
           </div>
         </section>
@@ -344,6 +450,7 @@ export default function App() {
                   <span className="featured-number">{String(index + 1).padStart(2, "0")}</span>
                   <span className="featured-title">{track.title || "Sin título"}</span>
                   <span className="featured-play">▶</span>
+                  <span className={`featured-heart${favorites.has(track.track_id) ? " is-active" : ""}`} onClick={e => { e.stopPropagation(); void toggleFavorite(track.track_id); }}><HeartIcon filled={favorites.has(track.track_id)} /></span>
                 </button>
               ))}
             </div>
@@ -359,6 +466,7 @@ export default function App() {
                   <span className="release-art"><LogoMark /></span>
                   <strong>{track.title}</strong>
                   <span>{formatDuration(track.duration)}</span>
+                  <span className={`release-heart${favorites.has(track.id) ? " is-active" : ""}`} onClick={e => { e.stopPropagation(); void toggleFavorite(track.id); }}><HeartIcon filled={favorites.has(track.id)} /></span>
                 </button>
               ))}
             </div>
@@ -379,6 +487,52 @@ export default function App() {
             </div>
           </section>
         </>
+      )}
+
+      {section === "library" && (
+        <section className="library-page">
+          <div className="library-header glass">
+            <div><span className="eyebrow">TU COLECCIÓN</span><h1>Biblioteca</h1><p>Tus canciones y playlists, sincronizadas con tu cuenta.</p></div>
+          </div>
+
+          <section className="library-section">
+            <div className="section-heading"><div><span className="eyebrow">GUARDADOS</span><h2>Favoritos</h2></div></div>
+            {favorites.size === 0 ? (
+              <div className="empty-state glass"><strong>Aún no tienes favoritos</strong><span>Guarda una canción con ♡ y aparecerá aquí.</span></div>
+            ) : (
+              <div className="library-list">
+                {Array.from(favorites).map(id => {
+                  const track = [...results, ...(home?.trending ?? []), ...(home?.new_releases ?? [])].find((item: any) => (item.track_id ?? item.id) === id);
+                  return <article className="glass library-track" key={id}>
+                    <div className="track-art"><LogoMark /></div>
+                    <div className="track-info"><strong>{track?.title || "Canción guardada"}</strong><span>{track ? "KubanFy" : "Disponible en tu biblioteca"}</span></div>
+                    <button className="play-button" onClick={() => void play(id)} aria-label="Reproducir favorito">▶</button>
+                    <button className="icon-button favorite-button is-active" onClick={() => void toggleFavorite(id)} aria-label="Quitar de favoritos"><HeartIcon filled /></button>
+                  </article>;
+                })}
+              </div>
+            )}
+          </section>
+
+          <section className="library-section">
+            <div className="section-heading"><div><span className="eyebrow">ORGANIZA</span><h2>Playlists</h2></div></div>
+            <div className="playlist-create glass">
+              <input value={newPlaylist} onChange={e => setNewPlaylist(e.target.value)} onKeyDown={e => e.key === "Enter" && void makePlaylist()} placeholder="Nombre de la nueva playlist" maxLength={200} />
+              <button className="primary-button" onClick={() => void makePlaylist()} disabled={libraryBusy || !newPlaylist.trim()}>Crear</button>
+            </div>
+            {playlists.length === 0 ? (
+              <div className="empty-state glass"><strong>Crea tu primera playlist</strong><span>Organiza tus canciones sin depender de la conexión.</span></div>
+            ) : (
+              <div className="playlist-grid">
+                {playlists.map(pl => <article className="glass playlist-card" key={pl.id}>
+                  <div className="playlist-cover"><LogoMark /></div>
+                  <div className="playlist-meta"><strong>{pl.name}</strong><span>{pl.visibility === "private" ? "Privada" : "Pública"}</span></div>
+                  <button className="icon-button" onClick={() => void removePlaylist(pl.id)} aria-label={`Eliminar ${pl.name}`}>×</button>
+                </article>)}
+              </div>
+            )}
+          </section>
+        </section>
       )}
 
       <div className="player glass"><div className="audio-host" ref={el => { if (el && !el.contains(player.element)) el.appendChild(player.element); }} /><button className="secondary-button" onClick={() => { clearTokens(); location.reload(); }}>Salir</button></div>
