@@ -15,7 +15,6 @@ from __future__ import annotations
 import argparse
 import asyncio
 import tempfile
-from contextlib import suppress
 from pathlib import Path
 
 from sqlalchemy import select
