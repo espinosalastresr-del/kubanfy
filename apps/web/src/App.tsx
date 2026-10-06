@@ -23,14 +23,14 @@ function LoginView({ onLogin, status }: { onLogin: (email: string, password: str
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [submitted, setSubmitted] = useState(false);
+  const [submitted, setSubmitted] = useState(false);\n  const [notice, setNotice] = useState("");
 
   async function submit(event: FormEvent) {
     event.preventDefault();
     setSubmitted(true);
     if (!email || !password || !email.includes("@")) return;
     setBusy(true);
-    try { await onLogin(email.trim(), password); } finally { setBusy(false); }
+    try { await onLogin(email.trim(), password); } catch { /* status is rendered by the form */ } finally { setBusy(false); }
   }
 
   return <main className="auth-page">
@@ -91,7 +91,7 @@ function LoginView({ onLogin, status }: { onLogin: (email: string, password: str
             <a href="#recuperar" onClick={e => { e.preventDefault(); alert("La recuperación de contraseña estará disponible próximamente."); }}>¿Olvidaste tu contraseña?</a>
           </div>
 
-          {status !== "Listo" && status !== "Conectado" && <div className="form-status" role="alert">{status}</div>}
+          {notice && <div className="form-notice" role="status">{notice}</div>}\n          {status !== "Listo" && status !== "Conectado" && <div className="form-status" role="alert">{status}</div>}
 
           <button className="primary-button login-button" type="submit" disabled={busy}>
             <span>{busy ? "Entrando…" : "Entrar"}</span>
@@ -101,7 +101,7 @@ function LoginView({ onLogin, status }: { onLogin: (email: string, password: str
 
         <div className="auth-divider"><span>o</span></div>
 
-        <p className="signup-prompt">¿Todavía no tienes cuenta? <a href="#registro" onClick={e => { e.preventDefault(); alert("El registro estará disponible próximamente."); }}>Crear cuenta</a></p>
+        <p className="signup-prompt">¿Todavía no tienes cuenta? <a href="#registro" onClick={e => { e.preventDefault(); setNotice("El registro estará disponible próximamente."); }}>Crear cuenta</a></p>
       </div>
 
       <p className="auth-footnote">KubanFy está diseñado para consumir menos datos y seguir sonando.</p>
