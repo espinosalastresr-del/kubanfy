@@ -63,6 +63,16 @@ services:
       - key: KUBANFY_SEED_DEMO_AUDIO
         value: "true"
 
+  - type: web
+    name: kubanfy-web-staging
+    runtime: static
+    buildCommand: cd apps/web && corepack enable && corepack pnpm install --no-frozen-lockfile && corepack pnpm build
+    staticPublishPath: apps/web/dist
+    pullRequestPreviewsEnabled: true
+    envVars:
+      - key: VITE_API_BASE_URL
+        value: https://kubanfy-api-staging.onrender.com
+
   - type: keyvalue
     name: kubanfy-staging-cache
     plan: free
