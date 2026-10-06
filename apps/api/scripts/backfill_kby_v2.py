@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import struct
 
 from sqlalchemy import select
 
@@ -18,6 +19,27 @@ from app.models.music import AudioAsset
 from app.services.kby import derive_key, unpack as unpack_v1
 from app.services.kby_v2 import pack as pack_v2
 from app.storage import StorageBucket, get_storage
+
+
+def _is_fragmented_mp4(data: bytes) -> bool:
+    boxes: list[str] = []
+    offset = 0
+    while offset + 8 <= len(data):
+        size = struct.unpack(">I", data[offset : offset + 4])[0]
+        kind = data[offset + 4 : offset + 8]
+        header_size = 8
+        if size == 1:
+            if offset + 16 > len(data):
+                return False
+            size = struct.unpack(">Q", data[offset + 8 : offset + 16])[0]
+            header_size = 16
+        elif size == 0:
+            size = len(data) - offset
+        if size < header_size or offset + size > len(data):
+            return False
+        boxes.append(kind.decode("ascii", "replace"))
+        offset += size
+    return {"ftyp", "moov", "moof", "mdat"}.issubset(boxes)
 
 
 async def run(*, limit: int | None, dry_run: bool) -> None:
@@ -68,6 +90,8 @@ async def run(*, limit: int | None, dry_run: bool) -> None:
                         raise ValueError(
                             f"quality mismatch: container={header.quality} db={asset.quality.value}"
                         )
+                    if asset.quality.value in {"low", "medium"} and not _is_fragmented_mp4(plaintext):
+                        raise ValueError("LOW/MEDIUM asset is not fragmented MP4; migrate the derivative first")
 
                     if dry_run:
                         print(f"DRY-RUN {source_key} -> {target_key} ({len(plaintext)} bytes)")
