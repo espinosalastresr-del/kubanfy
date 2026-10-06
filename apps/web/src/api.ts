@@ -89,6 +89,20 @@ export async function login(email: string, password: string) {
   return body.user;
 }
 
+export type DiscoveryHome = {
+  country: string;
+  local_artists: { id: string; name: string; slug: string; verified: boolean }[];
+  top_50_country: { rank: number; track_id: string; title: string | null; score: number; metrics: Record<string, number> }[];
+  top_50_global: { rank: number; track_id: string; title: string | null; score: number; metrics: Record<string, number> }[];
+  new_releases: { id: string; title: string; duration: number | null }[];
+  trending: { rank: number; track_id: string; title: string | null; score: number; metrics: Record<string, number> }[];
+  viral_by_country: { rank: number; track_id: string; title: string | null; score: number; metrics: Record<string, number> }[];
+};
+
+export async function discoveryHome() {
+  return request<DiscoveryHome>("/v1/discovery/home");
+}
+
 export async function me() { return request<unknown>("/v1/auth/me"); }
 export async function searchTracks(q: string) { return request<SearchResult[]>(`/v1/music/search?q=${encodeURIComponent(q)}&limit=20`); }
 
