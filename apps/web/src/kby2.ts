@@ -57,7 +57,8 @@ export async function decryptChunk(
   aad.set(headerBytes, 5);
   new DataView(aad.buffer).setUint32(5 + headerBytes.length, index);
   new DataView(aad.buffer).setUint32(9 + headerBytes.length, len);
-  return new Uint8Array(await crypto.subtle.decrypt({ name: "AES-GCM", iv: nonce, additionalData: aad, tagLength: 128 }, key, ciphertext));
+  const plain = await crypto.subtle.decrypt({ name: "AES-GCM", iv: nonce, additionalData: aad, tagLength: 128 }, key, ciphertext.slice().buffer);
+  return new Uint8Array(plain);
 }
 
 export function parseTopLevelBoxes(buffer: Uint8Array) {
