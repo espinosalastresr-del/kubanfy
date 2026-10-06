@@ -92,11 +92,23 @@ function LoginView({ onLogin, status }: { onLogin: (email: string, password: str
             <a href="#recuperar" onClick={e => { e.preventDefault(); alert("La recuperación de contraseña estará disponible próximamente."); }}>¿Olvidaste tu contraseña?</a>
           </div>
 
-          {notice && <div className="form-notice" role="status">{notice}</div>}\n          {status !== "Listo" && status !== "Conectado" && <div className="form-status" role="alert">{status}</div>}
+          {notice && <div className="form-notice" role="status">{notice}</div>}
+          {status !== "Listo" && status !== "Conectado" && status !== "Iniciando sesión…" && (
+            <div className="form-status" role="alert">{status}</div>
+          )}
 
-          <button className="primary-button login-button" type="submit" disabled={busy}>
-            <span>{busy ? "Entrando…" : "Entrar"}</span>
-            {!busy && <span className="button-arrow">→</span>}
+          <button className={`primary-button login-button${busy ? " is-loading" : ""}`} type="submit" disabled={busy} aria-busy={busy}>
+            {busy ? (
+              <>
+                <span className="button-spinner" aria-hidden="true" />
+                <span>Entrando…</span>
+              </>
+            ) : (
+              <>
+                <span>Entrar</span>
+                <span className="button-arrow">→</span>
+              </>
+            )}
           </button>
         </form>
 
@@ -107,7 +119,7 @@ function LoginView({ onLogin, status }: { onLogin: (email: string, password: str
 
       <p className="auth-footnote">KubanFy está diseñado para consumir menos datos y seguir sonando.</p>
     </section>
-  </main>;
+  </main></div>;
 }
 
 export default function App() {
@@ -115,6 +127,7 @@ export default function App() {
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<any[]>([]);
   const [status, setStatus] = useState("Listo");
+  const [transitioning, setTransitioning] = useState(false);
   const player = useRef(new KbyPlayer()).current;
 
   useEffect(() => {
@@ -126,9 +139,17 @@ export default function App() {
   async function doLogin(email: string, password: string) {
     try {
       setStatus("Iniciando sesión…");
-      setUser(await login(email, password));
+      const authenticatedUser = await login(email, password);
       setStatus("Conectado");
+      setTransitioning(true);
+
+      // Keep the loading state visible long enough for the login surface
+      // to dissolve before mounting the Dashboard.
+      await new Promise(resolve => window.setTimeout(resolve, 650));
+      setUser(authenticatedUser);
+      setTransitioning(false);
     } catch (e) {
+      setTransitioning(false);
       setStatus(e instanceof Error ? e.message : "No pudimos iniciar sesión.");
       throw e;
     }
@@ -144,9 +165,15 @@ export default function App() {
     catch (e) { setStatus(e instanceof Error ? e.message : "Error de reproducción"); }
   }
 
-  if (!user) return <LoginView onLogin={doLogin} status={status} />;
+  if (!user) {
+    return (
+      <div className={`view-transition login-view${transitioning ? " view-exit" : ""}`}>
+        <LoginView onLogin={doLogin} status={status} />
+      </div>
+    );
+  }
 
-  return <main className="app-page">
+  return <div className="view-transition dashboard-view"><main className="app-page">
     <header className="topbar glass">
       <div className="brand-lockup"><LogoMark /><strong>KubanFy</strong></div>
       <div className="status-pill"><span className="status-dot" />{status}</div>
