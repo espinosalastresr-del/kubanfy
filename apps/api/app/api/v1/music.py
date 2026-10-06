@@ -219,6 +219,8 @@ async def music_play(
         content_hash=result.content_hash,
         kby_key=result.kby_key or "",
         kby_version=result.kby_version,
+        content_type="audio/mp4",
+        streaming_format="fmp4",
     )
 
 
