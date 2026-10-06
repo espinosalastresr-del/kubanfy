@@ -89,7 +89,7 @@ export class KbyPlayer {
       const box = this.appendQueue.shift()!;
       await new Promise<void>((resolve, reject) => {
         const append = () => {
-          try { this.source!.appendBuffer(box); } catch (e) { reject(e); return; }
+          try { this.source!.appendBuffer(box.slice().buffer); } catch (e) { reject(e); return; }
           const done = () => { cleanup(); resolve(); };
           const fail = () => { cleanup(); reject(new Error("MSE append falló")); };
           const cleanup = () => {
