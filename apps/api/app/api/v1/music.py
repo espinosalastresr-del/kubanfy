@@ -221,6 +221,7 @@ async def music_play(
         kby_version=result.kby_version,
         content_type="audio/mp4" if result.kby_version == 2 else None,
         streaming_format="fmp4" if result.kby_version == 2 else None,
+        asset_version=result.asset_version,
     )
 
 
