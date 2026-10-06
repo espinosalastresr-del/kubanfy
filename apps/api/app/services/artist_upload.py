@@ -44,6 +44,7 @@ from app.models.rights import LicenseRecord, LicenseStatus
 from app.services.audio_validation import AudioValidationService
 from app.services.job import JobService
 from app.services.kby import pack
+from app.services.kby_v2 import pack as pack_v2
 from app.services.transcoding import TranscodingService
 from app.storage import StorageBucket, get_storage
 from app.storage.base import StorageProvider
@@ -55,6 +56,22 @@ EDIT_ROLES = {
     ArtistMemberRole.MANAGER,
     ArtistMemberRole.EDITOR,
 }
+
+
+
+def _pack_dual(
+    plaintext: bytes,
+    *,
+    content_hash: str,
+    quality: str,
+    content_type: str,
+    settings: Settings,
+) -> tuple[bytes, bytes]:
+    """Build legacy KBY v1 and streaming-capable KBY v2 during migration."""
+    return (
+        pack(plaintext, content_hash=content_hash, quality=quality, content_type=content_type, settings=settings),
+        pack_v2(plaintext, content_hash=content_hash, quality=quality, content_type=content_type, settings=settings),
+    )
 
 
 def _slugify(text: str) -> str:
@@ -214,7 +231,7 @@ class ArtistUploadService:
                 f"{probe.content_hash[:16]}.{ext or 'bin'}"
             )
             master_bytes = tmp_path.read_bytes()
-            master_kby = pack(
+            master_kby, master_kby_v2 = _pack_dual(
                 master_bytes,
                 content_hash=probe.content_hash,
                 quality=AudioQuality.LOSSLESS.value,
@@ -227,6 +244,12 @@ class ArtistUploadService:
                 master_kby,
                 bucket=StorageBucket.PERMANENT,
                 content_type="application/vnd.kubanfy.kby",
+            )
+            await self.storage.put(
+                master_key.rsplit(".kby", 1)[0] + ".kby2",
+                master_kby_v2,
+                bucket=StorageBucket.PERMANENT,
+                content_type="application/vnd.kubanfy.kby2",
             )
 
             master_asset = AudioAsset(
@@ -365,7 +388,14 @@ class ArtistUploadService:
                 bucket=StorageBucket.PERMANENT,
                 content_type="application/vnd.kubanfy.kby",
             )
-            written_keys.append(master_key)
+            master_key_v2 = master_key.rsplit(".kby", 1)[0] + ".kby2"
+            await self.storage.put(
+                master_key_v2,
+                master_kby_v2,
+                bucket=StorageBucket.PERMANENT,
+                content_type="application/vnd.kubanfy.kby2",
+            )
+            written_keys.extend([master_key, master_key_v2])
 
             master_asset = AudioAsset(
                 track_id=track_id,
@@ -396,7 +426,7 @@ class ArtistUploadService:
             for output in derivative_outputs:
                 key = f"artists/{artist_id}/tracks/{track_id}/{generation}/{output.quality.value}/{output.probe.content_hash[:16]}.kby"
                 derivative_bytes = output.path.read_bytes()
-                derivative_kby = pack(
+                derivative_kby, derivative_kby_v2 = _pack_dual(
                     derivative_bytes,
                     content_hash=output.probe.content_hash,
                     quality=output.quality.value,
@@ -409,7 +439,14 @@ class ArtistUploadService:
                     bucket=StorageBucket.PERMANENT,
                     content_type="application/vnd.kubanfy.kby",
                 )
-                written_keys.append(key)
+                derivative_key_v2 = key.rsplit(".kby", 1)[0] + ".kby2"
+                await self.storage.put(
+                    derivative_key_v2,
+                    derivative_kby_v2,
+                    bucket=StorageBucket.PERMANENT,
+                    content_type="application/vnd.kubanfy.kby2",
+                )
+                written_keys.extend([key, derivative_key_v2])
                 asset = AudioAsset(
                     track_id=track_id,
                     storage_key=key,
