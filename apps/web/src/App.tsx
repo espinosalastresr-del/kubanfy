@@ -119,7 +119,7 @@ function LoginView({ onLogin, status }: { onLogin: (email: string, password: str
 
       <p className="auth-footnote">KubanFy está diseñado para consumir menos datos y seguir sonando.</p>
     </section>
-  </main></div>;
+  </main>;
 }
 
 export default function App() {
@@ -208,5 +208,5 @@ export default function App() {
 
       <div className="player glass"><div className="audio-host" ref={el => { if (el && !el.contains(player.element)) el.appendChild(player.element); }} /><button className="secondary-button" onClick={() => { clearTokens(); location.reload(); }}>Salir</button></div>
     </section>
-  </main>;
+  </main></div>;
 }
