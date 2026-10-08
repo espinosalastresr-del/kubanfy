@@ -106,6 +106,10 @@ jobs:
         run: |
           corepack enable
           corepack prepare pnpm@12.9.1 --activate
+      - name: Configure pnpm native builds
+        run: |
+          corepack pnpm config set onlyBuiltDependencies '["esbuild","unrs-resolver","workerd"]'
+          corepack pnpm config get onlyBuiltDependencies
       - name: Install dependencies
         run: corepack pnpm install --no-frozen-lockfile
       - name: Build PWA
