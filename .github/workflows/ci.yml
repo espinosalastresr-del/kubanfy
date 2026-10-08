@@ -101,10 +101,12 @@ jobs:
       - name: Set up Node
         uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: "22.23.3"
       - name: Enable pnpm
-        run: corepack enable
+        run: |
+          corepack enable
+          corepack prepare pnpm@12.9.1 --activate
       - name: Install dependencies
-        run: pnpm install --no-frozen-lockfile
+        run: corepack pnpm install --no-frozen-lockfile
       - name: Build PWA
         run: pnpm build
