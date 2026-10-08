@@ -2,6 +2,7 @@ packages:
   - "apps/*"
   - "infra/*/*"
 
-onlyBuiltDependencies:
-  - esbuild
-  - workerd
+allowBuilds:
+  esbuild: true
+  unrs-resolver: true
+  workerd: true
