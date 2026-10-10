@@ -1,0 +1,18 @@
+{
+  "name": "@kubanfy/cloudflare-api-staging",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "deploy": "wrangler deploy",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@cloudflare/containers": "^0.2.4"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20261006.0",
+    "typescript": "^5.9.0",
+    "wrangler": "^4.136.0"
+  },
+  "engines": { "node": ">=22.12.0" }
+}
