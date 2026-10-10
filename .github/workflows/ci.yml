@@ -138,3 +138,40 @@ jobs:
 
       - name: Deploy Worker and Container image to Cloudflare
         run: npx wrangler deploy
+
+  deploy-cloudflare-web-staging:
+    name: Deploy Cloudflare web staging
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/feat/cloudflare-containers-deploy'
+    needs: [deploy-cloudflare-staging]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    defaults:
+      run:
+        working-directory: apps/web
+    env:
+      CLOUDFLARE_ACCOUNT_ID: 692849a1e51eea43c2ddbf3cddc42f6f
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      VITE_API_BASE_URL: https://kubanfy-api-staging.globumlatinmusic.workers.dev
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22.23.3"
+
+      - name: Enable pnpm
+        run: |
+          corepack enable
+          corepack prepare pnpm@12.9.1 --activate
+
+      - name: Install dependencies
+        run: corepack pnpm install --no-frozen-lockfile --allow-build=esbuild --allow-build=unrs-resolver --allow-build=workerd
+
+      - name: Build PWA for Cloudflare staging API
+        run: pnpm build
+
+      - name: Deploy Cloudflare web staging
+        run: pnpm exec wrangler deploy
