@@ -1,0 +1,49 @@
+{
+  "$schema": "https://developers.cloudflare.com/workers/wrangler/config-schema.json",
+  "name": "kubanfy-api-staging",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-10-06",
+  "observability": {
+    "enabled": true
+  },
+  "vars": {
+    "ALLOWED_HOSTS": "kubanfy-api-staging.globumlatinmusic.workers.dev",
+    "CORS_ORIGINS": "https://kubanfy-web-staging.workers.dev",
+    "DEBUG": "false",
+    "DEFAULT_COUNTRY": "CU",
+    "ENVIRONMENT": "staging",
+    "FEATURE_GOOGLE_PLAY": "false",
+    "FEATURE_MONETIZATION": "false",
+    "FEATURE_PROVIDER_YOUTUBE": "false",
+    "LOG_FORMAT": "json",
+    "LOG_LEVEL": "INFO",
+    "RATE_LIMIT_FAIL_OPEN": "true",
+    "R2_CACHE_BUCKET": "kubanfy-cache-staging",
+    "R2_ENDPOINT": "https://692849a1e51eea43c2ddbf3cddc42f6f.r2.cloudflarestorage.com",
+    "R2_PERMANENT_BUCKET": "kubanfy-permanent-staging",
+    "R2_REGION": "auto",
+    "R2_SIGNED_URL_EXPIRY_SECONDS": "900"
+  },
+  "containers": [
+    {
+      "class_name": "KubanFyApiContainer",
+      "image": "../../../apps/api/Dockerfile",
+      "instance_type": "standard-1",
+      "max_instances": 3
+    }
+  ],
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "KUBANFY_API_CONTAINER",
+        "class_name": "KubanFyApiContainer"
+      }
+    ]
+  },
+  "exports": {
+    "KubanFyApiContainer": {
+      "type": "durable-object",
+      "storage": "sqlite"
+    }
+  }
+}

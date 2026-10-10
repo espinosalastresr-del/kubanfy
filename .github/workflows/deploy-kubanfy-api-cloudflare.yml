@@ -1,0 +1,56 @@
+name: Deploy KubanFy API to Cloudflare Containers
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - feat/cloudflare-containers-deploy
+    paths:
+      - "apps/api/**"
+      - "infra/cloudflare/kubanfy-api-staging/**"
+      - ".github/workflows/deploy-kubanfy-api-cloudflare.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: kubanfy-api-cloudflare-staging
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Set up Python build prerequisites
+        run: |
+          docker --version
+          node --version
+          npm --version
+
+      - name: Install Wrangler
+        working-directory: infra/cloudflare/kubanfy-api-staging
+        run: npm install --no-audit --no-fund
+
+      - name: Type-check Worker
+        working-directory: infra/cloudflare/kubanfy-api-staging
+        run: npx tsc --noEmit
+
+      - name: Deploy Worker and build/publish API image
+        working-directory: infra/cloudflare/kubanfy-api-staging
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: 692849a1e51eea43c2ddbf3cddc42f6f
+        run: |
+          test -n "$CLOUDFLARE_API_TOKEN" || {
+            echo "::error::Add CLOUDFLARE_API_TOKEN in GitHub Actions secrets."
+            exit 1
+          }
+          npx wrangler deploy

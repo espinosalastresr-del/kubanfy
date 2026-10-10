@@ -8,6 +8,7 @@ from __future__ import annotations
 from collections.abc import AsyncGenerator
 from typing import Any
 
+from sqlalchemy.engine import make_url
 from sqlalchemy.ext.asyncio import (
     AsyncSession,
     async_sessionmaker,
@@ -26,14 +27,24 @@ class Base(DeclarativeBase):
 
 def create_engine(settings: Settings | None = None) -> Any:
     settings = settings or get_settings()
-    database_url = settings.database_url
-    if database_url.startswith("postgresql://"):
-        database_url = "postgresql+asyncpg://" + database_url[len("postgresql://"):]
-    elif database_url.startswith("postgres://"):
-        database_url = "postgresql+asyncpg://" + database_url[len("postgres://"):]
+    url = make_url(settings.database_url)
+
+    # Neon/libpq URLs commonly include sslmode and channel_binding query
+    # parameters. asyncpg accepts ssl, but not libpq's sslmode or
+    # channel_binding parameters; passing them through causes a TypeError
+    # when the first connection is opened.
+    if url.drivername in {"postgres", "postgresql"}:
+        url = url.set(drivername="postgresql+asyncpg")
+
+    query = dict(url.query)
+    sslmode = query.pop("sslmode", None)
+    query.pop("channel_binding", None)
+    if sslmode and "ssl" not in query:
+        query["ssl"] = sslmode
+    url = url.set(query=query)
 
     return create_async_engine(
-        database_url,
+        url,
         pool_size=settings.db_pool_size,
         max_overflow=settings.db_max_overflow,
         pool_timeout=settings.db_pool_timeout,
