@@ -38,5 +38,11 @@
         "class_name": "KubanFyApiContainer"
       }
     ]
+  },
+  "exports": {
+    "KubanFyApiContainer": {
+      "type": "durable-object",
+      "storage": "sqlite"
+    }
   }
 }
