@@ -37,7 +37,7 @@ export class KubanFyApiContainer extends Container<Env> {
   enableInternet = true;
   pingEndpoint = "health/live";
 
-  envVars = {
+  envVars = Object.fromEntries(Object.entries({
     ENVIRONMENT: this.env.ENVIRONMENT,
     DEBUG: this.env.DEBUG,
     DATABASE_URL: this.env.DATABASE_URL,
@@ -65,7 +65,7 @@ export class KubanFyApiContainer extends Container<Env> {
     R2_SIGNED_URL_EXPIRY_SECONDS: this.env.R2_SIGNED_URL_EXPIRY_SECONDS,
     CORS_ORIGINS: this.env.CORS_ORIGINS,
     ALLOWED_HOSTS: this.env.ALLOWED_HOSTS
-  };
+  }).filter(([, value]) => value !== undefined)) as Record<string, string>;
 }
 
 export default {
