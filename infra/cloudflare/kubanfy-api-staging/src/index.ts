@@ -31,41 +31,55 @@ interface Env {
   ALLOWED_HOSTS?: string;
 }
 
+function containerEnvironment(env: Env): Record<string, string> {
+  const values: Record<string, string | undefined> = {
+    ENVIRONMENT: env.ENVIRONMENT,
+    DEBUG: env.DEBUG,
+    DATABASE_URL: env.DATABASE_URL,
+    DATABASE_URL_SYNC: env.DATABASE_URL_SYNC,
+    REDIS_URL: env.REDIS_URL,
+    JWT_SECRET_KEY: env.JWT_SECRET_KEY,
+    KBY_MASTER_KEY: env.KBY_MASTER_KEY,
+    OFFLINE_LICENSE_PRIVATE_KEY: env.OFFLINE_LICENSE_PRIVATE_KEY,
+    OFFLINE_LICENSE_PUBLIC_KEY: env.OFFLINE_LICENSE_PUBLIC_KEY,
+    SUPER_ADMIN_EMAIL: env.SUPER_ADMIN_EMAIL,
+    SUPER_ADMIN_PASSWORD: env.SUPER_ADMIN_PASSWORD,
+    DEFAULT_COUNTRY: env.DEFAULT_COUNTRY,
+    RATE_LIMIT_FAIL_OPEN: env.RATE_LIMIT_FAIL_OPEN,
+    LOG_LEVEL: env.LOG_LEVEL,
+    LOG_FORMAT: env.LOG_FORMAT,
+    FEATURE_MONETIZATION: env.FEATURE_MONETIZATION,
+    FEATURE_GOOGLE_PLAY: env.FEATURE_GOOGLE_PLAY,
+    FEATURE_PROVIDER_YOUTUBE: env.FEATURE_PROVIDER_YOUTUBE,
+    R2_ENDPOINT: env.R2_ENDPOINT,
+    R2_ACCESS_KEY_ID: env.R2_ACCESS_KEY_ID,
+    R2_SECRET_ACCESS_KEY: env.R2_SECRET_ACCESS_KEY,
+    R2_CACHE_BUCKET: env.R2_CACHE_BUCKET,
+    R2_PERMANENT_BUCKET: env.R2_PERMANENT_BUCKET,
+    R2_REGION: env.R2_REGION,
+    R2_SIGNED_URL_EXPIRY_SECONDS: env.R2_SIGNED_URL_EXPIRY_SECONDS ?? "900",
+    CORS_ORIGINS: env.CORS_ORIGINS,
+    ALLOWED_HOSTS: env.ALLOWED_HOSTS,
+  };
+
+  // Wrangler/Worker bindings can accidentally contain the literal string
+  // "undefined". Never pass that string into Pydantic as a real setting.
+  return Object.fromEntries(
+    Object.entries(values).filter(([, value]) => {
+      if (typeof value !== "string") return false;
+      const normalized = value.trim().toLowerCase();
+      return normalized !== "" && normalized !== "undefined" && normalized !== "null";
+    }),
+  ) as Record<string, string>;
+}
+
 export class KubanFyApiContainer extends Container<Env> {
   defaultPort = 8000;
   sleepAfter = "10m";
   enableInternet = true;
   pingEndpoint = "health/live";
 
-  envVars = Object.fromEntries(Object.entries({
-    ENVIRONMENT: this.env.ENVIRONMENT,
-    DEBUG: this.env.DEBUG,
-    DATABASE_URL: this.env.DATABASE_URL,
-    DATABASE_URL_SYNC: this.env.DATABASE_URL_SYNC,
-    REDIS_URL: this.env.REDIS_URL,
-    JWT_SECRET_KEY: this.env.JWT_SECRET_KEY,
-    KBY_MASTER_KEY: this.env.KBY_MASTER_KEY,
-    OFFLINE_LICENSE_PRIVATE_KEY: this.env.OFFLINE_LICENSE_PRIVATE_KEY,
-    OFFLINE_LICENSE_PUBLIC_KEY: this.env.OFFLINE_LICENSE_PUBLIC_KEY,
-    SUPER_ADMIN_EMAIL: this.env.SUPER_ADMIN_EMAIL,
-    SUPER_ADMIN_PASSWORD: this.env.SUPER_ADMIN_PASSWORD,
-    DEFAULT_COUNTRY: this.env.DEFAULT_COUNTRY,
-    RATE_LIMIT_FAIL_OPEN: this.env.RATE_LIMIT_FAIL_OPEN,
-    LOG_LEVEL: this.env.LOG_LEVEL,
-    LOG_FORMAT: this.env.LOG_FORMAT,
-    FEATURE_MONETIZATION: this.env.FEATURE_MONETIZATION,
-    FEATURE_GOOGLE_PLAY: this.env.FEATURE_GOOGLE_PLAY,
-    FEATURE_PROVIDER_YOUTUBE: this.env.FEATURE_PROVIDER_YOUTUBE,
-    R2_ENDPOINT: this.env.R2_ENDPOINT,
-    R2_ACCESS_KEY_ID: this.env.R2_ACCESS_KEY_ID,
-    R2_SECRET_ACCESS_KEY: this.env.R2_SECRET_ACCESS_KEY,
-    R2_CACHE_BUCKET: this.env.R2_CACHE_BUCKET,
-    R2_PERMANENT_BUCKET: this.env.R2_PERMANENT_BUCKET,
-    R2_REGION: this.env.R2_REGION,
-    R2_SIGNED_URL_EXPIRY_SECONDS: this.env.R2_SIGNED_URL_EXPIRY_SECONDS,
-    CORS_ORIGINS: this.env.CORS_ORIGINS,
-    ALLOWED_HOSTS: this.env.ALLOWED_HOSTS
-  }).filter(([, value]) => value !== undefined)) as Record<string, string>;
+  envVars = containerEnvironment(this.env);
 }
 
 export default {
@@ -73,5 +87,5 @@ export default {
     const id = env.KUBANFY_API_CONTAINER.idFromName("staging-api");
     const container = env.KUBANFY_API_CONTAINER.get(id);
     return container.fetch(request);
-  }
+  },
 };
