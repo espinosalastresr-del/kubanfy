@@ -265,9 +265,12 @@ class R2Storage(StorageProvider):
             raise StorageError(f"Failed to generate signed URL: {type(exc).__name__}") from exc
 
     async def health_check(self) -> bool:
+        """Verify access to the configured buckets without requiring account-wide listing."""
         try:
             async with self._client() as client:
-                await client.list_buckets()
+                for bucket_name in self._bucket_map.values():
+                    await client.head_bucket(Bucket=bucket_name)
             return True
         except Exception:
+            logger.warning("r2_health_check_failed", exc_info=True)
             return False
