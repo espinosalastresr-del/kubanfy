@@ -21,7 +21,8 @@
     "R2_CACHE_BUCKET": "kubanfy-cache-staging",
     "R2_ENDPOINT": "https://692849a1e51eea43c2ddbf3cddc42f6f.r2.cloudflarestorage.com",
     "R2_PERMANENT_BUCKET": "kubanfy-permanent-staging",
-    "R2_REGION": "auto"
+    "R2_REGION": "auto",
+    "R2_SIGNED_URL_EXPIRY_SECONDS": "900"
   },
   "containers": [
     {
