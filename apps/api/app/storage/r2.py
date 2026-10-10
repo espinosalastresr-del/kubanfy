@@ -271,6 +271,20 @@ class R2Storage(StorageProvider):
                 for bucket_name in self._bucket_map.values():
                     await client.head_bucket(Bucket=bucket_name)
             return True
-        except Exception:
-            logger.warning("r2_health_check_failed", exc_info=True)
+        except Exception as exc:
+            # Keep diagnostics useful without logging credentials, endpoint URLs,
+            # request headers, or signed request details.
+            error_code = None
+            http_status = None
+            if isinstance(exc, ClientError):
+                error = exc.response.get("Error", {})
+                response = exc.response.get("ResponseMetadata", {})
+                error_code = error.get("Code")
+                http_status = response.get("HTTPStatusCode")
+            logger.warning(
+                "r2_health_check_failed",
+                exception_type=type(exc).__name__,
+                error_code=error_code,
+                http_status=http_status,
+            )
             return False
