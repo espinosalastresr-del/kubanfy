@@ -38,13 +38,5 @@
         "class_name": "KubanFyApiContainer"
       }
     ]
-  },
-  "migrations": [
-    {
-      "tag": "v1",
-      "new_sqlite_classes": [
-        "KubanFyApiContainer"
-      ]
-    }
-  ]
+  }
 }
