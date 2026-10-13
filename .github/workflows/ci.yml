@@ -113,7 +113,7 @@ jobs:
 
   deploy-cloudflare-staging:
     name: Deploy Cloudflare API staging
-    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/feat/cloudflare-containers-deploy'
+    if: github.ref == 'refs/heads/feat/cloudflare-containers-deploy'
     needs: [api-tests, docker-api, web-build]
     runs-on: ubuntu-latest
     permissions:
