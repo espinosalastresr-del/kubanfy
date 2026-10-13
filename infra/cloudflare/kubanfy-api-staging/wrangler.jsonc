@@ -8,7 +8,7 @@
   },
   "vars": {
     "ALLOWED_HOSTS": "kubanfy-api-staging.globumlatinmusic.workers.dev",
-    "CORS_ORIGINS": "https://kubanfy-web-staging.workers.dev",
+    "CORS_ORIGINS": "https://kubanfy-web-staging.globumlatinmusic.workers.dev",
     "DEBUG": "false",
     "DEFAULT_COUNTRY": "CU",
     "ENVIRONMENT": "staging",
