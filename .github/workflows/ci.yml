@@ -139,6 +139,46 @@ jobs:
       - name: Deploy Worker and Container image to Cloudflare
         run: npx wrangler deploy
 
+
+  staging-smoke:
+    name: Cloudflare staging smoke tests
+    if: github.ref == 'refs/heads/feat/cloudflare-containers-deploy'
+    needs: [deploy-cloudflare-staging, deploy-cloudflare-web-staging]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    env:
+      API_URL: https://kubanfy-api-staging.globumlatinmusic.workers.dev
+      WEB_URL: https://kubanfy-web-staging.globumlatinmusic.workers.dev
+
+    steps:
+      - name: Verify deployed PWA responds
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --fail --silent --show-error --retry 5 --retry-all-errors --retry-delay 5 "$WEB_URL/" -o /tmp/kubanfy-index.html
+          grep -q 'id="root"' /tmp/kubanfy-index.html
+
+      - name: Verify API liveness and dependency readiness
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --fail --silent --show-error --retry 5 --retry-all-errors --retry-delay 5 "$API_URL/health/live" -o /tmp/kubanfy-live.json
+          jq -e '.status == "ok"' /tmp/kubanfy-live.json
+          curl --fail --silent --show-error --retry 5 --retry-all-errors --retry-delay 5 "$API_URL/health/ready" -o /tmp/kubanfy-ready.json
+          cat /tmp/kubanfy-ready.json
+          jq -e '.status == "ok" and .checks.api == "ok" and .checks.database == "ok" and .checks.redis == "ok" and .checks.storage == "ok"' /tmp/kubanfy-ready.json
+
+      - name: Verify auth CORS preflight from deployed PWA origin
+        shell: bash
+        run: |
+          set -euo pipefail
+          status="$(curl --silent --show-error --retry 5 --retry-all-errors --retry-delay 5 -X OPTIONS "$API_URL/v1/auth/login" -H "Origin: $WEB_URL" -H "Access-Control-Request-Method: POST" -H "Access-Control-Request-Headers: content-type,x-kubanfy-platform,x-device-id" -D /tmp/kubanfy-cors-headers -o /tmp/kubanfy-cors-body -w '%{http_code}')"
+          cat /tmp/kubanfy-cors-headers
+          test "$status" = "200"
+          grep -Fqi "access-control-allow-origin: $WEB_URL" /tmp/kubanfy-cors-headers
+          grep -Fqi "access-control-allow-credentials: true" /tmp/kubanfy-cors-headers
+
   deploy-cloudflare-web-staging:
     name: Deploy Cloudflare web staging
     if: github.ref == 'refs/heads/feat/cloudflare-containers-deploy'
