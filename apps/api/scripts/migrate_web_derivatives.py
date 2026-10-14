@@ -38,7 +38,7 @@ def _artist_id_from_storage_key(storage_key: str) -> str:
     return parts[1]
 
 
-async def run(*, limit: int | None, dry_run: bool) -> None:
+async def run(*, limit: int | None, dry_run: bool, track_slug: str | None = None) -> None:
     settings = get_settings()
     init_db(settings)
     try:
@@ -50,6 +50,7 @@ async def run(*, limit: int | None, dry_run: bool) -> None:
         async with async_session_factory() as session:
             stmt = (
                 select(AudioAsset)
+                .join(Track, Track.id == AudioAsset.track_id)
                 .where(
                     AudioAsset.is_active.is_(True),
                     AudioAsset.quality.in_([AudioQuality.LOW, AudioQuality.MEDIUM]),
@@ -58,6 +59,8 @@ async def run(*, limit: int | None, dry_run: bool) -> None:
                 )
                 .order_by(AudioAsset.created_at, AudioAsset.id)
             )
+            if track_slug:
+                stmt = stmt.where(Track.slug == track_slug)
             if limit:
                 stmt = stmt.limit(limit)
 
@@ -250,8 +253,9 @@ def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--limit", type=int, default=None)
     parser.add_argument("--dry-run", action="store_true")
+    parser.add_argument("--track-slug", type=str, default=None)
     args = parser.parse_args()
-    asyncio.run(run(limit=args.limit, dry_run=args.dry_run))
+    asyncio.run(run(limit=args.limit, dry_run=args.dry_run, track_slug=args.track_slug))
 
 
 if __name__ == "__main__":
