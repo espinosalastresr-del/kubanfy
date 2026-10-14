@@ -1,0 +1,105 @@
+name: Staging audio asset maintenance
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "Operation to run"
+        type: choice
+        required: true
+        default: audit
+        options:
+          - audit
+          - dry-run
+          - migrate
+      track_slug:
+        description: "Exact track slug (for example: kubanfy-connectivity-test)"
+        type: string
+        required: true
+        default: kubanfy-connectivity-test
+      confirm_staging_migration:
+        description: "Required only for mode=migrate: type STAGING_ONLY"
+        type: string
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+
+concurrency:
+  group: kubanfy-staging-audio-maintenance
+  cancel-in-progress: false
+
+jobs:
+  maintain:
+    name: Audit or migrate selected staging track
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/api
+    env:
+      ENVIRONMENT: staging
+      DATABASE_URL: ${{ secrets.KUBANFY_STAGING_DATABASE_URL }}
+      R2_ENDPOINT: https://692849a1e51eea43c2ddbf3cddc42f6f.r2.cloudflarestorage.com
+      R2_ACCESS_KEY_ID: ${{ secrets.KUBANFY_STAGING_R2_ACCESS_KEY_ID }}
+      R2_SECRET_ACCESS_KEY: ${{ secrets.KUBANFY_STAGING_R2_SECRET_ACCESS_KEY }}
+      R2_PERMANENT_BUCKET: kubanfy-permanent-staging
+      R2_CACHE_BUCKET: kubanfy-cache-staging
+      KBY_MASTER_KEY: ${{ secrets.KUBANFY_STAGING_KBY_MASTER_KEY }}
+      TRACK_SLUG: ${{ inputs.track_slug }}
+      MODE: ${{ inputs.mode }}
+      CONFIRM_MIGRATION: ${{ inputs.confirm_staging_migration }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate selected operation and required secrets
+        shell: bash
+        run: |
+          set -euo pipefail
+          case "$TRACK_SLUG" in
+            *[!a-z0-9-]*|"") echo "Invalid track slug; use lowercase letters, digits and hyphens."; exit 2 ;;
+          esac
+          for name in DATABASE_URL R2_ACCESS_KEY_ID R2_SECRET_ACCESS_KEY KBY_MASTER_KEY; do
+            if [[ -z "${!name:-}" ]]; then
+              echo "::error::Missing required GitHub Actions secret for $name. Configure the KUBANFY_STAGING_* repository secrets; no assets were changed."
+              exit 2
+            fi
+          done
+          if [[ "$MODE" == "migrate" && "$CONFIRM_MIGRATION" != "STAGING_ONLY" ]]; then
+            echo "::error::Migration requires confirm_staging_migration=STAGING_ONLY."
+            exit 2
+          fi
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends ffmpeg
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: apps/api/pyproject.toml
+
+      - name: Install API dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e .
+
+      - name: Read-only asset audit
+        if: inputs.mode == 'audit'
+        run: python -m scripts.audit_web_assets --track-slug "$TRACK_SLUG"
+
+      - name: Validate migration without writes
+        if: inputs.mode == 'dry-run' || inputs.mode == 'migrate'
+        run: python -m scripts.migrate_web_derivatives --dry-run --track-slug "$TRACK_SLUG"
+
+      - name: Migrate selected track
+        if: inputs.mode == 'migrate'
+        run: python -m scripts.migrate_web_derivatives --track-slug "$TRACK_SLUG"
+
+      - name: Verify migrated assets
+        if: inputs.mode == 'migrate'
+        run: python -m scripts.audit_web_assets --track-slug "$TRACK_SLUG"
