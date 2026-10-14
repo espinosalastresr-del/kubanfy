@@ -19,7 +19,7 @@ from sqlalchemy import select
 
 from app.core.config import get_settings
 from app.core.database import async_session_factory, close_db, init_db
-from app.models.music import AudioAsset, AudioQuality
+from app.models.music import AudioAsset, AudioQuality, Track
 from app.services.kby import derive_key
 from app.services.kby_v2 import parse_header, unpack
 from app.storage import StorageBucket, get_storage
@@ -52,7 +52,7 @@ def _is_fragmented_mp4(data: bytes) -> bool:
     return "ftyp" in boxes and "moov" in boxes and "moof" in boxes and "mdat" in boxes
 
 
-async def run(*, limit: int | None) -> None:
+async def run(*, limit: int | None, track_slug: str | None = None) -> None:
     settings = get_settings()
     init_db(settings)
     try:
@@ -61,6 +61,7 @@ async def run(*, limit: int | None) -> None:
         async with async_session_factory() as session:
             stmt = (
                 select(AudioAsset)
+                .join(Track, Track.id == AudioAsset.track_id)
                 .where(
                     AudioAsset.is_active.is_(True),
                     AudioAsset.quality.in_([AudioQuality.LOW, AudioQuality.MEDIUM]),
@@ -69,6 +70,8 @@ async def run(*, limit: int | None) -> None:
                 )
                 .order_by(AudioAsset.created_at, AudioAsset.id)
             )
+            if track_slug:
+                stmt = stmt.where(Track.slug == track_slug)
             if limit:
                 stmt = stmt.limit(limit)
 
@@ -120,8 +123,9 @@ async def run(*, limit: int | None) -> None:
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--limit", type=int, default=None)
+    parser.add_argument("--track-slug", type=str, default=None)
     args = parser.parse_args()
-    asyncio.run(run(limit=args.limit))
+    asyncio.run(run(limit=args.limit, track_slug=args.track_slug))
 
 
 if __name__ == "__main__":
