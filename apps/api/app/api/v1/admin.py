@@ -168,7 +168,7 @@ async def resolve_report(
 
 @router.get("/plan-access")
 async def plan_access(
-    user: Annotated[User, Depends(require_permissions("users.plan.write"))],
+    user: Annotated[User, Depends(require_permissions("users.write"))],
 ) -> dict[str, bool]:
     return {"allowed": True}
 
@@ -189,7 +189,7 @@ async def update_user_plan(
     user_id: UUID,
     body: UserPlanUpdate,
     session: DbSession,
-    user: Annotated[User, Depends(require_permissions("users.plan.write"))],
+    user: Annotated[User, Depends(require_permissions("users.write"))],
 ) -> dict[str, Any]:
     return await AdminService(session).set_user_plan(
         user_id,
