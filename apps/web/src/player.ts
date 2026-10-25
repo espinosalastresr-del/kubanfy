@@ -1,6 +1,28 @@
 import { playback, startPlayback, heartbeat } from "./api";
 import { chunkRange, decryptChunk, parseHeader, parseTopLevelBoxes, type KbyHeader } from "./kby2";
 
+
+const RANGE_RETRIES = 3;
+
+async function fetchRange(url: string, range: string): Promise<Response> {
+  let lastError: unknown;
+  for (let attempt = 0; attempt <= RANGE_RETRIES; attempt += 1) {
+    try {
+      const response = await fetch(url, { headers: { Range: range } });
+      if (response.ok || ![408, 425, 429, 500, 502, 503, 504].includes(response.status) || attempt === RANGE_RETRIES) {
+        return response;
+      }
+      lastError = new Error(`Solicitud de audio HTTP ${response.status}`);
+    } catch (error) {
+      lastError = error;
+      if (attempt === RANGE_RETRIES) throw error;
+    }
+    // Small exponential backoff avoids hammering mobile data during an outage.
+    await new Promise(resolve => window.setTimeout(resolve, 500 * (2 ** attempt)));
+  }
+  throw lastError instanceof Error ? lastError : new Error("No se pudo descargar el audio");
+}
+
 export class KbyPlayer {
   private media: MediaSource | null = null;
   private source: SourceBuffer | null = null;
@@ -28,7 +50,7 @@ export class KbyPlayer {
     this.url = meta.url;
     this.key = meta.kby_key;
     this.nextChunk = 0;
-    const headResponse = await fetch(this.url, { headers: { Range: "bytes=0-4095" } });
+    const headResponse = await fetchRange(this.url, "bytes=0-4095");
     if (!headResponse.ok) throw new Error(`KBY2 header HTTP ${headResponse.status}`);
     const head = new Uint8Array(await headResponse.arrayBuffer());
     const parsed = parseHeader(head);
@@ -54,14 +76,16 @@ export class KbyPlayer {
     const playbackSession = await startPlayback(trackId, quality);
     this.session = { session_id: playbackSession.playback_session_id, token: playbackSession.playback_token };
     this.startHeartbeat(trackId, quality);
-    void this.pump();
+    void this.pump().catch(error => {
+      this.onState?.(error instanceof Error ? `Error de reproducción: ${error.message}` : "Error de reproducción");
+    });
   }
 
   private async pump() {
     if (!this.header || !this.source) return;
     while (this.nextChunk < this.header.chunk_count) {
       const { start, end } = chunkRange(this.header, this.headerEnd, this.nextChunk);
-      const response = await fetch(this.url, { headers: { Range: `bytes=${start}-${end}` } });
+      const response = await fetchRange(this.url, `bytes=${start}-${end}`);
       if (!response.ok) throw new Error(`KBY2 chunk HTTP ${response.status}`);
       const record = new Uint8Array(await response.arrayBuffer());
       const plaintext = await decryptChunk(record, this.headerBytes, this.nextChunk, this.key);
