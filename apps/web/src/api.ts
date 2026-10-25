@@ -110,7 +110,7 @@ export async function register(email: string, password: string, displayName: str
 }
 
 export async function login(email: string, password: string) {
-  const body = await request<{ user: unknown; tokens: Tokens }>("/v1/auth/login", {
+  const body = await request<{ user: CurrentUser; tokens: Tokens }>("/v1/auth/login", {
     method: "POST", headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ email, password, device_id: getDeviceId(), device_name: "KubanFy Web", platform: "web" }),
   }, false);

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+from typing import Any
 from uuid import UUID
 
 from pydantic import BaseModel
@@ -17,5 +18,7 @@ class EntitlementResponse(BaseModel):
     starts_at: datetime
     expires_at: datetime | None
     created_at: datetime
+    plan_code: str | None = None
+    features: dict[str, Any] = {}
 
     model_config = {"from_attributes": True}
