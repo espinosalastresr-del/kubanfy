@@ -869,12 +869,12 @@ export default function App() {
       if (navigator.storage?.estimate) {
         const estimate = await navigator.storage.estimate();
         if (typeof estimate.quota === "number" && typeof estimate.usage === "number" &&
-            estimate.quota - estimate.usage < Math.max(0, response.size_bytes - (partial?.receivedBytes || 0)) * 1.1) {
+            estimate.quota - estimate.usage < Math.max(0, response.size_bytes - (partial && partial.contentHash === response.content_hash && partial.assetVersion === response.asset_version && partial.deviceId === getDeviceId() && partial.totalBytes === response.size_bytes ? partial.receivedBytes : 0)) * 1.1) {
           throw new Error("No hay espacio suficiente en el dispositivo para guardar esta canción.");
         }
       }
       const blob = await downloadProtectedAudio(response.url, response.size_bytes, (received, total) => {
-        setStatus(`${received > 0 && partial ? "Reanudando" : "Descargando"} ${title}: ${Math.floor(received / total * 100)}%`);
+        setStatus(`${received > 0 && partial && partial.contentHash === response.content_hash && partial.assetVersion === response.asset_version && partial.deviceId === getDeviceId() && partial.totalBytes === response.size_bytes ? "Reanudando" : "Descargando"} ${title}: ${Math.floor(received / total * 100)}%`);
       }, { id: `partial:${id}:low`, trackId: id, quality: "low", contentHash: response.content_hash, assetVersion: response.asset_version, deviceId: getDeviceId() });
       const saved: OfflineTrack = {
         id: `${id}:low`, trackId: id, title, quality: "low", blob,
@@ -1172,6 +1172,7 @@ export default function App() {
                       <span><strong>{r.title}</strong><small>{r.artists.join(", ")}</small></span>
                     </button>
                     <button className={`icon-button favorite-button${favorites.has(r.track_id) ? " is-active" : ""}`} onClick={() => void toggleFavorite(r.track_id!)} aria-label={favorites.has(r.track_id) ? "Quitar de favoritos" : "Añadir a favoritos"}><HeartIcon filled={favorites.has(r.track_id)} /></button>
+                    {!offlineTracks.some(saved => saved.id === `${r.track_id}:low`) && <button className="icon-button" disabled={!isOnline || downloadBusy !== null || !canDownload} onClick={() => void saveOffline(r.track_id!, r.title)} aria-label={`Guardar ${r.title} sin conexión`} title={canDownload ? "Guardar sin conexión" : "Las descargas requieren un plan Premium, Family o Student"}>↓</button>}
                   </article>
                 ) : null)}
               </section>
