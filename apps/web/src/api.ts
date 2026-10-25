@@ -146,7 +146,26 @@ export async function confirmPasswordReset(token: string, newPassword: string) {
   }, false);
 }
 
-export async function me() { return request<unknown>("/v1/auth/me"); }
+export type CurrentUser = {
+  id: string; email: string; display_name: string; avatar: string | null;
+  country: string; language: string; status: string; email_verified: boolean;
+  created_at: string; last_login_at: string | null;
+};
+export type UserEntitlement = {
+  id: string; scope_type: string; scope_id: string | null; source: string;
+  status: string; starts_at: string; expires_at: string | null; created_at: string;
+  plan_code: "free" | "premium" | "family" | "student" | null;
+  features: { downloads?: boolean; quality_max?: string; seats?: number };
+};
+export async function me() { return request<CurrentUser>("/v1/auth/me"); }
+export async function updateMyProfile(profile: Pick<CurrentUser, "display_name" | "country" | "language">) {
+  return request<CurrentUser>("/v1/auth/me", {
+    method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(profile),
+  });
+}
+export async function listMyEntitlements() {
+  return request<UserEntitlement[]>("/v1/entitlements/me");
+}
 export async function searchTracks(q: string) { return request<SearchResult[]>(`/v1/music/search?q=${encodeURIComponent(q)}&limit=20`); }
 
 export async function playback(trackId: string, quality: "low" | "medium") {

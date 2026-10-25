@@ -17,27 +17,4 @@ async def my_entitlements(
     session: DbSession,
 ) -> list[EntitlementResponse]:
     entitlements = await EntitlementService(session).list_active(user.id)
-    response: list[EntitlementResponse] = []
-    for item in entitlements:
-        metadata = item.metadata_json or {}
-        # Expose only product features, never internal/payment metadata.
-        features = {
-            key: metadata[key]
-            for key in ("downloads", "quality_max", "seats")
-            if key in metadata
-        }
-        response.append(
-            EntitlementResponse(
-                id=item.id,
-                scope_type=item.scope_type.value,
-                scope_id=item.scope_id,
-                source=item.source.value,
-                status=item.status.value,
-                starts_at=item.starts_at,
-                expires_at=item.expires_at,
-                created_at=item.created_at,
-                plan_code=metadata.get("plan_code"),
-                features=features,
-            )
-        )
-    return response
+    return [EntitlementResponse.model_validate(item) for item in entitlements]
