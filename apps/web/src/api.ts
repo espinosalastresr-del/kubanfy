@@ -208,3 +208,40 @@ export async function deletePlaylist(id: string) {
 export async function addTrackToPlaylist(playlistId: string, trackId: string) {
   return request<void>(`/v1/playlists/${playlistId}/tracks/${trackId}`, { method: "POST" });
 }
+
+
+export type AdminUser = {
+  id: string;
+  email: string;
+  display_name: string;
+  status: string;
+  email_verified: boolean;
+  created_at: string;
+  plan_code: "free" | "premium" | "family" | "student";
+};
+
+export async function listAdminUsers(search = "", limit = 50, offset = 0) {
+  const params = new URLSearchParams({ limit: String(limit), offset: String(offset) });
+  if (search.trim()) params.set("q", search.trim());
+  return request<AdminUser[]>(`/v1/admin/users?${params.toString()}`);
+}
+
+export async function updateAdminUserPlan(
+  userId: string,
+  planCode: AdminUser["plan_code"],
+  reason: string,
+  expiresAt?: string,
+) {
+  return request<{ id: string; email: string; plan_code: AdminUser["plan_code"]; expires_at: string | null }>(
+    `/v1/admin/users/${encodeURIComponent(userId)}/plan`,
+    {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        plan_code: planCode,
+        reason,
+        ...(expiresAt ? { expires_at: expiresAt } : {}),
+      }),
+    },
+  );
+}

@@ -1,5 +1,5 @@
 import { FormEvent, useEffect, useRef, useState } from "react";
-import { ApiError, addFavorite, addTrackToPlaylist, clearTokens, confirmPasswordReset, createPlaylist, deletePlaylist, discoveryHome, listFavorites, listPlaylists, login, me, register, removeFavorite, requestPasswordReset, searchTracks } from "./api";
+import { AdminUser, ApiError, addFavorite, addTrackToPlaylist, clearTokens, confirmPasswordReset, createPlaylist, deletePlaylist, discoveryHome, listAdminUsers, listFavorites, listPlaylists, login, me, register, removeFavorite, requestPasswordReset, searchTracks, updateAdminUserPlan } from "./api";
 import { KbyPlayer } from "./player";
 
 function EyeIcon({ hidden }: { hidden: boolean }) {
@@ -303,6 +303,86 @@ function RegisterView({ onBack, onRegistered }: { onBack: () => void; onRegister
   </main>;
 }
 
+function AdminUsersView() {
+  const [users, setUsers] = useState<AdminUser[]>([]);
+  const [search, setSearch] = useState("");
+  const [plans, setPlans] = useState<Record<string, AdminUser["plan_code"]>>({});
+  const [reasons, setReasons] = useState<Record<string, string>>({});
+  const [busyId, setBusyId] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
+
+  async function loadUsers(term = search) {
+    setLoading(true);
+    setError("");
+    try {
+      const rows = await listAdminUsers(term, 100, 0);
+      setUsers(rows);
+      setPlans(Object.fromEntries(rows.map(row => [row.id, row.plan_code])));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "No se pudo cargar la lista de usuarios.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => { void loadUsers(""); }, []);
+
+  async function savePlan(target: AdminUser) {
+    const reason = (reasons[target.id] || "").trim();
+    if (reason.length < 3) {
+      setError("Escribe un motivo para dejar constancia del cambio.");
+      return;
+    }
+    setBusyId(target.id);
+    setError("");
+    setNotice("");
+    try {
+      await updateAdminUserPlan(target.id, plans[target.id] || target.plan_code, reason);
+      setNotice(`Plan actualizado para ${target.email}.`);
+      setReasons(prev => ({ ...prev, [target.id]: "" }));
+      await loadUsers();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "No se pudo actualizar el plan.");
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  return <section className="library-page">
+    <div className="library-header glass">
+      <div><span className="eyebrow">CONTROL DE ACCESO</span><h1>Administración</h1><p>Gestiona usuarios y asigna planes manualmente. Cada cambio exige un motivo y queda auditado.</p></div>
+    </div>
+    <section className="library-section">
+      <div className="section-heading"><div><span className="eyebrow">CUENTAS</span><h2>Usuarios y planes</h2></div><span>{users.length} cargados</span></div>
+      <form className="playlist-create glass" onSubmit={event => { event.preventDefault(); void loadUsers(); }}>
+        <input value={search} onChange={event => setSearch(event.target.value)} placeholder="Buscar por nombre o correo" maxLength={160} aria-label="Buscar usuarios" />
+        <button className="primary-button" type="submit" disabled={loading}>Buscar</button>
+      </form>
+      {error && <div className="form-status" role="alert">{error}</div>}
+      {notice && <div className="form-notice" role="status">{notice}</div>}
+      {loading && <div className="empty-state glass"><strong>Cargando usuarios…</strong></div>}
+      {!loading && users.length === 0 && <div className="empty-state glass"><strong>No hay usuarios para mostrar</strong><span>Prueba otra búsqueda.</span></div>}
+      <div className="admin-user-list">
+        {users.map(target => <article className="glass admin-user-card" key={target.id}>
+          <div className="admin-user-summary">
+            <div><strong>{target.display_name}</strong><span>{target.email}</span></div>
+            <div className="admin-user-tags"><span className="plan-tag">{(plans[target.id] || target.plan_code).toUpperCase()}</span><span>{target.status}</span><span>{target.email_verified ? "Correo verificado" : "Correo sin verificar"}</span></div>
+          </div>
+          <div className="admin-user-controls">
+            <label className="field"><span>Plan</span><select value={plans[target.id] || target.plan_code} onChange={event => setPlans(prev => ({ ...prev, [target.id]: event.target.value as AdminUser["plan_code"] }))}>
+              <option value="free">Free</option><option value="premium">Premium</option><option value="family">Family</option><option value="student">Student</option>
+            </select></label>
+            <label className="field"><span>Motivo del cambio (obligatorio)</span><input value={reasons[target.id] || ""} onChange={event => setReasons(prev => ({ ...prev, [target.id]: event.target.value }))} placeholder="Ej. Premium concedido para beta" maxLength={500} /></label>
+            <button className="primary-button" disabled={busyId === target.id || (plans[target.id] || target.plan_code) === target.plan_code || (reasons[target.id] || "").trim().length < 3} onClick={() => void savePlan(target)}>{busyId === target.id ? "Guardando…" : "Guardar plan"}</button>
+          </div>
+        </article>)}
+      </div>
+    </section>
+  </section>;
+}
+
 function formatDuration(seconds: number | null | undefined) {
   if (!seconds || seconds < 0) return "—";
   const minutes = Math.floor(seconds / 60);
@@ -321,7 +401,8 @@ export default function App() {
   const [status, setStatus] = useState("Listo");
   const [isOnline, setIsOnline] = useState(() => navigator.onLine);
   const [transitioning, setTransitioning] = useState(false);
-  const [section, setSection] = useState<"home" | "library">("home");
+  const [section, setSection] = useState<"home" | "library" | "admin">("home");
+  const [isAdmin, setIsAdmin] = useState(false);
   const [favorites, setFavorites] = useState<Set<string>>(new Set());
   const [playlists, setPlaylists] = useState<Awaited<ReturnType<typeof listPlaylists>>>([]);
   const [newPlaylist, setNewPlaylist] = useState("");
@@ -354,6 +435,18 @@ export default function App() {
       player.stop();
     };
   }, [player]);
+
+  useEffect(() => {
+    if (!user) {
+      setIsAdmin(false);
+      return;
+    }
+    let cancelled = false;
+    void listAdminUsers("", 1, 0)
+      .then(() => { if (!cancelled) setIsAdmin(true); })
+      .catch(() => { if (!cancelled) setIsAdmin(false); });
+    return () => { cancelled = true; };
+  }, [user]);
 
   useEffect(() => {
     if (!user) return;
@@ -570,6 +663,7 @@ export default function App() {
     <nav className="app-nav glass" aria-label="Navegación principal">
       <button className={section === "home" ? "active" : ""} aria-current={section === "home" ? "page" : undefined} onClick={() => setSection("home")}><span>⌂</span>Inicio</button>
       <button className={section === "library" ? "active" : ""} aria-current={section === "library" ? "page" : undefined} onClick={() => setSection("library")}><LibraryIcon />Biblioteca</button>
+      {isAdmin && <button className={section === "admin" ? "active" : ""} aria-current={section === "admin" ? "page" : undefined} onClick={() => setSection("admin")}><span>⚙</span>Administración</button>}
     </nav>
 
       {section === "home" && <div className="home-content">
@@ -669,6 +763,8 @@ export default function App() {
         </>
       )}
       </div>}
+
+      {section === "admin" && isAdmin && <AdminUsersView />}
 
       {section === "library" && (
         <section className="library-page">
