@@ -240,6 +240,8 @@ async def audit_logs(
             "target_id": log.target_id,
             "result": log.result,
             "reason": log.reason,
+            "before": log.before,
+            "after": log.after,
             "created_at": log.created_at.isoformat(),
         }
         for log in logs

@@ -308,3 +308,46 @@ export async function publishArtistTrack(artistId: string, trackId: string) {
     `/v1/artist/${encodeURIComponent(artistId)}/tracks/${encodeURIComponent(trackId)}/publish`, { method: "POST" },
   );
 }
+
+
+export type ModerationReport = {
+  id: string; target_type: "track" | "artist" | "user" | "release"; target_id: string;
+  report_type: string; status: "open" | "reviewing" | "resolved" | "rejected";
+  description: string | null; created_at: string;
+};
+export type AdminFeatureFlag = { key: string; enabled: boolean; description: string | null };
+export type AdminAuditLog = {
+  id: string; actor_id: string | null; action: string; target_type: string | null;
+  target_id: string | null; result: string; reason: string | null; created_at: string;
+  before?: Record<string, unknown> | null; after?: Record<string, unknown> | null;
+};
+export async function suspendAdminUser(userId: string, reason: string) {
+  return request<{ id: string; status: string }>(`/v1/admin/users/${encodeURIComponent(userId)}/suspend`, {
+    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ reason }),
+  });
+}
+export async function unsuspendAdminUser(userId: string) {
+  return request<{ id: string; status: string }>(`/v1/admin/users/${encodeURIComponent(userId)}/unsuspend`, { method: "POST" });
+}
+export async function listModerationReports(status = "") {
+  const params = new URLSearchParams();
+  if (status) params.set("status", status);
+  return request<ModerationReport[]>(`/v1/admin/moderation/reports${params.size ? `?${params}` : ""}`);
+}
+export async function resolveModerationReport(id: string, status: ModerationReport["status"], notes: string, takedownTrack: boolean) {
+  return request<{ id: string; status: string }>(`/v1/admin/moderation/reports/${encodeURIComponent(id)}/resolve`, {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ status, notes: notes || null, takedown_track: takedownTrack }),
+  });
+}
+export async function listAdminFeatureFlags() {
+  return request<AdminFeatureFlag[]>("/v1/admin/feature-flags");
+}
+export async function updateAdminFeatureFlag(key: string, enabled: boolean) {
+  return request<{ key: string; enabled: boolean }>(`/v1/admin/feature-flags/${encodeURIComponent(key)}`, {
+    method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ enabled }),
+  });
+}
+export async function listAdminAuditLogs(limit = 100) {
+  return request<AdminAuditLog[]>(`/v1/admin/audit-logs?limit=${Math.min(200, Math.max(1, limit))}`);
+}

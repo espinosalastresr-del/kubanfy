@@ -318,3 +318,14 @@ a{color:inherit}
   .artist-form { padding: 14px; }
   .artist-form-actions > button, .artist-form > button { width: 100%; }
 }
+
+
+/* Administrative console */
+.admin-tabs { display: flex; flex-wrap: wrap; gap: 8px; margin: 18px 0 24px; padding: 6px; border: 1px solid var(--border, rgba(255,255,255,.12)); border-radius: 16px; background: rgba(255,255,255,.025); }
+.admin-tabs button { border: 0; border-radius: 11px; background: transparent; color: inherit; padding: 10px 15px; cursor: pointer; }
+.admin-tabs button.active { background: rgba(255,255,255,.12); font-weight: 700; }
+.status-danger { color: #ff8d8d; font-weight: 700; }
+.flag-enabled { display: inline-flex; align-items: center; border-radius: 999px; padding: 4px 9px; background: rgba(48, 180, 120, .14); color: #78e0ae; font-size: .78rem; font-weight: 700; }
+.audit-json { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 280px; overflow: auto; padding: 12px; border-radius: 10px; background: rgba(0,0,0,.18); font-size: .8rem; }
+.admin-user-card details summary { cursor: pointer; padding: 8px 0; }
+@media (max-width: 520px) { .admin-tabs { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); } .admin-tabs button { width: 100%; } }

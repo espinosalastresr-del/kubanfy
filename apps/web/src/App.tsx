@@ -1,5 +1,5 @@
 import { FormEvent, useEffect, useRef, useState } from "react";
-import { AdminUser, ApiError, ArtistManagedTrack, ArtistProfile, addFavorite, addTrackToPlaylist, clearTokens, confirmPasswordReset, createArtist, createPlaylist, deletePlaylist, discoveryHome, canManageUserPlans, listAdminUsers, listArtistTracks, listMyArtists, listFavorites, listPlaylists, login, me, publishArtistTrack, register, removeFavorite, requestPasswordReset, searchTracks, updateAdminUserPlan, updateArtist, uploadArtistTrack } from "./api";
+import { AdminAuditLog, AdminFeatureFlag, AdminUser, ArtistManagedTrack, ArtistProfile, ModerationReport, addFavorite, addTrackToPlaylist, clearTokens, confirmPasswordReset, createArtist, createPlaylist, deletePlaylist, discoveryHome, canManageUserPlans, listAdminAuditLogs, listAdminFeatureFlags, listAdminUsers, listArtistTracks, listModerationReports, listMyArtists, listFavorites, listPlaylists, login, me, publishArtistTrack, register, removeFavorite, requestPasswordReset, resolveModerationReport, searchTracks, suspendAdminUser, unsuspendAdminUser, updateAdminFeatureFlag, updateAdminUserPlan, updateArtist, uploadArtistTrack } from "./api";
 import { KbyPlayer } from "./player";
 
 function EyeIcon({ hidden }: { hidden: boolean }) {
@@ -304,82 +304,161 @@ function RegisterView({ onBack, onRegistered }: { onBack: () => void; onRegister
 }
 
 function AdminUsersView() {
+  const [tab, setTab] = useState<"users" | "moderation" | "flags" | "audit">("users");
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [search, setSearch] = useState("");
   const [plans, setPlans] = useState<Record<string, AdminUser["plan_code"]>>({});
   const [reasons, setReasons] = useState<Record<string, string>>({});
+  const [reports, setReports] = useState<ModerationReport[]>([]);
+  const [reportFilter, setReportFilter] = useState("");
+  const [reportNotes, setReportNotes] = useState<Record<string, string>>({});
+  const [takedown, setTakedown] = useState<Record<string, boolean>>({});
+  const [flags, setFlags] = useState<AdminFeatureFlag[]>([]);
+  const [audit, setAudit] = useState<AdminAuditLog[]>([]);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
 
   async function loadUsers(term = search) {
-    setLoading(true);
-    setError("");
+    setLoading(true); setError("");
     try {
       const rows = await listAdminUsers(term, 100, 0);
-      setUsers(rows);
-      setPlans(Object.fromEntries(rows.map(row => [row.id, row.plan_code])));
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "No se pudo cargar la lista de usuarios.");
-    } finally {
-      setLoading(false);
-    }
+      setUsers(rows); setPlans(Object.fromEntries(rows.map(row => [row.id, row.plan_code])));
+    } catch (e) { setError(e instanceof Error ? e.message : "No se pudo cargar la lista de usuarios."); }
+    finally { setLoading(false); }
   }
-
+  async function loadReports(filter = reportFilter) {
+    setLoading(true); setError("");
+    try { setReports(await listModerationReports(filter)); }
+    catch (e) { setError(e instanceof Error ? e.message : "No se pudieron cargar los reportes. Comprueba el permiso de moderación."); }
+    finally { setLoading(false); }
+  }
+  async function loadFlags() {
+    setLoading(true); setError("");
+    try { setFlags(await listAdminFeatureFlags()); }
+    catch (e) { setError(e instanceof Error ? e.message : "No se pudieron cargar las funciones."); }
+    finally { setLoading(false); }
+  }
+  async function loadAudit() {
+    setLoading(true); setError("");
+    try { setAudit(await listAdminAuditLogs(100)); }
+    catch (e) { setError(e instanceof Error ? e.message : "No se pudo cargar la auditoría."); }
+    finally { setLoading(false); }
+  }
   useEffect(() => { void loadUsers(""); }, []);
 
+  async function changeTab(next: typeof tab) {
+    setTab(next); setNotice(""); setError("");
+    if (next === "users") await loadUsers();
+    else if (next === "moderation") await loadReports();
+    else if (next === "flags") await loadFlags();
+    else await loadAudit();
+  }
   async function savePlan(target: AdminUser) {
     const reason = (reasons[target.id] || "").trim();
-    if (reason.length < 3) {
-      setError("Escribe un motivo para dejar constancia del cambio.");
-      return;
-    }
-    setBusyId(target.id);
-    setError("");
-    setNotice("");
+    if (reason.length < 3) { setError("Escribe un motivo para dejar constancia del cambio."); return; }
+    setBusyId(target.id); setError(""); setNotice("");
     try {
       await updateAdminUserPlan(target.id, plans[target.id] || target.plan_code, reason);
       setNotice(`Plan actualizado para ${target.email}.`);
-      setReasons(prev => ({ ...prev, [target.id]: "" }));
-      await loadUsers();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "No se pudo actualizar el plan.");
-    } finally {
-      setBusyId(null);
-    }
+      setReasons(prev => ({ ...prev, [target.id]: "" })); await loadUsers();
+    } catch (e) { setError(e instanceof Error ? e.message : "No se pudo actualizar el plan."); }
+    finally { setBusyId(null); }
+  }
+  async function changeSuspension(target: AdminUser) {
+    const isSuspended = target.status === "suspended";
+    const reason = (reasons[target.id] || "").trim();
+    if (!isSuspended && reason.length < 3) { setError("Escribe un motivo de al menos 3 caracteres para suspender la cuenta."); return; }
+    if (!window.confirm(isSuspended ? `¿Reactivar la cuenta de ${target.email}?` : `¿Suspender ${target.email} y revocar sus sesiones activas?`)) return;
+    setBusyId(target.id); setError(""); setNotice("");
+    try {
+      if (isSuspended) await unsuspendAdminUser(target.id);
+      else await suspendAdminUser(target.id, reason);
+      setNotice(isSuspended ? "Cuenta reactivada." : "Cuenta suspendida; las sesiones activas se revocaron.");
+      setReasons(prev => ({ ...prev, [target.id]: "" })); await loadUsers();
+    } catch (e) { setError(e instanceof Error ? e.message : "No se pudo cambiar el estado de la cuenta."); }
+    finally { setBusyId(null); }
+  }
+  async function resolveReport(report: ModerationReport, status: ModerationReport["status"]) {
+    const notes = (reportNotes[report.id] || "").trim();
+    if (status !== "reviewing" && notes.length < 3) { setError("Añade una nota de resolución de al menos 3 caracteres."); return; }
+    if (takedown[report.id] && !window.confirm("Se retirará la canción del catálogo. ¿Continuar?")) return;
+    setBusyId(report.id); setError(""); setNotice("");
+    try {
+      await resolveModerationReport(report.id, status, notes, Boolean(takedown[report.id]));
+      setNotice("Reporte actualizado."); await loadReports();
+    } catch (e) { setError(e instanceof Error ? e.message : "No se pudo actualizar el reporte."); }
+    finally { setBusyId(null); }
+  }
+  async function toggleFlag(flag: AdminFeatureFlag) {
+    setBusyId(flag.key); setError(""); setNotice("");
+    try {
+      await updateAdminFeatureFlag(flag.key, !flag.enabled);
+      setFlags(prev => prev.map(item => item.key === flag.key ? { ...item, enabled: !flag.enabled } : item));
+      setNotice(`Función «${flag.key}» ${flag.enabled ? "desactivada" : "activada"}.`);
+    } catch (e) { setError(e instanceof Error ? e.message : "No se pudo cambiar la función."); }
+    finally { setBusyId(null); }
   }
 
   return <section className="library-page">
-    <div className="library-header glass">
-      <div><span className="eyebrow">CONTROL DE ACCESO</span><h1>Administración</h1><p>Gestiona usuarios y asigna planes manualmente. Cada cambio exige un motivo y queda auditado.</p></div>
+    <div className="library-header glass"><div><span className="eyebrow">CONTROL DE KUBANFY</span><h1>Administración</h1><p>Gestiona cuentas, revisa reportes, controla funciones y consulta el registro de auditoría. Cada acción se vuelve a autorizar en el servidor.</p></div></div>
+    <div className="admin-tabs" role="tablist" aria-label="Secciones administrativas">
+      {([["users","Cuentas"],["moderation","Moderación"],["flags","Funciones"],["audit","Auditoría"]] as const).map(([key,label]) =>
+        <button key={key} role="tab" aria-selected={tab===key} className={tab===key ? "active" : ""} onClick={() => void changeTab(key)}>{label}</button>)}
     </div>
-    <section className="library-section">
-      <div className="section-heading"><div><span className="eyebrow">CUENTAS</span><h2>Usuarios y planes</h2></div><span>{users.length} cargados</span></div>
-      <form className="playlist-create glass" onSubmit={event => { event.preventDefault(); void loadUsers(); }}>
-        <input value={search} onChange={event => setSearch(event.target.value)} placeholder="Buscar por nombre o correo" maxLength={160} aria-label="Buscar usuarios" />
-        <button className="primary-button" type="submit" disabled={loading}>Buscar</button>
-      </form>
-      {error && <div className="form-status" role="alert">{error}</div>}
-      {notice && <div className="form-notice" role="status">{notice}</div>}
-      {loading && <div className="empty-state glass"><strong>Cargando usuarios…</strong></div>}
-      {!loading && users.length === 0 && <div className="empty-state glass"><strong>No hay usuarios para mostrar</strong><span>Prueba otra búsqueda.</span></div>}
-      <div className="admin-user-list">
-        {users.map(target => <article className="glass admin-user-card" key={target.id}>
-          <div className="admin-user-summary">
-            <div><strong>{target.display_name}</strong><span>{target.email}</span></div>
-            <div className="admin-user-tags"><span className="plan-tag">{(plans[target.id] || target.plan_code).toUpperCase()}</span><span>{target.status}</span><span>{target.email_verified ? "Correo verificado" : "Correo sin verificar"}</span></div>
+    {error && <div className="form-status" role="alert">{error}</div>}
+    {notice && <div className="form-notice" role="status">{notice}</div>}
+    {loading && <div className="empty-state glass"><strong>Cargando…</strong></div>}
+
+    {tab === "users" && <>
+      <section className="library-section">
+        <div className="section-heading"><div><span className="eyebrow">CUENTAS</span><h2>Usuarios y planes</h2></div><span>{users.length} cargados · máximo 100 por búsqueda</span></div>
+        <form className="playlist-create glass" onSubmit={event => { event.preventDefault(); void loadUsers(); }}>
+          <input value={search} onChange={event => setSearch(event.target.value)} placeholder="Buscar por nombre o correo" maxLength={160} aria-label="Buscar usuarios" />
+          <button className="primary-button" type="submit" disabled={loading}>Buscar</button>
+        </form>
+        {!loading && users.length === 0 && <div className="empty-state glass"><strong>No hay usuarios para mostrar</strong><span>Prueba otra búsqueda.</span></div>}
+        <div className="admin-user-list">{users.map(target => <article className="glass admin-user-card" key={target.id}>
+          <div className="admin-user-summary"><div><strong>{target.display_name}</strong><span>{target.email}</span></div>
+            <div className="admin-user-tags"><span className="plan-tag">{(plans[target.id] || target.plan_code).toUpperCase()}</span><span className={target.status==="suspended" ? "status-danger" : ""}>{target.status}</span><span>{target.email_verified ? "Correo verificado" : "Correo sin verificar"}</span></div>
           </div>
           <div className="admin-user-controls">
-            <label className="field"><span>Plan</span><select value={plans[target.id] || target.plan_code} onChange={event => setPlans(prev => ({ ...prev, [target.id]: event.target.value as AdminUser["plan_code"] }))}>
-              <option value="free">Free</option><option value="premium">Premium</option><option value="family">Family</option><option value="student">Student</option>
-            </select></label>
-            <label className="field"><span>Motivo del cambio (obligatorio)</span><input value={reasons[target.id] || ""} onChange={event => setReasons(prev => ({ ...prev, [target.id]: event.target.value }))} placeholder="Ej. Premium concedido para beta" maxLength={500} /></label>
-            <button className="primary-button" disabled={busyId === target.id || (plans[target.id] || target.plan_code) === target.plan_code || (reasons[target.id] || "").trim().length < 3} onClick={() => void savePlan(target)}>{busyId === target.id ? "Guardando…" : "Guardar plan"}</button>
+            <label className="field"><span>Plan</span><select value={plans[target.id] || target.plan_code} onChange={event => setPlans(prev => ({ ...prev, [target.id]: event.target.value as AdminUser["plan_code"] }))}><option value="free">Free</option><option value="premium">Premium</option><option value="family">Family</option><option value="student">Student</option></select></label>
+            <label className="field"><span>Motivo (obligatorio para cambios)</span><input value={reasons[target.id] || ""} onChange={event => setReasons(prev => ({ ...prev, [target.id]: event.target.value }))} placeholder="Motivo del cambio o suspensión" maxLength={500} /></label>
+            <div className="artist-form-actions">
+              <button className="primary-button" disabled={busyId===target.id || (plans[target.id] || target.plan_code)===target.plan_code || (reasons[target.id] || "").trim().length<3} onClick={() => void savePlan(target)}>{busyId===target.id ? "Guardando…" : "Guardar plan"}</button>
+              <button className={target.status==="suspended" ? "primary-button" : "secondary-button"} disabled={busyId===target.id} onClick={() => void changeSuspension(target)}>{target.status==="suspended" ? "Reactivar cuenta" : "Suspender cuenta"}</button>
+            </div>
           </div>
-        </article>)}
-      </div>
-    </section>
+        </article>)}</div>
+      </section>
+    </>}
+
+    {tab === "moderation" && <section className="library-section">
+      <div className="section-heading"><div><span className="eyebrow">SEGURIDAD DEL CATÁLOGO</span><h2>Reportes de contenido</h2></div><span>{reports.length} reportes</span></div>
+      <div className="playlist-create glass"><label className="field"><span>Estado</span><select value={reportFilter} onChange={e=>{setReportFilter(e.target.value);void loadReports(e.target.value);}}><option value="">Todos</option><option value="open">Abiertos</option><option value="reviewing">En revisión</option><option value="resolved">Resueltos</option><option value="rejected">Rechazados</option></select></label><button className="secondary-button" onClick={()=>void loadReports()}>Actualizar</button></div>
+      {!loading && reports.length===0 && <div className="empty-state glass"><strong>No hay reportes en este filtro</strong></div>}
+      <div className="admin-user-list">{reports.map(report=><article className="glass admin-user-card" key={report.id}>
+        <div className="admin-user-summary"><div><strong>{report.report_type.replaceAll("_"," ").toUpperCase()} · {report.target_type}</strong><span>ID objetivo: {report.target_id}</span><span>{new Date(report.created_at).toLocaleString()}</span></div><div className="admin-user-tags"><span className="plan-tag">{report.status}</span></div></div>
+        <p>{report.description || "Sin descripción proporcionada."}</p>
+        <label className="field"><span>Notas de moderación</span><textarea rows={2} maxLength={2000} value={reportNotes[report.id] || ""} onChange={e=>setReportNotes(prev=>({...prev,[report.id]:e.target.value}))} placeholder="Documenta la decisión" /></label>
+        {report.target_type==="track" && <label className="artist-check"><input type="checkbox" checked={Boolean(takedown[report.id])} onChange={e=>setTakedown(prev=>({...prev,[report.id]:e.target.checked}))}/> Retirar la canción del catálogo al resolver</label>}
+        <div className="artist-form-actions"><button className="secondary-button" disabled={busyId===report.id} onClick={()=>void resolveReport(report,"reviewing")}>Marcar en revisión</button><button className="primary-button" disabled={busyId===report.id} onClick={()=>void resolveReport(report,"resolved")}>Resolver</button><button className="secondary-button" disabled={busyId===report.id} onClick={()=>void resolveReport(report,"rejected")}>Rechazar</button></div>
+      </article>)}</div>
+    </section>}
+
+    {tab === "flags" && <section className="library-section">
+      <div className="section-heading"><div><span className="eyebrow">CONFIGURACIÓN OPERATIVA</span><h2>Funciones del sistema</h2></div><button className="secondary-button" onClick={()=>void loadFlags()}>Actualizar</button></div>
+      <p className="artist-help">Cambiar una bandera no garantiza que un componente la aplique si no está conectado a esa configuración. Evita desactivar funciones críticas durante pruebas activas.</p>
+      <div className="admin-user-list">{flags.map(flag=><article className="glass admin-user-card" key={flag.key}><div className="admin-user-summary"><div><strong>{flag.key.replaceAll("_"," ")}</strong><span>{flag.description || "Sin descripción"}</span></div><div className="admin-user-tags"><span className={flag.enabled ? "flag-enabled" : "plan-tag"}>{flag.enabled ? "ACTIVADA" : "DESACTIVADA"}</span></div></div><button className={flag.enabled ? "secondary-button" : "primary-button"} disabled={busyId===flag.key} onClick={()=>void toggleFlag(flag)}>{busyId===flag.key ? "Guardando…" : flag.enabled ? "Desactivar" : "Activar"}</button></article>)}</div>
+    </section>}
+
+    {tab === "audit" && <section className="library-section">
+      <div className="section-heading"><div><span className="eyebrow">TRAZABILIDAD</span><h2>Registro de auditoría</h2></div><button className="secondary-button" onClick={()=>void loadAudit()}>Actualizar</button></div>
+      <div className="admin-user-list">{audit.map(log=><article className="glass admin-user-card" key={log.id}><div className="admin-user-summary"><div><strong>{log.action}</strong><span>{log.target_type || "—"} · {log.target_id || "—"}</span><span>{new Date(log.created_at).toLocaleString()}</span></div><div className="admin-user-tags"><span className="plan-tag">{log.result}</span></div></div>{log.reason && <p>Motivo: {log.reason}</p>}<details><summary>Detalles del cambio</summary><pre className="audit-json">{JSON.stringify({before:log.before ?? null,after:log.after ?? null},null,2)}</pre></details></article>)}</div>
+      {!loading && audit.length===0 && <div className="empty-state glass"><strong>No hay eventos de auditoría</strong></div>}
+    </section>}
   </section>;
 }
 
