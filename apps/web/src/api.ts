@@ -50,6 +50,42 @@ export function clearTokens() {
   sessionStorage.removeItem("kubanfy.refresh");
 }
 
+const RETRYABLE_READ_STATUSES = new Set([408, 425, 429, 500, 502, 503, 504]);
+
+/**
+ * Retry only idempotent reads: mobile networks often drop requests while switching
+ * between Wi-Fi and cellular. Mutations are never replayed automatically.
+ */
+async function fetchWithReadRetry(url: string, init: RequestInit = {}): Promise<Response> {
+  const method = (init.method || "GET").toUpperCase();
+  const retryableMethod = method === "GET" || method === "HEAD";
+  let lastError: unknown;
+
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    let response: Response | null = null;
+    try {
+      response = await fetch(url, init);
+    } catch (error) {
+      lastError = error;
+      if (!retryableMethod || attempt === 2) throw error;
+    }
+
+    if (response) {
+      if (!retryableMethod || !RETRYABLE_READ_STATUSES.has(response.status) || attempt === 2) {
+        return response;
+      }
+    }
+
+    const retryAfter = response?.headers.get("Retry-After");
+    const retryAfterMs = retryAfter && /^\d+(?:\.\d+)?$/.test(retryAfter)
+      ? Number(retryAfter) * 1000
+      : [350, 900][attempt];
+    await new Promise(resolve => window.setTimeout(resolve, Math.min(4000, retryAfterMs)));
+  }
+
+  throw lastError instanceof Error ? lastError : new Error("La conexión no está disponible");
+}
+
 async function request<T>(path: string, init: RequestInit = {}, retry = true): Promise<T> {
   const headers = new Headers(init.headers);
   headers.set("Accept", "application/json");
@@ -57,7 +93,7 @@ async function request<T>(path: string, init: RequestInit = {}, retry = true): P
   const device = getDeviceId();
   headers.set("X-Device-ID", device);
   if (accessToken) headers.set("Authorization", `Bearer ${accessToken}`);
-  const response = await fetch(`${API}${path}`, { ...init, headers });
+  const response = await fetchWithReadRetry(`${API}${path}`, { ...init, headers });
   if (response.status === 401 && retry && refreshToken) {
     const refreshed = await fetch(`${API}/v1/auth/refresh`, {
       method: "POST", headers: { "Content-Type": "application/json", Accept: "application/json" },
