@@ -2,15 +2,15 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
+import re
 from types import SimpleNamespace
+from unittest.mock import AsyncMock, MagicMock
 from urllib.parse import parse_qs, urlparse
 from uuid import uuid4
-from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
 from app.core.config import EmailProviderType, Settings
-from app.models.device import SessionStatus
 from app.models.password_reset import PasswordResetToken
 from app.models.user import UserStatus
 from app.services.password_reset import PasswordResetService
@@ -54,8 +54,7 @@ async def test_request_stores_only_digest_and_sends_fragment_token() -> None:
     record = session.add.call_args.args[0]
     assert isinstance(record, PasswordResetToken)
     assert record.user_id == user.id
-    assert len(record.token_hash) == 64
-    assert record.token_hash != record.token_hash.lower() or len(record.token_hash) == 64
+    assert re.fullmatch(r"[0-9a-f]{64}", record.token_hash)
     assert record.expires_at > datetime.now(UTC)
     delivery.send.assert_awaited_once()
     sent_body = delivery.send.await_args.args[2]
