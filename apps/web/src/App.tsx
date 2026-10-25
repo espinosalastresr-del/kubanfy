@@ -1,6 +1,7 @@
 import { FormEvent, useEffect, useRef, useState } from "react";
-import { AdminAuditLog, AdminFeatureFlag, AdminUser, ApiError, ArtistManagedTrack, ArtistProfile, CurrentUser, ModerationReport, addFavorite, addTrackToPlaylist, clearTokens, confirmPasswordReset, createArtist, createPlaylist, deletePlaylist, discoveryHome, canManageUserPlans, listAdminAuditLogs, listAdminFeatureFlags, listAdminUsers, listArtistTracks, listModerationReports, listMyArtists, listFavorites, listPlaylists, listMyEntitlements, login, me, publishArtistTrack, register, removeFavorite, requestPasswordReset, resolveModerationReport, searchTracks, suspendAdminUser, unsuspendAdminUser, updateAdminFeatureFlag, updateAdminUserPlan, updateArtist, updateMyProfile, uploadArtistTrack } from "./api";
+import { AdminAuditLog, AdminFeatureFlag, AdminUser, ApiError, ArtistManagedTrack, ArtistProfile, CurrentUser, ModerationReport, addFavorite, addTrackToPlaylist, clearTokens, confirmPasswordReset, createArtist, createPlaylist, deletePlaylist, discoveryHome, canManageUserPlans, createOfflineDownload, offlineLicensePublicKey, getDeviceId, listAdminAuditLogs, listAdminFeatureFlags, listAdminUsers, listArtistTracks, listModerationReports, listMyArtists, listFavorites, listPlaylists, listMyEntitlements, login, me, publishArtistTrack, register, removeFavorite, requestPasswordReset, resolveModerationReport, searchTracks, suspendAdminUser, unsuspendAdminUser, updateAdminFeatureFlag, updateAdminUserPlan, updateArtist, updateMyProfile, uploadArtistTrack } from "./api";
 import { KbyPlayer } from "./player";
+import { deleteOfflineTrack as deleteSavedOfflineTrack, downloadProtectedAudio, listOfflineTracks, saveOfflineTrack, verifyOfflineLicense, type OfflineTrack } from "./offline";
 
 function EyeIcon({ hidden }: { hidden: boolean }) {
   return hidden ? (
@@ -637,10 +638,13 @@ export default function App() {
   });
   const searchInputRef = useRef<HTMLInputElement>(null);
   const player = useRef(new KbyPlayer()).current;
+  const [offlineTracks, setOfflineTracks] = useState<OfflineTrack[]>([]);
+  const [downloadBusy, setDownloadBusy] = useState<string | null>(null);
 
   useEffect(() => {
     player.onState = setStatus;
     void me().then(setUser).catch(() => {});
+    void listOfflineTracks().then(setOfflineTracks).catch(() => {});
     const markOnline = () => setIsOnline(true);
     const markOffline = () => setIsOnline(false);
     window.addEventListener("online", markOnline);
@@ -827,6 +831,79 @@ export default function App() {
       setStatus(e instanceof Error ? e.message : "Error de reproducción");
     }
   }
+  async function saveOffline(id: string, title: string) {
+    if (downloadBusy) return;
+    if (!isOnline) { setStatus("Necesitas conexión para iniciar la descarga."); return; }
+    const currentUser = user as CurrentUser | null;
+    if (!currentUser?.id) { setStatus("Inicia sesión para guardar música."); return; }
+    if (offlineTracks.some(track => track.id === `${id}:low`)) {
+      setStatus("Esta canción ya está guardada sin conexión.");
+      return;
+    }
+    setDownloadBusy(id);
+    try {
+      setStatus("Preparando descarga segura…");
+      const response = await createOfflineDownload(id, "low");
+      if (!response.url || !response.offline_license || !response.content_hash || !response.kby_key ||
+          response.asset_version == null || typeof response.size_bytes !== "number" ||
+          response.size_bytes <= 0 || !response.offline_license_expires_at) {
+        throw new Error("El servidor no entregó una descarga offline completa.");
+      }
+      const key = await offlineLicensePublicKey();
+      if (key.algorithm !== "RS256" || !key.public_key) {
+        throw new Error("La verificación de licencias offline no está configurada.");
+      }
+      if (navigator.storage?.estimate) {
+        const estimate = await navigator.storage.estimate();
+        if (typeof estimate.quota === "number" && typeof estimate.usage === "number" &&
+            estimate.quota - estimate.usage < response.size_bytes * 1.1) {
+          throw new Error("No hay espacio suficiente en el dispositivo para guardar esta canción.");
+        }
+      }
+      const blob = await downloadProtectedAudio(response.url, response.size_bytes, (received, total) => {
+        setStatus(`Descargando ${title}: ${Math.floor(received / total * 100)}%`);
+      });
+      const saved: OfflineTrack = {
+        id: `${id}:low`, trackId: id, title, quality: "low", blob,
+        kbyKey: response.kby_key, contentHash: response.content_hash,
+        assetVersion: response.asset_version, licenseToken: response.offline_license,
+        publicKey: key.public_key, expiresAt: response.offline_license_expires_at,
+        deviceId: getDeviceId(), sizeBytes: blob.size, savedAt: Date.now(),
+      };
+      await verifyOfflineLicense(saved, currentUser.id);
+      await saveOfflineTrack(saved);
+      setOfflineTracks(await listOfflineTracks());
+      setStatus("Canción guardada y verificada para modo offline.");
+    } catch (e) {
+      setStatus(e instanceof Error ? e.message : "No se pudo guardar la canción sin conexión.");
+    } finally {
+      setDownloadBusy(null);
+    }
+  }
+
+  async function playOffline(track: OfflineTrack) {
+    const currentUser = user as CurrentUser | null;
+    if (!currentUser?.id) { setStatus("Inicia sesión para validar la licencia offline."); return; }
+    try {
+      await verifyOfflineLicense(track, currentUser.id);
+      setActiveTrackId(track.trackId);
+      await player.loadOffline(track);
+    } catch (e) {
+      setActiveTrackId(null);
+      setStatus(e instanceof Error ? e.message : "No se pudo reproducir la descarga offline.");
+    }
+  }
+
+  async function removeOffline(track: OfflineTrack) {
+    try {
+      await deleteSavedOfflineTrack(track.id);
+      setOfflineTracks(await listOfflineTracks());
+      setStatus("Descarga eliminada del dispositivo.");
+    } catch (e) {
+      setStatus(e instanceof Error ? e.message : "No se pudo eliminar la descarga.");
+    }
+  }
+
 
   function logout() {
     player.stop();
@@ -936,6 +1013,7 @@ export default function App() {
                   </button>
                   <div className="featured-actions">
                     <button className={`featured-action${favorites.has(track.track_id) ? " is-active" : ""}`} onClick={() => void toggleFavorite(track.track_id)} aria-label={favorites.has(track.track_id) ? "Quitar de favoritos" : "Añadir a favoritos"}><HeartIcon filled={favorites.has(track.track_id)} /></button>
+                    {!offlineTracks.some(saved => saved.id === `${track.track_id}:low`) && <button className="featured-action" disabled={!isOnline || downloadBusy !== null} onClick={() => void saveOffline(track.track_id, track.title || "Sin título")} aria-label={`Guardar ${track.title || "canción"} sin conexión`} title="Guardar sin conexión">↓</button>}
                     <button className="featured-action featured-play" onClick={() => void play(track.track_id)} aria-label={`Reproducir ${track.title || "Sin título"}`}>▶</button>
                   </div>
                 </article>
@@ -957,6 +1035,7 @@ export default function App() {
                   </button>
                   <div className="release-actions">
                     <button className={`release-action${favorites.has(track.id) ? " is-active" : ""}`} onClick={() => void toggleFavorite(track.id)} aria-label={favorites.has(track.id) ? "Quitar de favoritos" : "Añadir a favoritos"}><HeartIcon filled={favorites.has(track.id)} /></button>
+                    {!offlineTracks.some(saved => saved.id === `${track.id}:low`) && <button className="release-action" disabled={!isOnline || downloadBusy !== null} onClick={() => void saveOffline(track.id, track.title)} aria-label={`Guardar ${track.title} sin conexión`} title="Guardar sin conexión">↓</button>}
                     <button className="release-action" onClick={() => void play(track.id)} aria-label={`Reproducir ${track.title}`}>▶</button>
                   </div>
                 </article>
@@ -1007,6 +1086,22 @@ export default function App() {
                     <button className="icon-button favorite-button is-active" onClick={() => void toggleFavorite(id)} aria-label="Quitar de favoritos"><HeartIcon filled /></button>
                   </article>;
                 })}
+              </div>
+            )}
+          </section>
+
+          <section className="library-section">
+            <div className="section-heading"><div><span className="eyebrow">DISPONIBLES SIN CONEXIÓN</span><h2>Descargas</h2></div><span className="plan-tag">{offlineTracks.length} guardadas</span></div>
+            {offlineTracks.length === 0 ? (
+              <div className="empty-state glass"><strong>Todavía no tienes descargas</strong><span>Guarda una canción con la flecha de descarga cuando tengas conexión. Las descargas quedan cifradas y vinculadas a tu dispositivo.</span></div>
+            ) : (
+              <div className="library-list">
+                {offlineTracks.map(track => <article className="glass library-track" key={track.id}>
+                  <div className="track-art"><LogoMark /></div>
+                  <div className="track-info"><strong>{track.title}</strong><span>{track.quality.toUpperCase()} · {(track.sizeBytes / 1024 / 1024).toFixed(1)} MB · licencia hasta {new Date(track.expiresAt).toLocaleDateString()}</span></div>
+                  <button className="play-button" onClick={() => void playOffline(track)} aria-label={`Reproducir ${track.title} sin conexión`}>▶</button>
+                  <button className="icon-button" onClick={() => void removeOffline(track)} aria-label={`Eliminar ${track.title} descargada`}>×</button>
+                </article>)}
               </div>
             )}
           </section>

@@ -1,5 +1,6 @@
 import { playback, startPlayback, heartbeat } from "./api";
 import { chunkRange, decryptChunk, parseHeader, parseTopLevelBoxes, type KbyHeader } from "./kby2";
+import type { OfflineTrack } from "./offline";
 
 
 const RANGE_RETRIES = 5;
@@ -100,6 +101,64 @@ export class KbyPlayer {
     this.headerEnd = parsed.headerEnd;
     this.headerBytes = head.slice(9, this.headerEnd);
 
+    await this.openMediaSource(generation);
+    if (generation !== this.generation) return;
+    this.onState?.("descifrando…");
+    const playbackSession = await startPlayback(trackId, quality);
+    if (generation !== this.generation) return;
+    this.session = { session_id: playbackSession.playback_session_id, token: playbackSession.playback_token };
+    this.startHeartbeat(trackId, quality);
+    void this.pump(generation).catch(error => {
+      if (generation !== this.generation) return;
+      this.onState?.(error instanceof Error ? `Error de reproducción: ${error.message}` : "Error de reproducción");
+    });
+  }
+
+  async loadOffline(track: OfflineTrack) {
+    this.stop();
+    const generation = this.generation;
+    this.trackTitle = track.title;
+    this.activeTrackId = track.trackId;
+    this.activeQuality = track.quality;
+    this.key = track.kbyKey;
+    this.contentHash = track.contentHash;
+    this.onState?.("verificando descarga offline…");
+
+    const container = new Uint8Array(await track.blob.arrayBuffer());
+    if (generation !== this.generation) return;
+    const parsed = parseHeader(container);
+    if (parsed.header.content_hash !== track.contentHash || parsed.header.quality !== track.quality) {
+      throw new Error("La descarga no coincide con sus metadatos guardados.");
+    }
+    if (parsed.header.chunk_count < 1) throw new Error("La descarga no contiene audio.");
+    const finalRange = chunkRange(parsed.header, parsed.headerEnd, parsed.header.chunk_count - 1);
+    if (finalRange.end + 1 !== container.length) throw new Error("La descarga está incompleta; vuelve a descargarla.");
+    this.header = parsed.header;
+    this.headerEnd = parsed.headerEnd;
+    this.headerBytes = container.slice(9, parsed.headerEnd);
+    await this.openMediaSource(generation);
+    if (generation !== this.generation) return;
+
+    this.onState?.("reproduciendo descarga offline…");
+    for (let index = 0; index < this.header.chunk_count; index += 1) {
+      if (generation !== this.generation) return;
+      const range = chunkRange(this.header, this.headerEnd, index);
+      const plaintext = await decryptChunk(container.slice(range.start, range.end + 1), this.headerBytes, index, this.key);
+      if (generation !== this.generation) return;
+      await this.appendPlaintext(plaintext);
+      this.nextChunk = index + 1;
+      this.onState?.(`descarga offline ${Math.round(this.nextChunk / this.header.chunk_count * 100)}%`);
+      if (this.audio.paused && index === 0) void this.audio.play().catch(() => {});
+    }
+    if (generation === this.generation) {
+      if (this.media?.readyState === "open" && !this.source?.updating) {
+        try { this.media.endOfStream(); } catch { /* Browser may close MSE automatically. */ }
+      }
+      this.onState?.("listo · modo offline");
+    }
+  }
+
+  private async openMediaSource(generation: number) {
     this.media = new MediaSource();
     this.objectUrl = URL.createObjectURL(this.media);
     this.audio.src = this.objectUrl;
@@ -114,16 +173,8 @@ export class KbyPlayer {
       this.media!.addEventListener("sourceopen", ok);
       this.media!.addEventListener("error", fail);
     });
-    this.source = this.media.addSourceBuffer("audio/mp4; codecs=\"mp4a.40.2\"");
-    this.onState?.("descifrando…");
-    const playbackSession = await startPlayback(trackId, quality);
     if (generation !== this.generation) return;
-    this.session = { session_id: playbackSession.playback_session_id, token: playbackSession.playback_token };
-    this.startHeartbeat(trackId, quality);
-    void this.pump(generation).catch(error => {
-      if (generation !== this.generation) return;
-      this.onState?.(error instanceof Error ? `Error de reproducción: ${error.message}` : "Error de reproducción");
-    });
+    this.source = this.media.addSourceBuffer("audio/mp4; codecs=\"mp4a.40.2\"");
   }
 
   private async pump(generation: number) {
@@ -135,17 +186,7 @@ export class KbyPlayer {
       const record = new Uint8Array(await response.arrayBuffer());
       const plaintext = await decryptChunk(record, this.headerBytes, this.nextChunk, this.key);
       if (generation !== this.generation) return;
-      const combined = new Uint8Array(this.buffer.length + plaintext.length);
-      combined.set(this.buffer); combined.set(plaintext, this.buffer.length);
-      this.buffer = combined;
-      const parsed = parseTopLevelBoxes(this.buffer);
-      for (const box of parsed.boxes) {
-        if (box.type === "ftyp" || box.type === "moov" || box.type === "moof" || box.type === "mdat") {
-          this.appendQueue.push(box.bytes);
-        }
-      }
-      this.buffer = this.buffer.slice(parsed.consumed);
-      await this.flushQueue();
+      await this.appendPlaintext(plaintext);
       this.nextChunk += 1;
       this.onState?.(`cargando ${Math.round(this.nextChunk / this.header.chunk_count * 100)}%`);
       if (this.audio.paused && this.nextChunk >= 1) void this.audio.play().catch(() => {});
@@ -189,6 +230,20 @@ export class KbyPlayer {
     } catch {
       // Media Session is optional and not supported consistently across browsers.
     }
+  }
+
+  private async appendPlaintext(plaintext: Uint8Array) {
+    const combined = new Uint8Array(this.buffer.length + plaintext.length);
+    combined.set(this.buffer); combined.set(plaintext, this.buffer.length);
+    this.buffer = combined;
+    const parsed = parseTopLevelBoxes(this.buffer);
+    for (const box of parsed.boxes) {
+      if (box.type === "ftyp" || box.type === "moov" || box.type === "moof" || box.type === "mdat") {
+        this.appendQueue.push(box.bytes);
+      }
+    }
+    this.buffer = this.buffer.slice(parsed.consumed);
+    await this.flushQueue();
   }
 
   private async flushQueue() {

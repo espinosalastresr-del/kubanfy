@@ -258,6 +258,24 @@ export async function playback(trackId: string, quality: "low" | "medium") {
   }>(`/v1/music/play/${trackId}?quality=${quality}&kby_version=2`);
 }
 
+export type ProtectedDownloadResponse = {
+  url: string | null; expires_in_seconds: number | null; quality: string; from_cache: boolean;
+  track_id: string | null; content_hash: string | null; kby_key: string | null; size_bytes: number | null;
+  offline_license: string | null; offline_license_expires_at: string | null;
+  kby_version: number; asset_version: number | null;
+};
+
+export async function createOfflineDownload(trackId: string, quality: "low" | "medium" = "low") {
+  return request<ProtectedDownloadResponse>("/v1/music/download", {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ track_id: trackId, quality, device_id: getDeviceId(), kby_version: 2 }),
+  });
+}
+
+export async function offlineLicensePublicKey() {
+  return request<{ algorithm: string; public_key: string }>("/v1/offline/licenses/public-key");
+}
+
 export async function startPlayback(trackId: string, quality: string) {
   return request<{ playback_token: string; playback_session_id: string; heartbeat_interval_seconds: number; qualifying_listen_seconds: number; asset_version: number; content_hash: string }>("/v1/analytics/playback/start", {
     method: "POST", headers: { "Content-Type": "application/json" },
