@@ -74,7 +74,14 @@ class PasswordResetService:
                 "<p>Si no lo solicitaste, ignora este correo.</p>",
             )
         except Exception as exc:
-            logger.error("password_reset_email_failed", provider=self.settings.email_provider.value, error=type(exc).__name__)
+            # Do not leave an active token that the user never received.
+            record.used_at = datetime.now(UTC)
+            await self.session.flush()
+            logger.error(
+                "password_reset_email_failed",
+                provider=self.settings.email_provider.value,
+                error=type(exc).__name__,
+            )
 
     async def consume(self, token: str, new_password: str) -> bool:
         now = datetime.now(UTC)
