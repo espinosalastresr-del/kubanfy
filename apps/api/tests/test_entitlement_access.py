@@ -66,3 +66,34 @@ async def test_list_active_normalizes_offsets_and_naive_database_timestamps():
     assert active == [current]
     assert expired.status == EntitlementStatus.EXPIRED
     session.flush.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_free_entitlement_allows_low_streaming_but_blocks_downloads_and_higher_quality():
+    from app.core.exceptions import EntitlementRequiredError
+
+    service = EntitlementService(SimpleNamespace())
+    service.list_active = AsyncMock(return_value=[])
+
+    await service.require_quality_access(uuid4(), "low")
+    with pytest.raises(EntitlementRequiredError):
+        await service.require_quality_access(uuid4(), "medium")
+    with pytest.raises(EntitlementRequiredError):
+        await service.require_download_access(uuid4())
+
+
+@pytest.mark.asyncio
+async def test_premium_features_allow_downloads_and_medium_but_not_lossless():
+    from app.core.exceptions import EntitlementRequiredError
+
+    premium = SimpleNamespace(
+        scope_type=EntitlementScope.USER_PREMIUM,
+        metadata_json={"downloads": True, "quality_max": "medium", "plan_code": "premium"},
+    )
+    service = EntitlementService(SimpleNamespace())
+    service.list_active = AsyncMock(return_value=[premium])
+
+    await service.require_download_access(uuid4())
+    await service.require_quality_access(uuid4(), "medium")
+    with pytest.raises(EntitlementRequiredError):
+        await service.require_quality_access(uuid4(), "lossless")
