@@ -245,3 +245,12 @@ export async function updateAdminUserPlan(
     },
   );
 }
+
+export async function canManageUserPlans() {
+  try {
+    await request<{ allowed: boolean }>("/v1/admin/plan-access");
+    return true;
+  } catch {
+    return false;
+  }
+}

@@ -166,6 +166,13 @@ async def resolve_report(
 # --- Users ---
 
 
+@router.get("/plan-access")
+async def plan_access(
+    user: Annotated[User, Depends(require_permissions("users.plan.write"))],
+) -> dict[str, bool]:
+    return {"allowed": True}
+
+
 @router.get("/users")
 async def list_users(
     session: DbSession,

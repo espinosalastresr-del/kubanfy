@@ -1,5 +1,5 @@
 import { FormEvent, useEffect, useRef, useState } from "react";
-import { AdminUser, ApiError, addFavorite, addTrackToPlaylist, clearTokens, confirmPasswordReset, createPlaylist, deletePlaylist, discoveryHome, listAdminUsers, listFavorites, listPlaylists, login, me, register, removeFavorite, requestPasswordReset, searchTracks, updateAdminUserPlan } from "./api";
+import { AdminUser, ApiError, addFavorite, addTrackToPlaylist, clearTokens, confirmPasswordReset, createPlaylist, deletePlaylist, discoveryHome, canManageUserPlans, listAdminUsers, listFavorites, listPlaylists, login, me, register, removeFavorite, requestPasswordReset, searchTracks, updateAdminUserPlan } from "./api";
 import { KbyPlayer } from "./player";
 
 function EyeIcon({ hidden }: { hidden: boolean }) {
@@ -442,8 +442,8 @@ export default function App() {
       return;
     }
     let cancelled = false;
-    void listAdminUsers("", 1, 0)
-      .then(() => { if (!cancelled) setIsAdmin(true); })
+    void canManageUserPlans()
+      .then(allowed => { if (!cancelled) setIsAdmin(allowed); })
       .catch(() => { if (!cancelled) setIsAdmin(false); });
     return () => { cancelled = true; };
   }, [user]);
