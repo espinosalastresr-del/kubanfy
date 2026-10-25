@@ -12,6 +12,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.exceptions import NotFoundError, ValidationError
 from app.core.logging import get_logger
 from app.models.device import Session, SessionStatus
+from app.models.entitlement import (
+    Entitlement,
+    EntitlementScope,
+    EntitlementSource,
+    EntitlementStatus,
+    Plan,
+    PlanCode,
+)
 from app.models.offline import OfflineLicense
 from app.models.admin import (
     AuditLog,
