@@ -99,3 +99,19 @@ class SessionResponse(BaseModel):
     expires_at: datetime
 
     model_config = {"from_attributes": True}
+
+
+class PasswordResetRequest(BaseModel):
+    email: EmailStr
+
+
+class PasswordResetConfirmRequest(BaseModel):
+    token: str = Field(min_length=32, max_length=256)
+    new_password: str = Field(min_length=8, max_length=128)
+
+    @field_validator("new_password")
+    @classmethod
+    def password_strength(cls, v: str) -> str:
+        if v.isdigit() or v.isalpha():
+            raise ValueError("Password must contain letters and numbers or symbols")
+        return v
