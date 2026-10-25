@@ -121,6 +121,40 @@ async def update_artist(
 
 # ---------- Artist-owned release / track management ----------
 
+@router.get("/{artist_id}/manage/tracks", response_model=list[dict])
+async def manage_artist_tracks(
+    artist_id: UUID, user: CurrentUser, session: DbSession
+) -> list[dict]:
+    member = await session.scalar(
+        select(ArtistMember).where(
+            ArtistMember.artist_id == artist_id,
+            ArtistMember.user_id == user.id,
+        )
+    )
+    if member is None:
+        raise NotFoundError("Artist not found")
+    result = await session.execute(
+        select(Track, Release)
+        .join(Release, Release.id == Track.release_id)
+        .where(Release.artist_id == artist_id, Track.status != TrackStatus.DELETED)
+        .order_by(Track.created_at.desc())
+        .limit(200)
+    )
+    return [
+        {
+            "id": str(track.id),
+            "title": track.title,
+            "status": track.status.value,
+            "duration": track.duration,
+            "release_id": str(release.id),
+            "release_title": release.title,
+        }
+        for track, release in result.all()
+    ]
+
+
+
+
 
 @router.post("/{artist_id}/releases", response_model=ReleaseResponse, status_code=201)
 async def create_release(
@@ -240,6 +274,39 @@ async def delete_release(
         status=TrackStatus.DELETED,
     )
     return ReleaseResponse.model_validate(release)
+
+
+@router.post("/{artist_id}/tracks/upload", response_model=TrackUploadResponse, status_code=201)
+async def upload_artist_track(
+    artist_id: UUID,
+    user: CurrentUser,
+    session: DbSession,
+    title: str = Form(..., min_length=1, max_length=255),
+    file: UploadFile = File(...),
+    accept_license: bool = Form(...),
+    explicit: bool = Form(False),
+    language: str = Form("es"),
+) -> TrackUploadResponse:
+    if not file.filename:
+        raise ValidationError("Filename required")
+    result = await ArtistUploadService(session).upload_track(
+        user_id=user.id,
+        artist_id=artist_id,
+        title=title,
+        file=file.file,
+        filename=file.filename,
+        accept_license=accept_license,
+        explicit=explicit,
+        language=language,
+    )
+    return TrackUploadResponse(
+        track_id=result.track_id,
+        status=result.status,
+        master_storage_key=result.master_storage_key,
+        content_hash=result.content_hash,
+        duration=result.duration,
+        job_id=result.job_id,
+    )
 
 
 @router.patch("/{artist_id}/tracks/{track_id}", response_model=TrackUploadResponse)

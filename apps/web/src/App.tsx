@@ -1,5 +1,5 @@
 import { FormEvent, useEffect, useRef, useState } from "react";
-import { AdminUser, ApiError, addFavorite, addTrackToPlaylist, clearTokens, confirmPasswordReset, createPlaylist, deletePlaylist, discoveryHome, canManageUserPlans, listAdminUsers, listFavorites, listPlaylists, login, me, register, removeFavorite, requestPasswordReset, searchTracks, updateAdminUserPlan } from "./api";
+import { AdminUser, ApiError, ArtistManagedTrack, ArtistProfile, addFavorite, addTrackToPlaylist, clearTokens, confirmPasswordReset, createArtist, createPlaylist, deletePlaylist, discoveryHome, canManageUserPlans, listAdminUsers, listArtistTracks, listMyArtists, listFavorites, listPlaylists, login, me, publishArtistTrack, register, removeFavorite, requestPasswordReset, searchTracks, updateAdminUserPlan, updateArtist, uploadArtistTrack } from "./api";
 import { KbyPlayer } from "./player";
 
 function EyeIcon({ hidden }: { hidden: boolean }) {
@@ -383,6 +383,118 @@ function AdminUsersView() {
   </section>;
 }
 
+function ArtistPortalView() {
+  const [artists, setArtists] = useState<ArtistProfile[]>([]);
+  const [artistId, setArtistId] = useState("");
+  const [tracks, setTracks] = useState<ArtistManagedTrack[]>([]);
+  const [name, setName] = useState("");
+  const [bio, setBio] = useState("");
+  const [country, setCountry] = useState("CU");
+  const [newArtist, setNewArtist] = useState(false);
+  const [trackTitle, setTrackTitle] = useState("");
+  const [audioFile, setAudioFile] = useState<File | null>(null);
+  const [acceptLicense, setAcceptLicense] = useState(false);
+  const [explicit, setExplicit] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
+
+  async function loadArtists(preferredId = artistId) {
+    setLoading(true); setError("");
+    try {
+      const rows = await listMyArtists();
+      setArtists(rows);
+      const chosen = rows.find(item => item.id === preferredId) || rows[0];
+      setArtistId(chosen?.id || "");
+      if (chosen) {
+        setName(chosen.name); setBio(chosen.bio || ""); setCountry(chosen.country || "CU");
+        const ownedTracks = await listArtistTracks(chosen.id);
+        setTracks(ownedTracks);
+      } else setTracks([]);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "No se pudo cargar el portal de artistas.");
+    } finally { setLoading(false); }
+  }
+  useEffect(() => { void loadArtists(""); }, []);
+
+  async function saveArtist(event: FormEvent) {
+    event.preventDefault(); setBusy(true); setError(""); setNotice("");
+    try {
+      const saved = newArtist
+        ? await createArtist(name.trim(), bio.trim(), country.toUpperCase())
+        : await updateArtist(artistId, name.trim(), bio.trim(), country.toUpperCase());
+      setNewArtist(false); setNotice("Perfil de artista guardado.");
+      await loadArtists(saved.id);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "No se pudo guardar el perfil.");
+    } finally { setBusy(false); }
+  }
+  async function upload(event: FormEvent) {
+    event.preventDefault();
+    if (!artistId || !audioFile || !trackTitle.trim() || !acceptLicense) {
+      setError("Selecciona un archivo, indica el título y acepta la declaración de derechos.");
+      return;
+    }
+    setBusy(true); setError(""); setNotice("");
+    try {
+      const result = await uploadArtistTrack(artistId, trackTitle.trim(), audioFile, acceptLicense, explicit, "es");
+      setNotice(`Audio recibido. Estado: ${result.status}. La preparación puede tardar unos minutos.`);
+      setTrackTitle(""); setAudioFile(null); setAcceptLicense(false);
+      const input = document.getElementById("artist-audio-file") as HTMLInputElement | null;
+      if (input) input.value = "";
+      setTracks(await listArtistTracks(artistId));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "No se pudo subir el audio.");
+    } finally { setBusy(false); }
+  }
+  async function publish(track: ArtistManagedTrack) {
+    setBusy(true); setError(""); setNotice("");
+    try {
+      const result = await publishArtistTrack(artistId, track.id);
+      setNotice(`Estado actualizado: ${result.status}.`);
+      setTracks(await listArtistTracks(artistId));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "No se pudo publicar la canción. Comprueba que el procesamiento haya terminado.");
+    } finally { setBusy(false); }
+  }
+
+  return <section className="library-page">
+    <div className="library-header glass"><div><span className="eyebrow">CREADORES KUBANFY</span><h1>Portal de artistas</h1><p>Administra tu perfil y entrega música al catálogo. El audio se valida y procesa antes de poder publicarse.</p></div></div>
+    {error && <div className="form-status" role="alert">{error}</div>}
+    {notice && <div className="form-notice" role="status">{notice}</div>}
+    {loading ? <div className="empty-state glass"><strong>Cargando portal…</strong></div> : <>
+      <section className="library-section">
+        <div className="section-heading"><div><span className="eyebrow">IDENTIDAD</span><h2>Perfil de artista</h2></div></div>
+        {artists.length > 1 && !newArtist && <label className="field"><span>Artista</span><select value={artistId} onChange={async e => { const id=e.target.value; setArtistId(id); const selected=artists.find(a=>a.id===id); if(selected){setName(selected.name);setBio(selected.bio||"");setCountry(selected.country||"CU");} try{setTracks(await listArtistTracks(id));}catch(err){setError(err instanceof Error?err.message:"No se pudieron cargar las canciones.");} }}><option value="">Selecciona un artista</option>{artists.map(a=><option key={a.id} value={a.id}>{a.name}</option>)}</select></label>}
+        {artists.length === 0 && <div className="empty-state glass"><strong>Aún no tienes un perfil de artista</strong><span>Crea uno para poder enviar tus canciones a revisión y procesamiento.</span></div>}
+        <form className="glass artist-form" onSubmit={saveArtist}>
+          <label className="field"><span>Nombre artístico</span><input value={name} onChange={e=>setName(e.target.value)} required maxLength={255} placeholder="Nombre del artista" /></label>
+          <label className="field"><span>Biografía</span><textarea value={bio} onChange={e=>setBio(e.target.value)} maxLength={4000} rows={3} placeholder="Cuenta brevemente tu historia musical" /></label>
+          <label className="field"><span>País (código ISO de 2 letras)</span><input value={country} onChange={e=>setCountry(e.target.value.toUpperCase().slice(0,2))} required minLength={2} maxLength={2} /></label>
+          <div className="artist-form-actions"><button className="primary-button" disabled={busy || (!newArtist && !artistId)}>{busy ? "Guardando…" : newArtist ? "Crear perfil" : "Guardar perfil"}</button>
+          {artists.length > 0 && <button type="button" className="secondary-button" onClick={()=>{setNewArtist(v=>!v);setName("");setBio("");setCountry("CU");}}>{newArtist ? "Cancelar" : "Añadir otro artista"}</button>}</div>
+        </form>
+      </section>
+      {artistId && !newArtist && <section className="library-section">
+        <div className="section-heading"><div><span className="eyebrow">CATÁLOGO</span><h2>Subir canción</h2></div></div>
+        <form className="glass artist-form" onSubmit={upload}>
+          <label className="field"><span>Título de la canción</span><input value={trackTitle} onChange={e=>setTrackTitle(e.target.value)} required maxLength={255} placeholder="Título" /></label>
+          <label className="field"><span>Archivo de audio</span><input id="artist-audio-file" type="file" accept=".mp3,.wav,.flac,.m4a,.aac,.ogg,.opus,.aiff,.aif" onChange={e=>setAudioFile(e.target.files?.[0] || null)} required /></label>
+          <p className="artist-help">La subida consume datos. Usa Wi‑Fi si el archivo es grande y no cierres la página hasta que termine. El límite depende de la configuración del servidor.</p>
+          <label className="artist-check"><input type="checkbox" checked={explicit} onChange={e=>setExplicit(e.target.checked)} /> Contenido explícito</label>
+          <label className="artist-check"><input type="checkbox" checked={acceptLicense} onChange={e=>setAcceptLicense(e.target.checked)} /> Confirmo que tengo los derechos necesarios y autorizo almacenamiento, procesamiento y distribución en KubanFy.</label>
+          <button className="primary-button" disabled={busy || !audioFile || !acceptLicense || !trackTitle.trim()}>{busy ? "Subiendo / procesando…" : "Subir canción"}</button>
+        </form>
+      </section>}
+      {artistId && !newArtist && <section className="library-section">
+        <div className="section-heading"><div><span className="eyebrow">ESTADO DE PUBLICACIÓN</span><h2>Mis canciones</h2></div><span>{tracks.length} canciones</span></div>
+        {tracks.length === 0 ? <div className="empty-state glass"><strong>Aún no hay canciones</strong><span>Cuando subas un audio, su estado aparecerá aquí.</span></div> : <div className="admin-user-list">{tracks.map(track=><article className="glass admin-user-card" key={track.id}><div className="admin-user-summary"><div><strong>{track.title}</strong><span>{track.release_title} · {formatDuration(track.duration)}</span></div><div className="admin-user-tags"><span className="plan-tag">{track.status.toUpperCase()}</span></div></div><div className="artist-form-actions">{track.status === "ready" || track.status === "draft" ? <button className="primary-button" disabled={busy} onClick={()=>void publish(track)}>Publicar</button> : null}<button className="secondary-button" disabled={busy} onClick={()=>void loadArtists(artistId)}>Actualizar estado</button></div></article>)}</div>}
+      </section>}
+    </>}
+  </section>;
+}
+
 function formatDuration(seconds: number | null | undefined) {
   if (!seconds || seconds < 0) return "—";
   const minutes = Math.floor(seconds / 60);
@@ -401,7 +513,7 @@ export default function App() {
   const [status, setStatus] = useState("Listo");
   const [isOnline, setIsOnline] = useState(() => navigator.onLine);
   const [transitioning, setTransitioning] = useState(false);
-  const [section, setSection] = useState<"home" | "library" | "admin">("home");
+  const [section, setSection] = useState<"home" | "library" | "admin" | "artist">("home");
   const [isAdmin, setIsAdmin] = useState(false);
   const [favorites, setFavorites] = useState<Set<string>>(new Set());
   const [playlists, setPlaylists] = useState<Awaited<ReturnType<typeof listPlaylists>>>([]);
@@ -663,6 +775,7 @@ export default function App() {
     <nav className="app-nav glass" aria-label="Navegación principal">
       <button className={section === "home" ? "active" : ""} aria-current={section === "home" ? "page" : undefined} onClick={() => setSection("home")}><span>⌂</span>Inicio</button>
       <button className={section === "library" ? "active" : ""} aria-current={section === "library" ? "page" : undefined} onClick={() => setSection("library")}><LibraryIcon />Biblioteca</button>
+      <button className={section === "artist" ? "active" : ""} aria-current={section === "artist" ? "page" : undefined} onClick={() => setSection("artist")}><span>♫</span>Artistas</button>
       {isAdmin && <button className={section === "admin" ? "active" : ""} aria-current={section === "admin" ? "page" : undefined} onClick={() => setSection("admin")}><span>⚙</span>Administración</button>}
     </nav>
 
@@ -765,6 +878,7 @@ export default function App() {
       </div>}
 
       {section === "admin" && isAdmin && <AdminUsersView />}
+      {section === "artist" && <ArtistPortalView />}
 
       {section === "library" && (
         <section className="library-page">

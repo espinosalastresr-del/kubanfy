@@ -254,3 +254,57 @@ export async function canManageUserPlans() {
     return false;
   }
 }
+
+
+export type ArtistProfile = {
+  id: string;
+  name: string;
+  slug: string;
+  bio: string | null;
+  country: string;
+  status: string;
+  verified: boolean;
+  created_at: string;
+};
+export type ArtistManagedTrack = {
+  id: string;
+  title: string;
+  status: string;
+  duration: number | null;
+  release_id: string;
+  release_title: string;
+};
+export async function listMyArtists() {
+  return request<ArtistProfile[]>("/v1/artist/mine");
+}
+export async function createArtist(name: string, bio: string, country: string) {
+  return request<ArtistProfile>("/v1/artist", {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name, bio: bio || null, country }),
+  });
+}
+export async function updateArtist(artistId: string, name: string, bio: string, country: string) {
+  return request<ArtistProfile>(`/v1/artist/${encodeURIComponent(artistId)}`, {
+    method: "PATCH", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name, bio: bio || null, country }),
+  });
+}
+export async function listArtistTracks(artistId: string) {
+  return request<ArtistManagedTrack[]>(`/v1/artist/${encodeURIComponent(artistId)}/manage/tracks`);
+}
+export async function uploadArtistTrack(artistId: string, title: string, file: File, acceptLicense: boolean, explicit: boolean, language: string) {
+  const body = new FormData();
+  body.set("title", title);
+  body.set("file", file);
+  body.set("accept_license", String(acceptLicense));
+  body.set("explicit", String(explicit));
+  body.set("language", language);
+  return request<{ track_id: string; status: string; duration: number | null; job_id: string | null }>(
+    `/v1/artist/${encodeURIComponent(artistId)}/tracks/upload`, { method: "POST", body },
+  );
+}
+export async function publishArtistTrack(artistId: string, trackId: string) {
+  return request<{ track_id: string; status: string }>(
+    `/v1/artist/${encodeURIComponent(artistId)}/tracks/${encodeURIComponent(trackId)}/publish`, { method: "POST" },
+  );
+}

@@ -302,3 +302,19 @@ a{color:inherit}
  .admin-user-controls{grid-template-columns:1fr}
  .admin-user-controls .primary-button{width:100%}
 }
+
+
+/* Artist portal */
+.artist-form { display: grid; gap: 16px; padding: 20px; }
+.artist-form textarea { width: 100%; resize: vertical; }
+.artist-form input[type="file"] { width: 100%; max-width: 100%; }
+.artist-form-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+.artist-check { display: flex; align-items: flex-start; gap: 10px; line-height: 1.5; color: var(--text, inherit); }
+.artist-check input { margin-top: 4px; flex: 0 0 auto; }
+.artist-help { margin: 0; color: var(--muted, #aab0c0); font-size: .9rem; line-height: 1.5; }
+.secondary-button { border: 1px solid var(--border, rgba(255,255,255,.16)); background: transparent; color: inherit; border-radius: 12px; padding: 11px 15px; cursor: pointer; }
+.secondary-button:disabled, .primary-button:disabled { opacity: .55; cursor: not-allowed; }
+@media (max-width: 600px) {
+  .artist-form { padding: 14px; }
+  .artist-form-actions > button, .artist-form > button { width: 100%; }
+}
