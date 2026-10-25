@@ -1,5 +1,5 @@
 import { FormEvent, useEffect, useRef, useState } from "react";
-import { ApiError, addFavorite, addTrackToPlaylist, clearTokens, createPlaylist, deletePlaylist, discoveryHome, listFavorites, listPlaylists, login, me, register, removeFavorite, searchTracks } from "./api";
+import { ApiError, addFavorite, addTrackToPlaylist, clearTokens, confirmPasswordReset, createPlaylist, deletePlaylist, discoveryHome, listFavorites, listPlaylists, login, me, register, removeFavorite, requestPasswordReset, searchTracks } from "./api";
 import { KbyPlayer } from "./player";
 
 function EyeIcon({ hidden }: { hidden: boolean }) {
@@ -28,7 +28,7 @@ function LogoMark() {
   return <div className="logo-mark" aria-hidden="true"><span /><span /><span /></div>;
 }
 
-function LoginView({ onLogin, onRegister, initialEmail }: { onLogin: (email: string, password: string) => Promise<void>; onRegister: () => void; initialEmail: string }) {
+function LoginView({ onLogin, onRegister, onForgot, initialEmail }: { onLogin: (email: string, password: string) => Promise<void>; onRegister: () => void; onForgot: () => void; initialEmail: string }) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -136,7 +136,7 @@ function LoginView({ onLogin, onRegister, initialEmail }: { onLogin: (email: str
           </label>
 
           <div className="form-meta">
-            <a href="#recuperar" onClick={e => { e.preventDefault(); setNotice("La recuperación de contraseña estará disponible próximamente."); }}>¿Olvidaste tu contraseña?</a>
+            <a href="#recuperar" onClick={e => { e.preventDefault(); onForgot(); }}>¿Olvidaste tu contraseña?</a>
           </div>
 
           {notice && <div className="form-notice" role="status">{notice}</div>}
@@ -163,6 +163,70 @@ function LoginView({ onLogin, onRegister, initialEmail }: { onLogin: (email: str
       </div>
 
       <p className="auth-footnote">KubanFy está diseñado para consumir menos datos y seguir sonando.</p>
+    </section>
+  </main>;
+}
+
+function PasswordRecoveryView({ onBack, initialEmail }: { onBack: () => void; initialEmail: string }) {
+  const [email, setEmail] = useState(initialEmail);
+  const [busy, setBusy] = useState(false);
+  const [sent, setSent] = useState(false);
+  const [error, setError] = useState("");
+  async function submit(event: FormEvent) {
+    event.preventDefault();
+    setError("");
+    setBusy(true);
+    try {
+      const result = await requestPasswordReset(email.trim());
+      setSent(true);
+      setError(result.message);
+    } catch {
+      setError("No pudimos procesar la solicitud. Comprueba la conexión e inténtalo de nuevo.");
+    } finally { setBusy(false); }
+  }
+  return <main className="auth-page"><div className="ambient ambient-one" /><div className="ambient ambient-two" />
+    <section className="auth-shell"><div className="auth-brand"><LogoMark /><span>KubanFy</span></div>
+      <div className="glass auth-card"><div className="auth-heading"><span className="eyebrow">RECUPERA TU CUENTA</span><h1>Volvamos a <em>sonar.</em></h1><p>Te enviaremos instrucciones si existe una cuenta asociada a ese correo.</p></div>
+        <form onSubmit={submit}><label className="field"><span>Correo electrónico</span><input type="email" inputMode="email" autoComplete="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="tu@email.com" required /></label>
+          {error && <div className={sent ? "form-notice" : "form-status"} role="status">{error}</div>}
+          <button className="primary-button login-button" type="submit" disabled={busy || sent}>{busy ? "Enviando…" : sent ? "Solicitud enviada" : "Enviar instrucciones"}<span className="button-arrow">→</span></button>
+        </form><div className="auth-divider"><span>o</span></div><p className="signup-prompt"><a href="#login" onClick={e => { e.preventDefault(); onBack(); }}>← Volver a iniciar sesión</a></p>
+      </div><p className="auth-footnote">Por seguridad, no indicamos si un correo está registrado.</p>
+    </section>
+  </main>;
+}
+
+function PasswordResetView({ token, onBack, onComplete }: { token: string; onBack: () => void; onComplete: () => void }) {
+  const [password, setPassword] = useState("");
+  const [confirmation, setConfirmation] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const [complete, setComplete] = useState(false);
+  async function submit(event: FormEvent) {
+    event.preventDefault(); setError("");
+    if (password.length < 8 || password === password.replace(/[A-Za-z0-9]/g, "") || password !== confirmation) {
+      setError("Usa al menos 8 caracteres e incluye letras y números o símbolos; ambas contraseñas deben coincidir."); return;
+    }
+    setBusy(true);
+    try {
+      await confirmPasswordReset(token, password);
+      setComplete(true);
+      window.history.replaceState({}, "", window.location.pathname);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "El enlace no es válido o ha caducado. Solicita uno nuevo.");
+    } finally { setBusy(false); }
+  }
+  return <main className="auth-page"><div className="ambient ambient-one" /><div className="ambient ambient-two" />
+    <section className="auth-shell"><div className="auth-brand"><LogoMark /><span>KubanFy</span></div>
+      <div className="glass auth-card"><div className="auth-heading"><span className="eyebrow">NUEVA CONTRASEÑA</span><h1>Protege tu <em>cuenta.</em></h1><p>{complete ? "Tu contraseña se ha actualizado correctamente." : "Elige una contraseña nueva para volver a tu música."}</p></div>
+        {!complete && <form onSubmit={submit}><label className="field"><span>Nueva contraseña</span><input type="password" autoComplete="new-password" value={password} onChange={e => setPassword(e.target.value)} minLength={8} required /></label>
+          <label className="field"><span>Repetir contraseña</span><input type="password" autoComplete="new-password" value={confirmation} onChange={e => setConfirmation(e.target.value)} minLength={8} required /></label>
+          {error && <div className="form-status" role="alert">{error}</div>}
+          <button className="primary-button login-button" type="submit" disabled={busy}>{busy ? "Actualizando…" : "Guardar contraseña"}<span className="button-arrow">→</span></button>
+        </form>}
+        {complete && <button className="primary-button login-button" onClick={onComplete}>Ir a iniciar sesión <span className="button-arrow">→</span></button>}
+        {!complete && <p className="signup-prompt"><a href="#login" onClick={e => { e.preventDefault(); onBack(); }}>← Volver a iniciar sesión</a></p>}
+      </div><p className="auth-footnote">El enlace es temporal y solo se puede utilizar una vez.</p>
     </section>
   </main>;
 }
@@ -250,7 +314,8 @@ function formatDuration(seconds: number | null | undefined) {
 
 export default function App() {
   const [user, setUser] = useState<unknown>(null);
-  const [authMode, setAuthMode] = useState<"login" | "register">("login");
+  const [authMode, setAuthMode] = useState<"login" | "register" | "forgot" | "reset">(() => new URLSearchParams(window.location.search).has("reset_token") ? "reset" : "login");
+  const [resetToken, setResetToken] = useState(() => new URLSearchParams(window.location.search).get("reset_token") || "");
   const [registeredEmail, setRegisteredEmail] = useState("");
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<any[]>([]);
@@ -464,7 +529,7 @@ export default function App() {
   }
 
   if (!user) {
-    if (authMode === "register") {
+    if (authMode === "reset" && resetToken) {\n      return <div className="view-transition login-view"><PasswordResetView token={resetToken} onBack={() => { setAuthMode("login"); setResetToken(""); window.history.replaceState({}, "", window.location.pathname); }} onComplete={() => { setAuthMode("login"); setResetToken(""); }} /></div>;\n    }\n    if (authMode === "forgot") {\n      return <div className="view-transition login-view"><PasswordRecoveryView initialEmail={registeredEmail} onBack={() => setAuthMode("login")} /></div>;\n    }\n    if (authMode === "register") {
       return (
         <div className="view-transition login-view">
           <RegisterView
@@ -481,7 +546,7 @@ export default function App() {
 
     return (
       <div className={`view-transition login-view${transitioning ? " view-exit" : ""}`}>
-        <LoginView onLogin={doLogin} onRegister={() => setAuthMode("register")} initialEmail={registeredEmail} />
+        <LoginView onLogin={doLogin} onRegister={() => setAuthMode("register")} onForgot={() => setAuthMode("forgot")} initialEmail={registeredEmail} />
       </div>
     );
   }
