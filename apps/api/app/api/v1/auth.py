@@ -63,9 +63,15 @@ async def login(
 @router.post("/password-reset/request", status_code=202)
 async def request_password_reset(
     body: PasswordResetRequest,
+    request: Request,
     session: DbSession,
 ) -> dict[str, str]:
-    # Same response regardless of whether the address exists.
+    # Bound automated email abuse without revealing whether an account exists.
+    ip = request.headers.get("cf-connecting-ip") or (request.client.host if request.client else None)
+    if ip:
+        await AntiAbuseService().enforce_rate_limit(
+            f"password-reset:ip:{ip}", limit=5, window_seconds=900
+        )
     await PasswordResetService(session).request_reset(str(body.email))
     return {"message": "Si existe una cuenta para ese correo, recibirás instrucciones para restablecer la contraseña."}
 
@@ -73,8 +79,14 @@ async def request_password_reset(
 @router.post("/password-reset/confirm")
 async def confirm_password_reset(
     body: PasswordResetConfirmRequest,
+    request: Request,
     session: DbSession,
 ) -> dict[str, str]:
+    ip = request.headers.get("cf-connecting-ip") or (request.client.host if request.client else None)
+    if ip:
+        await AntiAbuseService().enforce_rate_limit(
+            f"password-reset-confirm:ip:{ip}", limit=10, window_seconds=900
+        )
     changed = await PasswordResetService(session).consume(body.token, body.new_password)
     if not changed:
         from app.core.exceptions import AuthError
