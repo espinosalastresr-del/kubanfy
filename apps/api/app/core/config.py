@@ -170,6 +170,7 @@ class Settings(BaseSettings):
     email_from: str = "noreply@kubanfy.local"
     resend_api_key: str = ""
     brevo_api_key: str = ""
+    frontend_base_url: str = "https://kubanfy-web-staging.globumlatinmusic.workers.dev"
 
     # -------------------------------------------------------------------------
     # Observability
