@@ -38,12 +38,16 @@ export class KbyPlayer {
   private url = "";
   private objectUrl = "";
   private appendQueue: Uint8Array[] = [];
+  private generation = 0;
+  private trackTitle = "KubanFy";
   onState?: (state: string) => void;
 
   get element() { return this.audio; }
 
-  async load(trackId: string, quality: "low" | "medium") {
+  async load(trackId: string, quality: "low" | "medium", title = "KubanFy") {
     this.stop();
+    const generation = this.generation;
+    this.trackTitle = title;
     this.onState?.("autorizando…");
     const meta = await playback(trackId, quality);
     if (meta.kby_version !== 2 || meta.streaming_format !== "fmp4") throw new Error("El backend no entregó un asset web compatible");
@@ -61,6 +65,7 @@ export class KbyPlayer {
     this.media = new MediaSource();
     this.objectUrl = URL.createObjectURL(this.media);
     this.audio.src = this.objectUrl;
+    this.configureMediaSession();
     await new Promise<void>((resolve, reject) => {
       const ok = () => { cleanup(); resolve(); };
       const fail = () => { cleanup(); reject(new Error("MediaSource no pudo inicializarse")); };
@@ -76,19 +81,22 @@ export class KbyPlayer {
     const playbackSession = await startPlayback(trackId, quality);
     this.session = { session_id: playbackSession.playback_session_id, token: playbackSession.playback_token };
     this.startHeartbeat(trackId, quality);
-    void this.pump().catch(error => {
+    void this.pump(generation).catch(error => {
+      if (generation !== this.generation) return;
       this.onState?.(error instanceof Error ? `Error de reproducción: ${error.message}` : "Error de reproducción");
     });
   }
 
-  private async pump() {
+  private async pump(generation: number) {
     if (!this.header || !this.source) return;
-    while (this.nextChunk < this.header.chunk_count) {
+    while (generation === this.generation && this.nextChunk < this.header.chunk_count) {
       const { start, end } = chunkRange(this.header, this.headerEnd, this.nextChunk);
       const response = await fetchRange(this.url, `bytes=${start}-${end}`);
+      if (generation !== this.generation) return;
       if (!response.ok) throw new Error(`KBY2 chunk HTTP ${response.status}`);
       const record = new Uint8Array(await response.arrayBuffer());
       const plaintext = await decryptChunk(record, this.headerBytes, this.nextChunk, this.key);
+      if (generation !== this.generation) return;
       const combined = new Uint8Array(this.buffer.length + plaintext.length);
       combined.set(this.buffer); combined.set(plaintext, this.buffer.length);
       this.buffer = combined;
@@ -104,7 +112,19 @@ export class KbyPlayer {
       this.onState?.(`cargando ${Math.round(this.nextChunk / this.header.chunk_count * 100)}%`);
       if (this.audio.paused && this.nextChunk >= 1) void this.audio.play().catch(() => {});
     }
-    this.onState?.("listo");
+    if (generation === this.generation) this.onState?.("listo");
+  }
+
+  private configureMediaSession() {
+    if (!("mediaSession" in navigator)) return;
+    try {
+      navigator.mediaSession.metadata = new MediaMetadata({ title: this.trackTitle, artist: "KubanFy" });
+      navigator.mediaSession.setActionHandler("play", () => { void this.audio.play().catch(() => {}); });
+      navigator.mediaSession.setActionHandler("pause", () => this.audio.pause());
+      navigator.mediaSession.setActionHandler("stop", () => this.stop());
+    } catch {
+      // Media Session is optional and not supported consistently across browsers.
+    }
   }
 
   private async flushQueue() {
@@ -141,6 +161,10 @@ export class KbyPlayer {
   }
 
   stop() {
+    this.generation += 1;
+    if ("mediaSession" in navigator) {
+      try { navigator.mediaSession.metadata = null; } catch {}
+    }
     if (this.timer) window.clearInterval(this.timer);
     this.timer = null;
     this.session = null;
