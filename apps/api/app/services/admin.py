@@ -131,6 +131,7 @@ class AdminService:
         report = await self.session.get(ModerationReport, report_id)
         if report is None:
             raise NotFoundError("Report not found")
+        before_report = {"status": report.status.value}
         report.status = status
         report.resolution_notes = notes
         report.resolved_at = datetime.now(UTC)
@@ -151,6 +152,15 @@ class AdminService:
                     reason=notes,
                 )
 
+        await self.audit(
+            actor_id=admin_id,
+            action="moderation.report.resolve",
+            target_type="moderation_report",
+            target_id=str(report.id),
+            before=before_report,
+            after={"status": status.value, "takedown_track": bool(takedown_track and report.target_type == "track")},
+            reason=notes,
+        )
         await self.session.flush()
         return report
 
@@ -319,6 +329,10 @@ class AdminService:
         user = await self.session.get(User, user_id)
         if user is None:
             raise NotFoundError("User not found")
+        if user_id == admin_id:
+            raise ValidationError("Administrators cannot suspend their own account")
+        if user.status == UserStatus.DELETED:
+            raise ValidationError("Deleted accounts cannot be suspended")
         before = {"status": user.status.value}
         user.status = UserStatus.SUSPENDED
         now = datetime.now(UTC)
@@ -354,12 +368,16 @@ class AdminService:
         user = await self.session.get(User, user_id)
         if user is None:
             raise NotFoundError("User not found")
+        if user.status != UserStatus.SUSPENDED:
+            raise ValidationError("Only suspended accounts can be reactivated")
+        before = {"status": user.status.value}
         user.status = UserStatus.ACTIVE
         await self.audit(
             actor_id=admin_id,
             action="users.unsuspend",
             target_type="user",
             target_id=str(user_id),
+            before=before,
             after={"status": UserStatus.ACTIVE.value},
         )
         await self.session.flush()
