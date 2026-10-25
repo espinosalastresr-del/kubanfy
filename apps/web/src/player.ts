@@ -2,7 +2,7 @@ import { playback, startPlayback, heartbeat } from "./api";
 import { chunkRange, decryptChunk, parseHeader, parseTopLevelBoxes, type KbyHeader } from "./kby2";
 
 
-const RANGE_RETRIES = 3;
+const RANGE_RETRIES = 5;
 
 async function fetchRange(url: string, range: string): Promise<Response> {
   let lastError: unknown;
@@ -18,7 +18,7 @@ async function fetchRange(url: string, range: string): Promise<Response> {
       if (attempt === RANGE_RETRIES) throw error;
     }
     // Small exponential backoff avoids hammering mobile data during an outage.
-    await new Promise(resolve => window.setTimeout(resolve, 500 * (2 ** attempt)));
+    await new Promise(resolve => window.setTimeout(resolve, Math.min(8000, 500 * (2 ** attempt))));
   }
   throw lastError instanceof Error ? lastError : new Error("No se pudo descargar el audio");
 }
@@ -67,6 +67,14 @@ export class KbyPlayer {
   private activeTrackId = "";
   private activeQuality: "low" | "medium" = "low";
   onState?: (state: string) => void;
+
+  constructor() {
+    // The audio element is mounted into the player surface; without controls,
+    // mobile users could not pause, seek, or resume after an interruption.
+    this.audio.controls = true;
+    this.audio.preload = "metadata";
+    this.audio.playsInline = true;
+  }
 
   get element() { return this.audio; }
 

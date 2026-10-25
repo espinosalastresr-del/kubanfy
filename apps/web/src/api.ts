@@ -128,8 +128,42 @@ export type DiscoveryHome = {
   viral_by_country: { rank: number; track_id: string; title: string | null; score: number; metrics: Record<string, number> }[];
 };
 
+const DISCOVERY_CACHE_KEY = "kubanfy:discovery-home:v1";
+const OFFLINE_CACHE_TTL_MS = 30 * 24 * 60 * 60 * 1000;
+
+function readOfflineCache<T>(key: string): T | null {
+  try {
+    const raw = localStorage.getItem(key);
+    if (!raw) return null;
+    const cached = JSON.parse(raw) as { saved_at: number; data: T };
+    if (!cached || typeof cached.saved_at !== "number" || Date.now() - cached.saved_at > OFFLINE_CACHE_TTL_MS) {
+      localStorage.removeItem(key);
+      return null;
+    }
+    return cached.data;
+  } catch {
+    return null;
+  }
+}
+
+function writeOfflineCache<T>(key: string, data: T) {
+  try {
+    localStorage.setItem(key, JSON.stringify({ saved_at: Date.now(), data }));
+  } catch {
+    // Storage can be disabled or full; the online feature must still work.
+  }
+}
+
 export async function discoveryHome() {
-  return request<DiscoveryHome>("/v1/discovery/home");
+  try {
+    const data = await request<DiscoveryHome>("/v1/discovery/home");
+    writeOfflineCache(DISCOVERY_CACHE_KEY, data);
+    return data;
+  } catch (error) {
+    const cached = readOfflineCache<DiscoveryHome>(DISCOVERY_CACHE_KEY);
+    if (cached) return cached;
+    throw error;
+  }
 }
 
 export async function requestPasswordReset(email: string) {
@@ -166,7 +200,19 @@ export async function updateMyProfile(profile: Pick<CurrentUser, "display_name" 
 export async function listMyEntitlements() {
   return request<UserEntitlement[]>("/v1/entitlements/me");
 }
-export async function searchTracks(q: string) { return request<SearchResult[]>(`/v1/music/search?q=${encodeURIComponent(q)}&limit=20`); }
+export async function searchTracks(q: string) {
+  const normalized = q.trim();
+  const cacheKey = `kubanfy:search:v1:${normalized.toLocaleLowerCase().slice(0, 120)}`;
+  try {
+    const data = await request<SearchResult[]>(`/v1/music/search?q=${encodeURIComponent(normalized)}&limit=20`);
+    writeOfflineCache(cacheKey, data);
+    return data;
+  } catch (error) {
+    const cached = readOfflineCache<SearchResult[]>(cacheKey);
+    if (cached) return cached;
+    throw error;
+  }
+}
 
 export async function playback(trackId: string, quality: "low" | "medium") {
   return request<{
