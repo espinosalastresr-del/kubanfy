@@ -23,6 +23,29 @@ async function fetchRange(url: string, range: string): Promise<Response> {
   throw lastError instanceof Error ? lastError : new Error("No se pudo descargar el audio");
 }
 
+function assertPartialRange(response: Response, requestedRange: string) {
+  if (response.status !== 206) {
+    throw new Error(`El servidor no respetó Range (${response.status}); se esperaba HTTP 206`);
+  }
+  const requested = requestedRange.match(/^bytes=(\d+)-(\d+)$/);
+  const actual = response.headers.get("Content-Range")?.match(/^bytes (\d+)-(\d+)\/(\d+)$/);
+  if (!requested || !actual) throw new Error("Respuesta de audio sin Content-Range válido");
+  const requestedStart = Number(requested[1]);
+  const requestedEnd = Number(requested[2]);
+  const start = Number(actual[1]);
+  const end = Number(actual[2]);
+  const total = Number(actual[3]);
+  if (
+    start !== requestedStart ||
+    end < start ||
+    end > requestedEnd ||
+    total <= end ||
+    (end < requestedEnd && end !== total - 1)
+  ) {
+    throw new Error("El servidor devolvió un rango de audio incoherente");
+  }
+}
+
 export class KbyPlayer {
   private media: MediaSource | null = null;
   private source: SourceBuffer | null = null;
@@ -36,10 +59,13 @@ export class KbyPlayer {
   private headerBytes = new Uint8Array();
   private key = "";
   private url = "";
+  private contentHash = "";
   private objectUrl = "";
   private appendQueue: Uint8Array[] = [];
   private generation = 0;
   private trackTitle = "KubanFy";
+  private activeTrackId = "";
+  private activeQuality: "low" | "medium" = "low";
   onState?: (state: string) => void;
 
   get element() { return this.audio; }
@@ -48,15 +74,20 @@ export class KbyPlayer {
     this.stop();
     const generation = this.generation;
     this.trackTitle = title;
+    this.activeTrackId = trackId;
+    this.activeQuality = quality;
     this.onState?.("autorizando…");
     const meta = await playback(trackId, quality);
+    if (generation !== this.generation) return;
     if (meta.kby_version !== 2 || meta.streaming_format !== "fmp4") throw new Error("El backend no entregó un asset web compatible");
     this.url = meta.url;
     this.key = meta.kby_key;
+    this.contentHash = meta.content_hash;
     this.nextChunk = 0;
-    const headResponse = await fetchRange(this.url, "bytes=0-4095");
-    if (!headResponse.ok) throw new Error(`KBY2 header HTTP ${headResponse.status}`);
+    const headResponse = await this.fetchAudioRange("bytes=0-4095", trackId, quality);
+    if (generation !== this.generation) return;
     const head = new Uint8Array(await headResponse.arrayBuffer());
+    if (generation !== this.generation) return;
     const parsed = parseHeader(head);
     this.header = parsed.header;
     this.headerEnd = parsed.headerEnd;
@@ -79,6 +110,7 @@ export class KbyPlayer {
     this.source = this.media.addSourceBuffer("audio/mp4; codecs=\"mp4a.40.2\"");
     this.onState?.("descifrando…");
     const playbackSession = await startPlayback(trackId, quality);
+    if (generation !== this.generation) return;
     this.session = { session_id: playbackSession.playback_session_id, token: playbackSession.playback_token };
     this.startHeartbeat(trackId, quality);
     void this.pump(generation).catch(error => {
@@ -91,9 +123,8 @@ export class KbyPlayer {
     if (!this.header || !this.source) return;
     while (generation === this.generation && this.nextChunk < this.header.chunk_count) {
       const { start, end } = chunkRange(this.header, this.headerEnd, this.nextChunk);
-      const response = await fetchRange(this.url, `bytes=${start}-${end}`);
+      const response = await this.fetchAudioRange(`bytes=${start}-${end}`, this.activeTrackId, this.activeQuality);
       if (generation !== this.generation) return;
-      if (!response.ok) throw new Error(`KBY2 chunk HTTP ${response.status}`);
       const record = new Uint8Array(await response.arrayBuffer());
       const plaintext = await decryptChunk(record, this.headerBytes, this.nextChunk, this.key);
       if (generation !== this.generation) return;
@@ -112,7 +143,33 @@ export class KbyPlayer {
       this.onState?.(`cargando ${Math.round(this.nextChunk / this.header.chunk_count * 100)}%`);
       if (this.audio.paused && this.nextChunk >= 1) void this.audio.play().catch(() => {});
     }
-    if (generation === this.generation) this.onState?.("listo");
+    if (generation === this.generation) {
+      if (this.media?.readyState === "open" && !this.source?.updating) {
+        try { this.media.endOfStream(); } catch { /* Some browsers close MSE automatically. */ }
+      }
+      this.onState?.("listo");
+    }
+  }
+
+  private async fetchAudioRange(range: string, trackId: string, quality: "low" | "medium") {
+    let response = await fetchRange(this.url, range);
+    if ([401, 403, 410].includes(response.status)) {
+      // Signed object URLs can expire during long playback or a mobile outage.
+      // Re-authorize once, but never silently switch to different audio bytes.
+      const renewed = await playback(trackId, quality);
+      if (
+        renewed.kby_version !== 2 ||
+        renewed.streaming_format !== "fmp4" ||
+        renewed.content_hash !== this.contentHash ||
+        renewed.kby_key !== this.key
+      ) {
+        throw new Error("El audio cambió mientras se reproducía; vuelve a iniciar la canción");
+      }
+      this.url = renewed.url;
+      response = await fetchRange(this.url, range);
+    }
+    assertPartialRange(response, range);
+    return response;
   }
 
   private configureMediaSession() {
@@ -172,6 +229,11 @@ export class KbyPlayer {
     this.buffer = new Uint8Array();
     this.nextChunk = 0;
     this.header = null;
+    this.key = "";
+    this.url = "";
+    this.contentHash = "";
+    this.activeTrackId = "";
+    this.activeQuality = "low";
     if (this.objectUrl) URL.revokeObjectURL(this.objectUrl);
     this.objectUrl = "";
     this.media = null;
