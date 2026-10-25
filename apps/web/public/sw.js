@@ -26,8 +26,10 @@ self.addEventListener("activate", event => {
   event.waitUntil(
     caches.keys()
       .then(keys => Promise.all(
-        keys.filter(key => ![CACHE, ASSET_CACHE].includes(key))
-          .map(key => caches.delete(key))
+        keys.filter(key =>
+          (key.startsWith("kubanfy-shell-") || key.startsWith("kubanfy-assets-")) &&
+          ![CACHE, ASSET_CACHE].includes(key)
+        ).map(key => caches.delete(key))
       ))
       .then(() => self.clients.claim())
   );
