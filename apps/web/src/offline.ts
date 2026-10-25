@@ -54,9 +54,38 @@ async function transact<T>(mode: IDBTransactionMode, operation: (store: IDBObjec
   }
 }
 
+type PartialDownload = {
+  id: string;
+  partial: true;
+  trackId: string;
+  quality: "low" | "medium";
+  blob: Blob;
+  receivedBytes: number;
+  totalBytes: number;
+  contentHash: string;
+  assetVersion: number;
+  deviceId: string;
+  updatedAt: number;
+};
+
 export async function listOfflineTracks(): Promise<OfflineTrack[]> {
-  const tracks = await transact<OfflineTrack[]>("readonly", store => store.getAll());
-  return tracks.sort((a, b) => b.savedAt - a.savedAt);
+  const records = await transact<unknown[]>("readonly", store => store.getAll());
+  return records.filter((record): record is OfflineTrack =>
+    typeof record === "object" && record !== null && !("partial" in record) && "licenseToken" in record
+  ).sort((a, b) => b.savedAt - a.savedAt);
+}
+
+export async function getPartialDownload(id: string): Promise<PartialDownload | null> {
+  const record = await transact<unknown>("readonly", store => store.get(id));
+  return record && typeof record === "object" && "partial" in record ? record as PartialDownload : null;
+}
+
+async function savePartialDownload(partial: PartialDownload): Promise<void> {
+  await transact<IDBValidKey>("readwrite", store => store.put(partial));
+}
+
+async function deletePartialDownload(id: string): Promise<void> {
+  await transact<undefined>("readwrite", store => store.delete(id));
 }
 
 export async function saveOfflineTrack(track: OfflineTrack): Promise<void> {
@@ -145,19 +174,55 @@ export async function downloadProtectedAudio(
   url: string,
   totalBytes: number,
   onProgress?: (received: number, total: number) => void,
+  resume?: { id: string; trackId: string; quality: "low" | "medium"; contentHash: string; assetVersion: number; deviceId: string },
 ): Promise<Blob> {
   if (!Number.isSafeInteger(totalBytes) || totalBytes <= 0) {
     throw new Error("El servidor no informó un tamaño de descarga válido.");
   }
-  const chunks: Uint8Array[] = [];
+
   let received = 0;
-  for (let start = 0; start < totalBytes; start += RANGE_BYTES) {
+  let accumulated = new Blob([], { type: "application/octet-stream" });
+  if (resume) {
+    const partial = await getPartialDownload(resume.id);
+    if (partial && partial.trackId === resume.trackId && partial.quality === resume.quality &&
+        partial.contentHash === resume.contentHash && partial.assetVersion === resume.assetVersion &&
+        partial.deviceId === resume.deviceId && partial.totalBytes === totalBytes &&
+        partial.receivedBytes === partial.blob.size && partial.receivedBytes < totalBytes &&
+        partial.receivedBytes % RANGE_BYTES === 0) {
+      received = partial.receivedBytes;
+      accumulated = partial.blob;
+    } else if (partial) {
+      await deletePartialDownload(resume.id);
+    }
+  }
+  onProgress?.(received, totalBytes);
+
+  for (let start = received; start < totalBytes; start += RANGE_BYTES) {
     const end = Math.min(totalBytes - 1, start + RANGE_BYTES - 1);
     const chunk = await fetchRange(url, start, end, totalBytes);
-    chunks.push(chunk);
+    accumulated = new Blob([accumulated, chunk.slice().buffer as ArrayBuffer], { type: "application/octet-stream" });
     received += chunk.length;
+    if (resume) {
+      await savePartialDownload({
+        id: resume.id,
+        partial: true,
+        trackId: resume.trackId,
+        quality: resume.quality,
+        blob: accumulated,
+        receivedBytes: received,
+        totalBytes,
+        contentHash: resume.contentHash,
+        assetVersion: resume.assetVersion,
+        deviceId: resume.deviceId,
+        updatedAt: Date.now(),
+      });
+    }
     onProgress?.(received, totalBytes);
   }
-  if (received !== totalBytes) throw new Error("La descarga no superó la comprobación de tamaño.");
-  return new Blob(chunks.map(chunk => chunk.slice().buffer as ArrayBuffer), { type: "application/octet-stream" });
+
+  if (received !== totalBytes || accumulated.size !== totalBytes) {
+    throw new Error("La descarga no superó la comprobación de tamaño.");
+  }
+  if (resume) await deletePartialDownload(resume.id);
+  return accumulated;
 }
