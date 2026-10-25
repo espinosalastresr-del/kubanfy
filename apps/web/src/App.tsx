@@ -256,6 +256,7 @@ export default function App() {
   const [results, setResults] = useState<any[]>([]);
   const [home, setHome] = useState<Awaited<ReturnType<typeof discoveryHome>> | null>(null);
   const [status, setStatus] = useState("Listo");
+  const [isOnline, setIsOnline] = useState(() => navigator.onLine);
   const [transitioning, setTransitioning] = useState(false);
   const [section, setSection] = useState<"home" | "library">("home");
   const [favorites, setFavorites] = useState<Set<string>>(new Set());
@@ -278,7 +279,15 @@ export default function App() {
   useEffect(() => {
     player.onState = setStatus;
     void me().then(setUser).catch(() => {});
-    return () => player.stop();
+    const markOnline = () => setIsOnline(true);
+    const markOffline = () => setIsOnline(false);
+    window.addEventListener("online", markOnline);
+    window.addEventListener("offline", markOffline);
+    return () => {
+      window.removeEventListener("online", markOnline);
+      window.removeEventListener("offline", markOffline);
+      player.stop();
+    };
   }, [player]);
 
   useEffect(() => {
@@ -465,7 +474,9 @@ export default function App() {
     <header className="topbar glass">
       <div className="brand-lockup"><LogoMark /><strong>KubanFy</strong></div>
       <div className="topbar-actions">
-        <div className="status-pill"><span className="status-dot" />{status}</div>
+        <div className={`status-pill${isOnline ? "" : " offline"}`} role="status" aria-live="polite">
+          <span className="status-dot" />{isOnline ? status : "Sin conexión"}
+        </div>
         <button className="logout-button" onClick={logout}>Salir</button>
       </div>
     </header>
