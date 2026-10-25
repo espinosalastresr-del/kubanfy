@@ -115,3 +115,22 @@ class PasswordResetConfirmRequest(BaseModel):
         if v.isdigit() or v.isalpha():
             raise ValueError("Password must contain letters and numbers or symbols")
         return v
+
+
+class ProfileUpdateRequest(BaseModel):
+    display_name: str = Field(min_length=1, max_length=120)
+    country: str = Field(min_length=2, max_length=2)
+    language: str = Field(min_length=2, max_length=10)
+
+    @field_validator("display_name")
+    @classmethod
+    def display_name_not_blank(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("Display name cannot be blank")
+        return value
+
+    @field_validator("country")
+    @classmethod
+    def profile_country_upper(cls, value: str) -> str:
+        return value.upper()

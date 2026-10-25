@@ -1,5 +1,5 @@
 import { FormEvent, useEffect, useRef, useState } from "react";
-import { AdminAuditLog, AdminFeatureFlag, AdminUser, ApiError, ArtistManagedTrack, ArtistProfile, ModerationReport, addFavorite, addTrackToPlaylist, clearTokens, confirmPasswordReset, createArtist, createPlaylist, deletePlaylist, discoveryHome, canManageUserPlans, listAdminAuditLogs, listAdminFeatureFlags, listAdminUsers, listArtistTracks, listModerationReports, listMyArtists, listFavorites, listPlaylists, login, me, publishArtistTrack, register, removeFavorite, requestPasswordReset, resolveModerationReport, searchTracks, suspendAdminUser, unsuspendAdminUser, updateAdminFeatureFlag, updateAdminUserPlan, updateArtist, uploadArtistTrack } from "./api";
+import { AdminAuditLog, AdminFeatureFlag, AdminUser, ApiError, ArtistManagedTrack, ArtistProfile, CurrentUser, ModerationReport, addFavorite, addTrackToPlaylist, clearTokens, confirmPasswordReset, createArtist, createPlaylist, deletePlaylist, discoveryHome, canManageUserPlans, listAdminAuditLogs, listAdminFeatureFlags, listAdminUsers, listArtistTracks, listModerationReports, listMyArtists, listFavorites, listPlaylists, listMyEntitlements, login, me, publishArtistTrack, register, removeFavorite, requestPasswordReset, resolveModerationReport, searchTracks, suspendAdminUser, unsuspendAdminUser, updateAdminFeatureFlag, updateAdminUserPlan, updateArtist, updateMyProfile, uploadArtistTrack } from "./api";
 import { KbyPlayer } from "./player";
 
 function EyeIcon({ hidden }: { hidden: boolean }) {
@@ -575,6 +575,30 @@ function ArtistPortalView() {
   </section>;
 }
 
+function AccountView({onUpdated}:{onUpdated:(user:CurrentUser)=>void}) {
+ const [profile,setProfile]=useState<CurrentUser|null>(null);
+ const [entitlements,setEntitlements]=useState<Awaited<ReturnType<typeof listMyEntitlements>>>([]);
+ const [displayName,setDisplayName]=useState(""),[country,setCountry]=useState("CU"),[language,setLanguage]=useState("es");
+ const [busy,setBusy]=useState(false),[message,setMessage]=useState(""),[error,setError]=useState("");
+ useEffect(()=>{let cancelled=false;void Promise.all([me(),listMyEntitlements()]).then(([u,e])=>{if(cancelled)return;setProfile(u);setDisplayName(u.display_name);setCountry(u.country||"CU");setLanguage(u.language||"es");setEntitlements(e)}).catch(e=>{if(!cancelled)setError(e instanceof Error?e.message:"No pudimos cargar tu cuenta.")});return()=>{cancelled=true}},[]);
+ async function save(event:FormEvent){event.preventDefault();setBusy(true);setMessage("");setError("");try{const u=await updateMyProfile({display_name:displayName.trim(),country:country.trim().toUpperCase(),language:language.trim().toLowerCase()});setProfile(u);setDisplayName(u.display_name);onUpdated(u);setMessage("Tus datos se han actualizado.")}catch(e){setError(e instanceof Error?e.message:"No pudimos guardar los cambios.")}finally{setBusy(false)}}
+ const active=entitlements.filter(e=>e.scope_type==="user_premium"&&e.status==="active"),ent=active.find(e=>e.source==="manual")||active[0],code=ent?.plan_code||(ent?"premium":"free");
+ const plan=({free:"Free",premium:"Premium",family:"Family",student:"Student"} as Record<string,string>)[code]||"Free",features=ent?.features||{},expiry=ent?.expires_at?new Date(ent.expires_at):null;
+ return <section className="account-page"><div className="library-header glass"><div><span className="eyebrow">TU CUENTA</span><h1>Perfil y plan</h1><p>Gestiona tus datos y consulta las prestaciones asignadas.</p></div></div>
+ {error&&<div className="form-status" role="alert">{error}</div>}<div className="account-grid">
+ <section className="glass account-card"><div className="section-heading"><div><span className="eyebrow">DATOS PERSONALES</span><h2>Perfil</h2></div></div>
+ {profile?<form onSubmit={save}><label className="field"><span>Nombre visible</span><input value={displayName} onChange={e=>setDisplayName(e.target.value)} minLength={1} maxLength={120} required/></label>
+ <label className="field"><span>Correo electrónico</span><input value={profile.email} readOnly aria-readonly="true"/><small>El correo no se puede cambiar desde esta pantalla.</small></label>
+ <div className="account-form-row"><label className="field"><span>País (código ISO)</span><input value={country} onChange={e=>setCountry(e.target.value.toUpperCase())} minLength={2} maxLength={2} pattern="[A-Za-z]{2}" required/></label>
+ <label className="field"><span>Idioma</span><select value={language} onChange={e=>setLanguage(e.target.value)}><option value="es">Español</option><option value="en">English</option></select></label></div>
+ <div className="account-meta"><span>Estado: <strong>{profile.status}</strong></span><span>{profile.email_verified?"Correo verificado":"Correo pendiente de verificación"}</span></div>
+ {message&&<div className="form-notice" role="status">{message}</div>}<button className="primary-button" type="submit" disabled={busy||!displayName.trim()||!/^[A-Za-z]{2}$/.test(country)}>{busy?"Guardando…":"Guardar cambios"}</button></form>:<p>{error?"No se pudo cargar el perfil.":"Cargando perfil…"}</p>}</section>
+ <section className="glass account-card"><div className="section-heading"><div><span className="eyebrow">TU SUSCRIPCIÓN</span><h2>Plan {plan}</h2></div><span className={ent?"plan-tag plan-tag-premium":"plan-tag"}>{ent?"ACTIVO":"GRATUITO"}</span></div>
+ <p className="account-plan-copy">{ent?"Este es el plan asignado actualmente a tu cuenta.":"Estás en el plan gratuito. Las mejoras de plan las gestiona manualmente el equipo de KubanFy."}</p>
+ <ul className="account-feature-list"><li><span>✓</span>Reproducción en streaming</li><li><span>{features.quality_max&&features.quality_max!=="low"?"✓":"•"}</span>Calidad máxima: {features.quality_max||"low"}</li><li><span>{features.downloads?"✓":"—"}</span>{features.downloads?"Descargas sin conexión incluidas, sujetas a licencia":"Descargas persistentes no incluidas"}</li>{features.seats?<li><span>✓</span>Hasta {features.seats} miembros en el plan Family</li>:null}</ul>
+ {expiry?<p className="account-meta">Acceso hasta: <strong>{expiry.toLocaleDateString()}</strong></p>:ent?<p className="account-meta">Vigencia: sin fecha de expiración registrada</p>:null}<p className="account-note">Los pagos automáticos están desactivados. Esta pantalla no realiza cobros.</p></section></div></section>;
+}
+
 function formatDuration(seconds: number | null | undefined) {
   if (!seconds || seconds < 0) return "—";
   const minutes = Math.floor(seconds / 60);
@@ -593,7 +617,7 @@ export default function App() {
   const [status, setStatus] = useState("Listo");
   const [isOnline, setIsOnline] = useState(() => navigator.onLine);
   const [transitioning, setTransitioning] = useState(false);
-  const [section, setSection] = useState<"home" | "library" | "admin" | "artist">("home");
+  const [section, setSection] = useState<"home" | "library" | "admin" | "artist" | "account">("home");
   const [isAdmin, setIsAdmin] = useState(false);
   const [favorites, setFavorites] = useState<Set<string>>(new Set());
   const [playlists, setPlaylists] = useState<Awaited<ReturnType<typeof listPlaylists>>>([]);
@@ -855,6 +879,7 @@ export default function App() {
     <nav className="app-nav glass" aria-label="Navegación principal">
       <button className={section === "home" ? "active" : ""} aria-current={section === "home" ? "page" : undefined} onClick={() => setSection("home")}><span>⌂</span>Inicio</button>
       <button className={section === "library" ? "active" : ""} aria-current={section === "library" ? "page" : undefined} onClick={() => setSection("library")}><LibraryIcon />Biblioteca</button>
+      <button className={section === "account" ? "active" : ""} aria-current={section === "account" ? "page" : undefined} onClick={() => setSection("account")}><span>◉</span>Mi cuenta</button>
       <button className={section === "artist" ? "active" : ""} aria-current={section === "artist" ? "page" : undefined} onClick={() => setSection("artist")}><span>♫</span>Artistas</button>
       {isAdmin && <button className={section === "admin" ? "active" : ""} aria-current={section === "admin" ? "page" : undefined} onClick={() => setSection("admin")}><span>⚙</span>Administración</button>}
     </nav>
@@ -959,6 +984,7 @@ export default function App() {
 
       {section === "admin" && isAdmin && <AdminUsersView />}
       {section === "artist" && <ArtistPortalView />}
+      {section === "account" && <AccountView onUpdated={updated => setUser(updated)} />}
 
       {section === "library" && (
         <section className="library-page">

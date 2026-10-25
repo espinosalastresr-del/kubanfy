@@ -10,6 +10,7 @@ from app.api.deps import CurrentUser, DbSession
 from app.schemas.auth import (
     PasswordResetConfirmRequest,
     PasswordResetRequest,
+    ProfileUpdateRequest,
     AuthContextResponse,
     DeviceResponse,
     LoginRequest,
@@ -106,6 +107,17 @@ async def refresh(
 
 @router.get("/me", response_model=UserResponse)
 async def me(user: CurrentUser) -> UserResponse:
+    return AuthService.to_response(user)
+
+
+@router.patch("/me", response_model=UserResponse)
+async def update_me(body: ProfileUpdateRequest, user: CurrentUser, session: DbSession) -> UserResponse:
+    """Update only editable fields on the authenticated user's own profile."""
+    user.display_name = body.display_name
+    user.country = body.country
+    user.language = body.language
+    await session.flush()
+    await session.refresh(user)
     return AuthService.to_response(user)
 
 
