@@ -109,7 +109,7 @@ export async function verifyOfflineLicense(track: OfflineTrack, userId: string):
   );
   const signature = decodeBase64Url(parts[2]);
   const signedContent = new TextEncoder().encode(parts[0] + "." + parts[1]);
-  const valid = await crypto.subtle.verify("RSASSA-PKCS1-v1_5", publicKey, signature, signedContent);
+  const valid = await crypto.subtle.verify("RSASSA-PKCS1-v1_5", publicKey, signature.slice().buffer as ArrayBuffer, signedContent);
   if (!valid) throw new Error("La firma de la licencia offline no es válida.");
 }
 
@@ -159,5 +159,5 @@ export async function downloadProtectedAudio(
     onProgress?.(received, totalBytes);
   }
   if (received !== totalBytes) throw new Error("La descarga no superó la comprobación de tamaño.");
-  return new Blob(chunks, { type: "application/octet-stream" });
+  return new Blob(chunks.map(chunk => chunk.slice().buffer as ArrayBuffer), { type: "application/octet-stream" });
 }
