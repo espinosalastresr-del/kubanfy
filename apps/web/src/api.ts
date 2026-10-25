@@ -132,6 +132,20 @@ export async function discoveryHome() {
   return request<DiscoveryHome>("/v1/discovery/home");
 }
 
+export async function requestPasswordReset(email: string) {
+  return request<{ message: string }>("/v1/auth/password-reset/request", {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email }),
+  }, false);
+}
+
+export async function confirmPasswordReset(token: string, newPassword: string) {
+  return request<{ message: string }>("/v1/auth/password-reset/confirm", {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ token, new_password: newPassword }),
+  }, false);
+}
+
 export async function me() { return request<unknown>("/v1/auth/me"); }
 export async function searchTracks(q: string) { return request<SearchResult[]>(`/v1/music/search?q=${encodeURIComponent(q)}&limit=20`); }
 
