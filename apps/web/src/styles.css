@@ -83,7 +83,7 @@ a{color:inherit}
 .signup-prompt{text-align:center;color:var(--muted);font-size:12px;margin:0}.auth-footnote{text-align:center;color:var(--subtle);font-size:10px;margin:17px 10px}
 .app-page{min-height:100svh;background:radial-gradient(circle at 85% 0%,rgba(169,152,255,.11),transparent 30%),radial-gradient(circle at 0% 40%,rgba(141,225,208,.08),transparent 26%),var(--bg)}
 .topbar{position:relative;z-index:20;display:flex;justify-content:space-between;align-items:center;gap:12px;width:min(calc(100% - 24px),1180px);margin:10px auto 0;padding:11px 14px;border-radius:18px}
-.brand-lockup strong{font-size:17px}.topbar-actions{display:flex;align-items:center;gap:9px;min-width:0}.status-pill{display:flex;align-items:center;gap:7px;color:var(--muted);font-size:11px}.status-dot{width:7px;height:7px;border-radius:50%;background:var(--accent);box-shadow:0 0 12px var(--accent)}
+.brand-lockup strong{font-size:17px}.topbar-actions{display:flex;align-items:center;gap:9px;min-width:0}.status-pill{display:flex;align-items:center;gap:7px;color:var(--muted);font-size:11px}.status-dot{width:7px;height:7px;border-radius:50%;background:var(--accent);box-shadow:0 0 12px var(--accent)}.status-pill.offline{color:#ff9a9a}.status-pill.offline .status-dot{background:#ff7474;box-shadow:0 0 10px #ff747466}
 .content{width:min(100% - 24px,1180px);margin:18px auto 0;padding-bottom:120px}
 .hero{border-radius:var(--radius-lg);padding:clamp(28px,7vw,58px);min-height:250px;display:flex;align-items:end;overflow:hidden;position:relative}
 .hero:after{content:"";position:absolute;width:280px;height:280px;right:-80px;top:-100px;border-radius:50%;background:radial-gradient(circle,rgba(217,244,90,.2),transparent 68%);pointer-events:none}
