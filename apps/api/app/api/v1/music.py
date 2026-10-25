@@ -174,7 +174,7 @@ async def music_play(
     geo = GeoService()
     ip = request.client.host if request.client else None
     real_ip = geo.resolve_client_ip(ip, forwarded_for=request.headers.get("x-forwarded-for"))
-    await AntiAbuseService().check_download(str(user.id), real_ip)
+    await AntiAbuseService().check_playback(str(user.id), real_ip)
     entitlement = EntitlementService(session)
     await entitlement.require_track_access(user.id, track_id)
     await entitlement.require_quality_access(user.id, quality)
