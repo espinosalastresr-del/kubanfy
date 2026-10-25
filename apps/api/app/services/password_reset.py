@@ -62,7 +62,7 @@ class PasswordResetService:
 
         # Do not expose tokens in API responses or logs. If delivery is
         # misconfigured, log only the provider error and preserve enumeration resistance.
-        reset_url = f"{self.settings.frontend_base_url.rstrip('/')}/?reset_token={quote(raw_token)}"
+        reset_url = f"{self.settings.frontend_base_url.rstrip('/')}/#reset_token={quote(raw_token)}"
         try:
             await self.email_delivery.send(
                 user.email,
