@@ -527,7 +527,10 @@ export default function App() {
   }
 
   if (!user) {
-    if (authMode === "reset" && resetToken) {\n      return <div className="view-transition login-view"><PasswordResetView token={resetToken} onBack={() => { setAuthMode("login"); setResetToken(""); window.history.replaceState({}, "", window.location.pathname); }} onComplete={() => { setAuthMode("login"); setResetToken(""); }} /></div>;\n    }\n    if (authMode === "forgot") {\n      return <div className="view-transition login-view"><PasswordRecoveryView initialEmail={registeredEmail} onBack={() => setAuthMode("login")} /></div>;\n    }\n    if (authMode === "register") {
+    if (authMode === "reset" && resetToken) {
+      return <div className="view-transition login-view"><PasswordResetView token={resetToken} onBack={() => { setAuthMode("login"); setResetToken(""); window.history.replaceState({}, "", window.location.pathname); }} onComplete={() => { setAuthMode("login"); setResetToken(""); }} /></div>;
+    }
+    if (authMode === "forgot") {\n      return <div className="view-transition login-view"><PasswordRecoveryView initialEmail={registeredEmail} onBack={() => setAuthMode("login")} /></div>;\n    }\n    if (authMode === "register") {
       return (
         <div className="view-transition login-view">
           <RegisterView
