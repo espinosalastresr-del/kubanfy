@@ -49,6 +49,7 @@ class MusicDownloadRequest(BaseModel):
     track_id: UUID | None = None
     quality: str = Field(default="medium", pattern="^(low|medium|lossless)$")
     device_id: str | None = Field(default=None, max_length=128)
+    kby_version: int = Field(default=1, ge=1, le=2)
 
 
 class MusicPlaybackResponse(BaseModel):
@@ -91,6 +92,8 @@ class MusicDownloadResponse(BaseModel):
     download_ticket: str | None = None
     offline_license: str | None = None
     offline_license_expires_at: str | None = None
+    kby_version: int = 1
+    asset_version: int | None = None
 
 
 class TrackSearchResult(BaseModel):

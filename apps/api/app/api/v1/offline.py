@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 from fastapi import APIRouter
+from app.core.config import get_settings
+from app.core.exceptions import ProviderUnavailableError
 
 from app.api.deps import CurrentUser, DbSession
 from app.core.logging import get_logger
@@ -12,6 +14,18 @@ from app.services.offline_license import OfflineLicenseService
 logger = get_logger(__name__)
 
 router = APIRouter(prefix="/offline", tags=["offline"])
+
+
+@router.get("/licenses/public-key")
+async def offline_license_public_key() -> dict[str, str]:
+    """Expose only the RS256 verification key required by offline clients."""
+    settings = get_settings()
+    if settings.offline_license_algorithm != "RS256" or not settings.offline_license_public_key:
+        raise ProviderUnavailableError("Offline license verification is not configured")
+    return {
+        "algorithm": "RS256",
+        "public_key": settings.offline_license_public_key,
+    }
 
 
 @router.post("/licenses/validate", response_model=OfflineLicenseResponse)

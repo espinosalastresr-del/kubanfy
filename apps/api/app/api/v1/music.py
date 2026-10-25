@@ -247,6 +247,7 @@ async def music_download(
             track_id=body.track_id,
             quality=body.quality,
             user_id=user.id,
+            kby_version=body.kby_version,
         )
     elif body.provider and body.provider_track_id:
         result = await engine.download(
@@ -320,6 +321,8 @@ async def music_download(
         download_ticket=download_ticket,
         offline_license=offline_license,
         offline_license_expires_at=offline_license_expires_at,
+        kby_version=result.kby_version,
+        asset_version=result.asset_version,
     )
 
 
