@@ -43,6 +43,61 @@ jobs:
         working-directory: infra/cloudflare/kubanfy-api-staging
         run: npx tsc --noEmit
 
+      - name: Ensure staging cryptographic secrets exist
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: 692849a1e51eea43c2ddbf3cddc42f6f
+        shell: bash
+        run: |
+          set -euo pipefail
+          api="https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/workers/scripts/kubanfy-api-staging"
+          names="$(curl --fail --silent --show-error --retry 3 --retry-all-errors -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" "${api}/secrets" | jq -r '.result[].name')"
+          has_private=false
+          has_public=false
+          has_kby=false
+          grep -qx 'OFFLINE_LICENSE_PRIVATE_KEY' <<< "${names}" && has_private=true || true
+          grep -qx 'OFFLINE_LICENSE_PUBLIC_KEY' <<< "${names}" && has_public=true || true
+          grep -qx 'KBY_MASTER_KEY' <<< "${names}" && has_kby=true || true
+
+          if [[ "${has_private}" != "${has_public}" ]]; then
+            echo "::error::Offline license keypair is partially configured. Restore the matching private/public keypair before deploying."
+            exit 1
+          fi
+
+          private_key=""
+          public_key=""
+          kby_master_key=""
+          if [[ "${has_private}" == "false" ]]; then
+            umask 077
+            openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:3072 -out "${RUNNER_TEMP}/kubanfy-offline-private.pem"
+            openssl pkey -in "${RUNNER_TEMP}/kubanfy-offline-private.pem" -pubout -out "${RUNNER_TEMP}/kubanfy-offline-public.pem"
+            private_key="$(cat "${RUNNER_TEMP}/kubanfy-offline-private.pem")"
+            public_key="$(cat "${RUNNER_TEMP}/kubanfy-offline-public.pem")"
+          fi
+          if [[ "${has_kby}" == "false" ]]; then
+            kby_master_key="$(openssl rand -hex 32)"
+          fi
+
+          if [[ -z "${private_key}" && -z "${kby_master_key}" ]]; then
+            echo "Staging cryptographic secrets are already configured."
+            exit 0
+          fi
+
+          payload="$(jq -n --arg private_key "${private_key}" --arg public_key "${public_key}" --arg kby_master_key "${kby_master_key}" '
+            {secrets:
+              ((if $kby_master_key != "" then {KBY_MASTER_KEY:{name:"KBY_MASTER_KEY",type:"secret_text",text:$kby_master_key}} else {} end)
+              + (if $private_key != "" then
+                  {OFFLINE_LICENSE_PRIVATE_KEY:{name:"OFFLINE_LICENSE_PRIVATE_KEY",type:"secret_text",text:$private_key},
+                   OFFLINE_LICENSE_PUBLIC_KEY:{name:"OFFLINE_LICENSE_PUBLIC_KEY",type:"secret_text",text:$public_key}}
+                else {} end))
+            }')"
+          response="$(curl --fail --silent --show-error --retry 3 --retry-all-errors -X PATCH "${api}/secrets-bulk" \
+            -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" \
+            -H "Content-Type: application/merge-patch+json" \
+            --data-binary "${payload}")"
+          jq -e '.success == true' <<< "${response}" >/dev/null
+          rm -f "${RUNNER_TEMP}/kubanfy-offline-private.pem" "${RUNNER_TEMP}/kubanfy-offline-public.pem"
+          echo "Staging cryptographic secrets are configured."
       - name: Deploy Worker and build/publish API image
         working-directory: infra/cloudflare/kubanfy-api-staging
         env:
