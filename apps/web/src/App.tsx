@@ -405,6 +405,7 @@ function ArtistPortalView() {
     try {
       const rows = await listMyArtists();
       setArtists(rows);
+      setNewArtist(rows.length === 0);
       const chosen = rows.find(item => item.id === preferredId) || rows[0];
       setArtistId(chosen?.id || "");
       if (chosen) {
@@ -481,7 +482,7 @@ function ArtistPortalView() {
         <form className="glass artist-form" onSubmit={upload}>
           <label className="field"><span>Título de la canción</span><input value={trackTitle} onChange={e=>setTrackTitle(e.target.value)} required maxLength={255} placeholder="Título" /></label>
           <label className="field"><span>Archivo de audio</span><input id="artist-audio-file" type="file" accept=".mp3,.wav,.flac,.m4a,.aac,.ogg,.opus,.aiff,.aif" onChange={e=>setAudioFile(e.target.files?.[0] || null)} required /></label>
-          <p className="artist-help">La subida consume datos. Usa Wi‑Fi si el archivo es grande y no cierres la página hasta que termine. El límite depende de la configuración del servidor.</p>
+          <p className="artist-help">La subida consume datos{audioFile ? ` · Archivo seleccionado: ${(audioFile.size / (1024 * 1024)).toFixed(1)} MB` : ""}. Usa Wi‑Fi si el archivo es grande y no cierres la página hasta que termine. El límite depende de la configuración del servidor.</p>
           <label className="artist-check"><input type="checkbox" checked={explicit} onChange={e=>setExplicit(e.target.checked)} /> Contenido explícito</label>
           <label className="artist-check"><input type="checkbox" checked={acceptLicense} onChange={e=>setAcceptLicense(e.target.checked)} /> Confirmo que tengo los derechos necesarios y autorizo almacenamiento, procesamiento y distribución en KubanFy.</label>
           <button className="primary-button" disabled={busy || !audioFile || !acceptLicense || !trackTitle.trim()}>{busy ? "Subiendo / procesando…" : "Subir canción"}</button>
@@ -489,7 +490,7 @@ function ArtistPortalView() {
       </section>}
       {artistId && !newArtist && <section className="library-section">
         <div className="section-heading"><div><span className="eyebrow">ESTADO DE PUBLICACIÓN</span><h2>Mis canciones</h2></div><span>{tracks.length} canciones</span></div>
-        {tracks.length === 0 ? <div className="empty-state glass"><strong>Aún no hay canciones</strong><span>Cuando subas un audio, su estado aparecerá aquí.</span></div> : <div className="admin-user-list">{tracks.map(track=><article className="glass admin-user-card" key={track.id}><div className="admin-user-summary"><div><strong>{track.title}</strong><span>{track.release_title} · {formatDuration(track.duration)}</span></div><div className="admin-user-tags"><span className="plan-tag">{track.status.toUpperCase()}</span></div></div><div className="artist-form-actions">{track.status === "ready" || track.status === "draft" ? <button className="primary-button" disabled={busy} onClick={()=>void publish(track)}>Publicar</button> : null}<button className="secondary-button" disabled={busy} onClick={()=>void loadArtists(artistId)}>Actualizar estado</button></div></article>)}</div>}
+        {tracks.length === 0 ? <div className="empty-state glass"><strong>Aún no hay canciones</strong><span>Cuando subas un audio, su estado aparecerá aquí.</span></div> : <div className="admin-user-list">{tracks.map(track=><article className="glass admin-user-card" key={track.id}><div className="admin-user-summary"><div><strong>{track.title}</strong><span>{track.release_title} · {formatDuration(track.duration)}</span></div><div className="admin-user-tags"><span className="plan-tag">{track.status.toUpperCase()}</span></div></div><div className="artist-form-actions">{track.status === "processing" || track.status === "draft" || track.status === "hidden" ? <button className="primary-button" disabled={busy} onClick={()=>void publish(track)}>Validar y publicar</button> : null}<button className="secondary-button" disabled={busy} onClick={()=>void loadArtists(artistId)}>Actualizar estado</button></div></article>)}</div>}
       </section>}
     </>}
   </section>;
