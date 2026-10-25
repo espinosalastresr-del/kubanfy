@@ -532,7 +532,8 @@ export default function App() {
     }
     if (authMode === "forgot") {
       return <div className="view-transition login-view"><PasswordRecoveryView initialEmail={registeredEmail} onBack={() => setAuthMode("login")} /></div>;
-    }\n    if (authMode === "register") {
+    }
+    if (authMode === "register") {
       return (
         <div className="view-transition login-view">
           <RegisterView
