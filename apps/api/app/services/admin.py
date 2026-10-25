@@ -251,6 +251,7 @@ class AdminService:
                 .where(
                     Entitlement.user_id == user_id,
                     Entitlement.scope_type == EntitlementScope.USER_PREMIUM,
+                    Entitlement.source == EntitlementSource.MANUAL,
                     Entitlement.status == EntitlementStatus.ACTIVE,
                 )
                 .with_for_update()

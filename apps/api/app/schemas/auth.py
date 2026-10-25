@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+import re
 from uuid import UUID
 
 from pydantic import BaseModel, EmailStr, Field, field_validator
@@ -133,4 +134,15 @@ class ProfileUpdateRequest(BaseModel):
     @field_validator("country")
     @classmethod
     def profile_country_upper(cls, value: str) -> str:
-        return value.upper()
+        normalized = value.strip().upper()
+        if not re.fullmatch(r"[A-Z]{2}", normalized):
+            raise ValueError("Country must be a two-letter ISO code")
+        return normalized
+
+    @field_validator("language")
+    @classmethod
+    def profile_language_supported(cls, value: str) -> str:
+        normalized = value.strip().lower()
+        if normalized not in {"es", "en"}:
+            raise ValueError("Language must be es or en")
+        return normalized
