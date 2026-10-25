@@ -34,7 +34,6 @@ function LoginView({ onLogin, onRegister, onForgot, initialEmail }: { onLogin: (
   const [showPassword, setShowPassword] = useState(false);
   const [busy, setBusy] = useState(false);
   const [submitted, setSubmitted] = useState(false);
-  const [notice, setNotice] = useState("");
   const [authError, setAuthError] = useState("");
   
   useEffect(() => {
@@ -139,7 +138,6 @@ function LoginView({ onLogin, onRegister, onForgot, initialEmail }: { onLogin: (
             <a href="#recuperar" onClick={e => { e.preventDefault(); onForgot(); }}>¿Olvidaste tu contraseña?</a>
           </div>
 
-          {notice && <div className="form-notice" role="status">{notice}</div>}
           {authError && <div className="form-status" role="alert" aria-live="assertive">{authError}</div>}
 
           <button className={`primary-button login-button${busy ? " is-loading" : ""}`} type="submit" disabled={busy} aria-busy={busy}>
@@ -204,7 +202,7 @@ function PasswordResetView({ token, onBack, onComplete }: { token: string; onBac
   const [complete, setComplete] = useState(false);
   async function submit(event: FormEvent) {
     event.preventDefault(); setError("");
-    if (password.length < 8 || password === password.replace(/[A-Za-z0-9]/g, "") || password !== confirmation) {
+    if (password.length < 8 || (/^[A-Za-z]+$/.test(password) || /^\d+$/.test(password)) || password !== confirmation) {
       setError("Usa al menos 8 caracteres e incluye letras y números o símbolos; ambas contraseñas deben coincidir."); return;
     }
     setBusy(true);
