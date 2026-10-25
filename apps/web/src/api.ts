@@ -32,7 +32,9 @@ export class ApiError extends Error {
   }
 }
 
-const API = import.meta.env.VITE_API_BASE_URL || "https://kubanfy-api-staging.onrender.com";
+// Keep local/staging builds aligned with the Cloudflare staging deployment.
+// CI can override this at build time for other environments.
+const API = (import.meta.env.VITE_API_BASE_URL || "https://kubanfy-api-staging.globumlatinmusic.workers.dev").replace(/\/+$/, "");
 let accessToken: string | null = null;
 let refreshToken: string | null = sessionStorage.getItem("kubanfy.refresh");
 
