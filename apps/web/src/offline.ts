@@ -117,11 +117,11 @@ async function fetchRange(url: string, start: number, end: number, total: number
   let lastError: unknown;
   for (let attempt = 0; attempt < 4; attempt += 1) {
     try {
-      const response = await fetch(url, { headers: { Range: \`bytes=\${start}-\${end}\` } });
+      const response = await fetch(url, { headers: { Range: `bytes=${start}-${end}` } });
       if (RETRYABLE.has(response.status) && attempt < 3) {
-        lastError = new Error(\`HTTP \${response.status}\`);
+        lastError = new Error(`HTTP ${response.status}`);
       } else {
-        if (response.status !== 206) throw new Error(\`El servidor no permitió reanudar la descarga (HTTP \${response.status}).\`);
+        if (response.status !== 206) throw new Error(`El servidor no permitió reanudar la descarga (HTTP ${response.status}).`);
         const match = response.headers.get("Content-Range")?.match(/^bytes (\d+)-(\d+)\/(\d+)$/);
         if (!match || Number(match[1]) !== start || Number(match[2]) !== end || Number(match[3]) !== total) {
           throw new Error("El servidor devolvió un rango de descarga incoherente.");
