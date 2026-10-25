@@ -122,7 +122,6 @@ async def test_consume_changes_password_and_revokes_sessions(monkeypatch) -> Non
     assert record.used_at is not None
     assert session.execute.await_count == 2
     session.flush.assert_awaited_once()
-    assert SessionStatus.ACTIVE.value == "active"
 
 
 @pytest.mark.asyncio
