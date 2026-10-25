@@ -267,6 +267,8 @@ export default function App() {
   const [activeTrackId, setActiveTrackId] = useState<string | null>(null);
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchBusy, setSearchBusy] = useState(false);
+  const [searchError, setSearchError] = useState("");
+  const searchRequestId = useRef(0);
   const [recentSearches, setRecentSearches] = useState<string[]>(() => {
     try {
       const saved = JSON.parse(localStorage.getItem("kubanfy:recent-searches") || "[]");
@@ -405,15 +407,29 @@ export default function App() {
 
   async function search(value = query) {
     const normalized = value.trim();
-    if (!normalized) { setResults([]); return; }
+    const requestId = ++searchRequestId.current;
+    if (!normalized) {
+      setResults([]);
+      setSearchError("");
+      setSearchBusy(false);
+      return;
+    }
+    setSearchError("");
+    setSearchBusy(true);
     try {
-      setSearchBusy(true);
       const next = await searchTracks(normalized);
+      if (requestId !== searchRequestId.current) return;
       setResults(next);
       rememberSearch(normalized);
     } catch (e) {
-      setStatus(e instanceof Error ? e.message : "No pudimos completar la búsqueda.");
-    } finally { setSearchBusy(false); }
+      if (requestId !== searchRequestId.current) return;
+      setResults([]);
+      setSearchError(!navigator.onLine
+        ? "No hay conexión. Cuando vuelva la red, inténtalo de nuevo."
+        : "No pudimos completar la búsqueda. Comprueba la conexión e inténtalo de nuevo.");
+    } finally {
+      if (requestId === searchRequestId.current) setSearchBusy(false);
+    }
   }
 
   useEffect(() => {
@@ -640,7 +656,7 @@ export default function App() {
             </div>
             <div className="search-dialog-input search-input">
               <SearchIcon />
-              <input ref={searchInputRef} value={query} onChange={e => setQuery(e.target.value)} onKeyDown={e => { if (e.key === "Escape") setSearchOpen(false); }} placeholder="Artista, canción o álbum" aria-label="Buscar música" autoComplete="off" />
+              <input ref={searchInputRef} value={query} onChange={e => { searchRequestId.current += 1; setResults([]); setSearchError(""); setQuery(e.target.value); }} onKeyDown={e => { if (e.key === "Escape") setSearchOpen(false); }} placeholder="Artista, canción o álbum" aria-label="Buscar música" autoComplete="off" />
               {query && <button className="search-clear" onClick={() => setQuery("")} aria-label="Borrar búsqueda">×</button>}
               {searchBusy && <span className="search-spinner" aria-label="Buscando" />}
             </div>
@@ -653,7 +669,8 @@ export default function App() {
             {query.trim() && (
               <section className="search-live-results">
                 {searchBusy && results.length === 0 && <div className="search-empty">Buscando…</div>}
-                {!searchBusy && results.length === 0 && <div className="search-empty">No encontramos resultados para «{query.trim()}».</div>}
+                {!searchBusy && searchError && <div className="search-empty" role="status">{searchError}<div><button className="search-retry" onClick={() => void search(query)}>Reintentar</button></div></div>}
+                {!searchBusy && !searchError && results.length === 0 && <div className="search-empty">No encontramos resultados para «{query.trim()}».</div>}
                 {results.map(r => r.track_id ? (
                   <article className="search-result-item" key={r.provider_track_id}>
                     <button className="search-result-main" onClick={() => { void play(r.track_id!); setSearchOpen(false); }}>
