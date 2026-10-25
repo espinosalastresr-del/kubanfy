@@ -8,6 +8,8 @@ from fastapi import APIRouter, Request
 
 from app.api.deps import CurrentUser, DbSession
 from app.schemas.auth import (
+    PasswordResetConfirmRequest,
+    PasswordResetRequest,
     AuthContextResponse,
     DeviceResponse,
     LoginRequest,
@@ -22,6 +24,7 @@ from app.services.anti_abuse import AntiAbuseService
 from app.services.auth import AuthService
 from app.services.session import SessionService
 from app.services.geo import GeoService
+from app.services.password_reset import PasswordResetService
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -55,6 +58,29 @@ async def login(
     user_agent = request.headers.get("user-agent")
     user, tokens = await service.login(body, ip_country=geo.resolve(ip=real_ip).country, user_agent=user_agent)
     return LoginResponse(user=AuthService.to_response(user), tokens=tokens)
+
+
+@router.post("/password-reset/request", status_code=202)
+async def request_password_reset(
+    body: PasswordResetRequest,
+    session: DbSession,
+) -> dict[str, str]:
+    # Same response regardless of whether the address exists.
+    await PasswordResetService(session).request_reset(str(body.email))
+    return {"message": "Si existe una cuenta para ese correo, recibirás instrucciones para restablecer la contraseña."}
+
+
+@router.post("/password-reset/confirm")
+async def confirm_password_reset(
+    body: PasswordResetConfirmRequest,
+    session: DbSession,
+) -> dict[str, str]:
+    changed = await PasswordResetService(session).consume(body.token, body.new_password)
+    if not changed:
+        from app.core.exceptions import AuthError
+
+        raise AuthError("Invalid or expired password reset token")
+    return {"message": "La contraseña se ha actualizado. Inicia sesión con tu nueva contraseña."}
 
 
 @router.post("/refresh", response_model=TokenResponse)
