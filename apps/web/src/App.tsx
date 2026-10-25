@@ -312,8 +312,8 @@ function formatDuration(seconds: number | null | undefined) {
 
 export default function App() {
   const [user, setUser] = useState<unknown>(null);
-  const [authMode, setAuthMode] = useState<"login" | "register" | "forgot" | "reset">(() => new URLSearchParams(window.location.search).has("reset_token") ? "reset" : "login");
-  const [resetToken, setResetToken] = useState(() => new URLSearchParams(window.location.search).get("reset_token") || "");
+  const [authMode, setAuthMode] = useState<"login" | "register" | "forgot" | "reset">(() => new URLSearchParams(window.location.hash.slice(1)).has("reset_token") ? "reset" : "login");
+  const [resetToken, setResetToken] = useState(() => new URLSearchParams(window.location.hash.slice(1)).get("reset_token") || "");
   const [registeredEmail, setRegisteredEmail] = useState("");
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<any[]>([]);
