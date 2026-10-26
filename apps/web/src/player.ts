@@ -132,6 +132,9 @@ export class KbyPlayer {
       this.onState?.(`cargando ${Math.round(this.nextChunk / this.header.chunk_count * 100)}%`);
       if (this.audio.paused && this.nextChunk >= 1) void this.audio.play().catch(() => {});
     }
+    if (this.media?.readyState === "open" && !this.source?.updating) {
+      try { this.media.endOfStream(); } catch {}
+    }
     this.onState?.("listo");
   }
 
