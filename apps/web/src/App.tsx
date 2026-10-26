@@ -636,6 +636,7 @@ export default function App() {
   const [playlistTracks, setPlaylistTracks] = useState<Array<{ id: string; title: string; artist: string; artwork?: string | null; duration?: number | null }>>([]);
   const [editingPlaylist, setEditingPlaylist] = useState<string | null>(null);
   const [editingPlaylistName, setEditingPlaylistName] = useState("");
+  const handledDeepLink = useRef("");
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchBusy, setSearchBusy] = useState(false);
   const [searchError, setSearchError] = useState("");
@@ -883,6 +884,24 @@ export default function App() {
     const item = queue[next];
     await play(item.id, item.title, item.artist, item.artwork, queue, next);
   }
+
+  useEffect(() => {
+    if (!user || !playlists.length) return;
+    const params = new URLSearchParams(window.location.hash.replace(/^#/, ""));
+    const playlistId = params.get("playlist");
+    const trackId = params.get("track");
+    const token = playlistId ? `playlist:${playlistId}` : trackId ? `track:${trackId}` : "";
+    if (!token || handledDeepLink.current === token) return;
+    handledDeepLink.current = token;
+    if (playlistId && playlists.some(item => item.id === playlistId)) {
+      setSection("library");
+      void openPlaylist(playlistId);
+    } else if (trackId) {
+      void getTrack(trackId).then(track => {
+        void play(track.id, track.title, track.artists.map(item => item.name).join(", ") || "Artista desconocido", track.artwork_url);
+      }).catch(() => setStatus("No pudimos abrir esta canción. Puede que ya no esté disponible."));
+    }
+  }, [user, playlists]);
 
   async function shareLink(title: string, path: string) {
     const url = new URL(path, window.location.origin).toString();
