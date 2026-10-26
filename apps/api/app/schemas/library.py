@@ -16,6 +16,11 @@ class PlaylistCreateRequest(BaseModel):
 
 class PlaylistRenameRequest(BaseModel):
     name: str = Field(min_length=1, max_length=200)
+    visibility: str | None = Field(default=None, pattern="^(private|public)$")
+
+
+class PlaylistTrackOrderRequest(BaseModel):
+    track_ids: list[UUID] = Field(max_length=500)
 
 
 class PlaylistResponse(BaseModel):
