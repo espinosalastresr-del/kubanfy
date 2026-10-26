@@ -691,7 +691,7 @@ export default function App() {
                     <button className="featured-action" onClick={() => void shareLink(track.title || "KubanFy", `/?track=${encodeURIComponent(track.track_id)}`)} aria-label="Compartir canción"><ShareIcon /></button>
                     <button className="featured-action featured-play" onClick={() => void play(track.track_id)} aria-label={`Reproducir ${track.title || "Sin título"}`}>▶</button>
                   </div>
-                  {playlists.length > 0 && playlistMenuTrack === track.track_id && <div className="playlist-popover glass">{playlists.map(pl => <button key={pl.id} onClick={() => void saveToPlaylist(pl.id, track.track_id)}>{pl.name}</button>)}</div>}
+                  {playlistMenuTrack === track.track_id && <div className="playlist-popover glass">{playlists.length === 0 ? <span>Crea una playlist en Biblioteca.</span> : playlists.map(pl => <button key={pl.id} onClick={() => void saveToPlaylist(pl.id, track.track_id)}>{pl.name}</button>)}</div>}
                 </article>
               ))}
             </div>
@@ -715,7 +715,7 @@ export default function App() {
                     <button className="release-action" onClick={() => void shareLink(track.title, `/?track=${encodeURIComponent(track.id)}`)} aria-label="Compartir canción"><ShareIcon /></button>
                     <button className="release-action" onClick={() => void play(track.id)} aria-label={`Reproducir ${track.title}`}>▶</button>
                   </div>
-                  {playlists.length > 0 && playlistMenuTrack === track.id && <div className="playlist-popover glass">{playlists.map(pl => <button key={pl.id} onClick={() => void saveToPlaylist(pl.id, track.id)}>{pl.name}</button>)}</div>}
+                  {playlistMenuTrack === track.id && <div className="playlist-popover glass">{playlists.length === 0 ? <span>Crea una playlist en Biblioteca.</span> : playlists.map(pl => <button key={pl.id} onClick={() => void saveToPlaylist(pl.id, track.id)}>{pl.name}</button>)}</div>}
                 </article>
               ))}
             </div>
