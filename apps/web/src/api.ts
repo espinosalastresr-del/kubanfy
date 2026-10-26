@@ -314,11 +314,11 @@ export async function removeFavorite(targetId: string) {
 export async function listPlaylists() {
   return request<Playlist[]>("/v1/playlists");
 }
-export async function createPlaylist(name: string) {
+export async function createPlaylist(name: string, visibility: "private" | "public" = "private") {
   return request<Playlist>("/v1/playlists", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ name, visibility: "private" }),
+    body: JSON.stringify({ name, visibility }),
   });
 }
 export async function deletePlaylist(id: string) {
@@ -335,9 +335,9 @@ export async function getTrack(trackId: string) {
 export async function getPlaylistTracks(playlistId: string) {
   return request<PlaylistTrack[]>(`/v1/playlists/${playlistId}/tracks`);
 }
-export async function renamePlaylist(playlistId: string, name: string) {
+export async function renamePlaylist(playlistId: string, name: string, visibility: "private" | "public" = "private") {
   return request<Playlist>(`/v1/playlists/${playlistId}`, {
-    method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name }),
+    method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name, visibility }),
   });
 }
 

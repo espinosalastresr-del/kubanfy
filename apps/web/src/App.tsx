@@ -623,6 +623,8 @@ export default function App() {
   const [favorites, setFavorites] = useState<Set<string>>(new Set());
   const [playlists, setPlaylists] = useState<Awaited<ReturnType<typeof listPlaylists>>>([]);
   const [newPlaylist, setNewPlaylist] = useState("");
+  const [newPlaylistVisibility, setNewPlaylistVisibility] = useState<"private" | "public">("private");
+  const [editingPlaylistVisibility, setEditingPlaylistVisibility] = useState<"private" | "public">("private");
   const [libraryBusy, setLibraryBusy] = useState(false);
   const [playlistMenuTrack, setPlaylistMenuTrack] = useState<string | null>(null);
   const [activeTrackId, setActiveTrackId] = useState<string | null>(null);
@@ -772,9 +774,10 @@ export default function App() {
     if (!name || libraryBusy) return;
     setLibraryBusy(true);
     try {
-      const created = await createPlaylist(name);
+      const created = await createPlaylist(name, newPlaylistVisibility);
       setPlaylists(prev => [created, ...prev]);
       setNewPlaylist("");
+      setNewPlaylistVisibility("private");
       setStatus("Playlist creada");
     } catch (e) {
       setStatus(e instanceof Error ? e.message : "No pudimos crear la playlist.");
@@ -893,7 +896,7 @@ export default function App() {
     const token = playlistId ? `playlist:${playlistId}` : trackId ? `track:${trackId}` : "";
     if (!token || handledDeepLink.current === token) return;
     handledDeepLink.current = token;
-    if (playlistId && playlists.some(item => item.id === playlistId)) {
+    if (playlistId) {
       setSection("library");
       void openPlaylist(playlistId);
     } else if (trackId) {
@@ -937,7 +940,7 @@ export default function App() {
     const name = editingPlaylistName.trim();
     if (!name) return;
     try {
-      const updated = await renamePlaylist(id, name);
+      const updated = await renamePlaylist(id, name, editingPlaylistVisibility);
       setPlaylists(items => items.map(item => item.id === id ? updated : item));
       setEditingPlaylist(null);
       setStatus("Playlist actualizada.");
@@ -1231,6 +1234,7 @@ export default function App() {
             <div className="section-heading"><div><span className="eyebrow">ORGANIZA</span><h2>Playlists</h2></div></div>
             <div className="playlist-create glass">
               <input value={newPlaylist} onChange={e => setNewPlaylist(e.target.value)} onKeyDown={e => e.key === "Enter" && void makePlaylist()} placeholder="Nombre de la nueva playlist" maxLength={200} />
+              <select value={newPlaylistVisibility} onChange={e => setNewPlaylistVisibility(e.target.value as "private" | "public")} aria-label="Visibilidad de la nueva playlist"><option value="private">Privada</option><option value="public">Pública</option></select>
               <button className="primary-button" onClick={() => void makePlaylist()} disabled={libraryBusy || !newPlaylist.trim()}>Crear</button>
             </div>
             {playlists.length === 0 ? (
@@ -1240,11 +1244,11 @@ export default function App() {
                 {playlists.map(pl => <article className="glass playlist-card" key={pl.id}>
                   <button className="playlist-open" onClick={() => void openPlaylist(pl.id)} aria-label={`Abrir playlist ${pl.name}`}><span className="playlist-cover"><LogoMark /></span><span className="playlist-meta"><strong>{pl.name}</strong><small>{pl.visibility === "private" ? "Privada" : "Pública"}</small></span></button>
                   <div className="playlist-card-actions">
-                    <button className="icon-button" onClick={() => { setEditingPlaylist(pl.id); setEditingPlaylistName(pl.name); }} aria-label={`Editar ${pl.name}`}>✎</button>
+                    <button className="icon-button" onClick={() => { setEditingPlaylist(pl.id); setEditingPlaylistName(pl.name); setEditingPlaylistVisibility(pl.visibility); }} aria-label={`Editar ${pl.name}`}>✎</button>
                     <button className="icon-button" onClick={() => void shareLink(pl.name, `/#playlist=${pl.id}`)} aria-label={`Compartir ${pl.name}`}>↗</button>
                     <button className="icon-button" onClick={() => void removePlaylist(pl.id)} aria-label={`Eliminar ${pl.name}`}>×</button>
                   </div>
-                  {editingPlaylist === pl.id && <form className="playlist-edit" onSubmit={event => { event.preventDefault(); void savePlaylistName(pl.id); }}><input value={editingPlaylistName} onChange={event => setEditingPlaylistName(event.target.value)} maxLength={200} aria-label="Nombre de la playlist" /><button className="primary-button" type="submit">Guardar</button><button className="secondary-button" type="button" onClick={() => setEditingPlaylist(null)}>Cancelar</button></form>}
+                  {editingPlaylist === pl.id && <form className="playlist-edit" onSubmit={event => { event.preventDefault(); void savePlaylistName(pl.id); }}><input value={editingPlaylistName} onChange={event => setEditingPlaylistName(event.target.value)} maxLength={200} aria-label="Nombre de la playlist" /><select value={editingPlaylistVisibility} onChange={event => setEditingPlaylistVisibility(event.target.value as "private" | "public")} aria-label="Visibilidad de la playlist"><option value="private">Privada</option><option value="public">Pública · se puede compartir</option></select><button className="primary-button" type="submit">Guardar</button><button className="secondary-button" type="button" onClick={() => setEditingPlaylist(null)}>Cancelar</button></form>}
                 </article>)}
               </div>
             )}
