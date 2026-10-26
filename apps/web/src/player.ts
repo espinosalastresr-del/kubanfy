@@ -17,8 +17,60 @@ export class KbyPlayer {
   private objectUrl = "";
   private appendQueue: Uint8Array[] = [];
   onState?: (state: string) => void;
+  onProgress?: (currentTime: number, duration: number) => void;
+  onPlaybackChange?: (playing: boolean) => void;
+  onEnded?: () => void;
+  onNext?: () => void;
+  onPrevious?: () => void;
+
+  constructor() {
+    this.audio.preload = "metadata";
+    this.audio.addEventListener("timeupdate", () => {
+      this.onProgress?.(this.audio.currentTime, Number.isFinite(this.audio.duration) ? this.audio.duration : 0);
+      this.updatePositionState();
+    });
+    this.audio.addEventListener("durationchange", () => this.onProgress?.(this.audio.currentTime, Number.isFinite(this.audio.duration) ? this.audio.duration : 0));
+    this.audio.addEventListener("play", () => this.onPlaybackChange?.(true));
+    this.audio.addEventListener("pause", () => this.onPlaybackChange?.(false));
+    this.audio.addEventListener("ended", () => this.onEnded?.());
+    this.audio.addEventListener("error", () => this.onState?.("Error de reproducción"));
+  }
 
   get element() { return this.audio; }
+
+  togglePlayback() {
+    if (this.audio.paused) return this.audio.play();
+    this.audio.pause();
+  }
+
+  seek(seconds: number) {
+    if (Number.isFinite(this.audio.duration)) this.audio.currentTime = Math.max(0, Math.min(seconds, this.audio.duration));
+  }
+
+  setMetadata(track: { title: string; artist: string; album?: string; artwork?: string | null }) {
+    if (!("mediaSession" in navigator)) return;
+    navigator.mediaSession.metadata = new MediaMetadata({
+      title: track.title || "KubanFy",
+      artist: track.artist || "Artista desconocido",
+      album: track.album || "KubanFy",
+      artwork: track.artwork ? [{ src: track.artwork, sizes: "512x512", type: "image/jpeg" }] : [],
+    });
+    navigator.mediaSession.setActionHandler("play", () => { void this.audio.play().catch(() => {}); });
+    navigator.mediaSession.setActionHandler("pause", () => this.audio.pause());
+    navigator.mediaSession.setActionHandler("seekbackward", details => this.seek(this.audio.currentTime - (details.seekOffset || 10)));
+    navigator.mediaSession.setActionHandler("seekforward", details => this.seek(this.audio.currentTime + (details.seekOffset || 10)));
+    navigator.mediaSession.setActionHandler("seekto", details => { if (details.seekTime !== undefined) this.seek(details.seekTime); });
+    navigator.mediaSession.setActionHandler("nexttrack", () => this.onNext?.());
+    navigator.mediaSession.setActionHandler("previoustrack", () => this.onPrevious?.());
+  }
+
+  updatePositionState() {
+    if (!("mediaSession" in navigator) || !("setPositionState" in navigator.mediaSession)) return;
+    const duration = this.audio.duration;
+    if (Number.isFinite(duration) && duration > 0) {
+      try { navigator.mediaSession.setPositionState({ duration, playbackRate: this.audio.playbackRate, position: Math.min(this.audio.currentTime, duration) }); } catch {}
+    }
+  }
 
   async load(trackId: string, quality: "low" | "medium") {
     this.stop();
