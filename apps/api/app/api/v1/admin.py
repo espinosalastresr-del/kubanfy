@@ -2,14 +2,16 @@
 
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Annotated, Any
 from uuid import UUID
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel, Field
 
 from app.api.deps import DbSession, require_permissions
 from app.models.admin import ModerationReportType, ModerationStatus
+from app.models.entitlement import PlanCode
 from app.models.user import User
 from app.services.admin import AdminService
 from app.services.rbac import RbacService
@@ -41,6 +43,12 @@ class ReportResolve(BaseModel):
 
 class SuspendRequest(BaseModel):
     reason: str | None = None
+
+
+class UserPlanUpdate(BaseModel):
+    plan_code: PlanCode
+    expires_at: datetime | None = None
+    reason: str = Field(min_length=3, max_length=500)
 
 
 # --- Feature flags ---
@@ -158,6 +166,40 @@ async def resolve_report(
 # --- Users ---
 
 
+@router.get("/plan-access")
+async def plan_access(
+    user: Annotated[User, Depends(require_permissions("users.write"))],
+) -> dict[str, bool]:
+    return {"allowed": True}
+
+
+@router.get("/users")
+async def list_users(
+    session: DbSession,
+    user: Annotated[User, Depends(require_permissions("users.read"))],
+    q: str | None = Query(default=None, max_length=160),
+    limit: int = Query(default=50, ge=1, le=100),
+    offset: int = Query(default=0, ge=0),
+) -> list[dict[str, Any]]:
+    return await AdminService(session).list_users(search=q, limit=limit, offset=offset)
+
+
+@router.put("/users/{user_id}/plan")
+async def update_user_plan(
+    user_id: UUID,
+    body: UserPlanUpdate,
+    session: DbSession,
+    user: Annotated[User, Depends(require_permissions("users.write"))],
+) -> dict[str, Any]:
+    return await AdminService(session).set_user_plan(
+        user_id,
+        user.id,
+        plan_code=body.plan_code,
+        expires_at=body.expires_at,
+        reason=body.reason,
+    )
+
+
 @router.post("/users/{user_id}/suspend")
 async def suspend_user(
     user_id: UUID,
@@ -198,6 +240,8 @@ async def audit_logs(
             "target_id": log.target_id,
             "result": log.result,
             "reason": log.reason,
+            "before": log.before,
+            "after": log.after,
             "created_at": log.created_at.isoformat(),
         }
         for log in logs

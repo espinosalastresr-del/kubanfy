@@ -57,9 +57,15 @@ class PlaylistService:
         )
         return list(result.scalars().all())
 
-    async def rename(self, playlist_id: UUID, user_id: UUID, name: str) -> Playlist:
+    async def rename(
+        self, playlist_id: UUID, user_id: UUID, name: str,
+        *, description: str | None = None, visibility: PlaylistVisibility | None = None,
+    ) -> Playlist:
         pl = await self._owned(playlist_id, user_id)
         pl.name = name.strip()[:200]
+        pl.description = description
+        if visibility is not None:
+            pl.visibility = visibility
         await self.session.flush()
         return pl
 

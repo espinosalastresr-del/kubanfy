@@ -21,6 +21,7 @@ from app.models.music import (
     TrackArtist,
 )
 from app.models.offline import OfflineLicense
+from app.models.password_reset import PasswordResetToken
 from app.models.payment import PaymentOrder
 from app.models.playlist import Favorite, Playlist, PlaylistTrack
 from app.models.rbac import Permission, Role, RolePermission, UserRole
@@ -51,6 +52,7 @@ __all__ = [
     "LicenseRecord",
     "ModerationReport",
     "OfflineLicense",
+    "PasswordResetToken",
     "PaymentOrder",
     "Permission",
     "Plan",

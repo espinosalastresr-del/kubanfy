@@ -9,9 +9,17 @@ from uuid import UUID
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.exceptions import NotFoundError
+from app.core.exceptions import NotFoundError, ValidationError
 from app.core.logging import get_logger
 from app.models.device import Session, SessionStatus
+from app.models.entitlement import (
+    Entitlement,
+    EntitlementScope,
+    EntitlementSource,
+    EntitlementStatus,
+    Plan,
+    PlanCode,
+)
 from app.models.offline import OfflineLicense
 from app.models.admin import (
     AuditLog,
@@ -123,6 +131,7 @@ class AdminService:
         report = await self.session.get(ModerationReport, report_id)
         if report is None:
             raise NotFoundError("Report not found")
+        before_report = {"status": report.status.value}
         report.status = status
         report.resolution_notes = notes
         report.resolved_at = datetime.now(UTC)
@@ -143,8 +152,175 @@ class AdminService:
                     reason=notes,
                 )
 
+        await self.audit(
+            actor_id=admin_id,
+            action="moderation.report.resolve",
+            target_type="moderation_report",
+            target_id=str(report.id),
+            before=before_report,
+            after={"status": status.value, "takedown_track": bool(takedown_track and report.target_type == "track")},
+            reason=notes,
+        )
         await self.session.flush()
         return report
+
+    # --- User plans (manual entitlement management; no automated billing) ---
+
+    async def list_users(
+        self, *, search: str | None = None, limit: int = 50, offset: int = 0
+    ) -> list[dict[str, Any]]:
+        query = select(User).order_by(User.created_at.desc()).limit(limit).offset(offset)
+        if search and search.strip():
+            term = f"%{search.strip()}%"
+            query = query.where((User.email.ilike(term)) | (User.display_name.ilike(term)))
+        result = await self.session.execute(query)
+        users = list(result.scalars().all())
+        if not users:
+            return []
+
+        now = datetime.now(UTC)
+        ent_result = await self.session.execute(
+            select(Entitlement).where(
+                Entitlement.user_id.in_([u.id for u in users]),
+                Entitlement.scope_type == EntitlementScope.USER_PREMIUM,
+                Entitlement.status == EntitlementStatus.ACTIVE,
+                (Entitlement.expires_at.is_(None)) | (Entitlement.expires_at > now),
+            )
+        )
+        plans: dict[UUID, str] = {}
+        for entitlement in ent_result.scalars().all():
+            code = str((entitlement.metadata_json or {}).get("plan_code") or PlanCode.PREMIUM.value)
+            if entitlement.user_id not in plans or entitlement.source == EntitlementSource.MANUAL:
+                plans[entitlement.user_id] = code
+
+        return [
+            {
+                "id": str(u.id),
+                "email": u.email,
+                "display_name": u.display_name,
+                "status": u.status.value,
+                "email_verified": u.email_verified,
+                "created_at": u.created_at.isoformat(),
+                "plan_code": plans.get(u.id, PlanCode.FREE.value),
+            }
+            for u in users
+        ]
+
+    async def set_user_plan(
+        self,
+        user_id: UUID,
+        admin_id: UUID,
+        *,
+        plan_code: PlanCode,
+        expires_at: datetime | None = None,
+        reason: str,
+    ) -> dict[str, Any]:
+        user = await self.session.get(User, user_id)
+        if user is None:
+            raise NotFoundError("User not found")
+        if expires_at is not None and expires_at.tzinfo is None:
+            raise ValidationError("expires_at must include a timezone")
+
+        result = await self.session.execute(
+            select(Entitlement)
+            .where(
+                Entitlement.user_id == user_id,
+                Entitlement.scope_type == EntitlementScope.USER_PREMIUM,
+                Entitlement.source == EntitlementSource.MANUAL,
+                Entitlement.status == EntitlementStatus.ACTIVE,
+            )
+            .with_for_update()
+        )
+        existing = list(result.scalars().all())
+        before = {
+            "plan_code": (
+                (existing[0].metadata_json or {}).get("plan_code", PlanCode.PREMIUM.value)
+                if existing
+                else PlanCode.FREE.value
+            ),
+            "expires_at": (
+                existing[0].expires_at.isoformat()
+                if existing and existing[0].expires_at
+                else None
+            ),
+        }
+
+        if plan_code == PlanCode.FREE:
+            all_result = await self.session.execute(
+                select(Entitlement)
+                .where(
+                    Entitlement.user_id == user_id,
+                    Entitlement.scope_type == EntitlementScope.USER_PREMIUM,
+                    Entitlement.source == EntitlementSource.MANUAL,
+                    Entitlement.status == EntitlementStatus.ACTIVE,
+                )
+                .with_for_update()
+            )
+            for entitlement in all_result.scalars().all():
+                entitlement.status = EntitlementStatus.REVOKED
+            effective_expiry = None
+        else:
+            plan = await self.session.scalar(select(Plan).where(Plan.code == plan_code.value))
+            if plan is None:
+                plan = Plan(
+                    code=plan_code.value,
+                    name=plan_code.value.title(),
+                    is_active=True,
+                    features={
+                        "downloads": True,
+                        "quality_max": "medium",
+                        **({"seats": 6} if plan_code == PlanCode.FAMILY else {}),
+                    },
+                )
+                self.session.add(plan)
+                await self.session.flush()
+            elif not plan.is_active:
+                raise ValidationError("This plan is inactive")
+
+            entitlement = existing[0] if existing else Entitlement(
+                user_id=user_id,
+                scope_type=EntitlementScope.USER_PREMIUM,
+                source=EntitlementSource.MANUAL,
+                status=EntitlementStatus.ACTIVE,
+            )
+            entitlement.user_id = user_id
+            entitlement.scope_type = EntitlementScope.USER_PREMIUM
+            entitlement.source = EntitlementSource.MANUAL
+            entitlement.status = EntitlementStatus.ACTIVE
+            entitlement.expires_at = expires_at
+            entitlement.metadata_json = {
+                "plan_code": plan_code.value,
+                **(plan.features or {}),
+                "manual_grant": True,
+            }
+            if not existing:
+                self.session.add(entitlement)
+            for duplicate in existing[1:]:
+                duplicate.status = EntitlementStatus.REVOKED
+            effective_expiry = expires_at.isoformat() if expires_at else None
+
+        await self.audit(
+            actor_id=admin_id,
+            action="users.plan.update",
+            target_type="user",
+            target_id=str(user_id),
+            before=before,
+            after={"plan_code": plan_code.value, "expires_at": effective_expiry},
+            reason=reason.strip(),
+        )
+        await self.session.flush()
+        logger.info(
+            "user_plan_updated",
+            user_id=str(user_id),
+            plan_code=plan_code.value,
+            admin_id=str(admin_id),
+        )
+        return {
+            "id": str(user.id),
+            "email": user.email,
+            "plan_code": plan_code.value,
+            "expires_at": effective_expiry,
+        }
 
     # --- Users ---
 
@@ -154,6 +330,10 @@ class AdminService:
         user = await self.session.get(User, user_id)
         if user is None:
             raise NotFoundError("User not found")
+        if user_id == admin_id:
+            raise ValidationError("Administrators cannot suspend their own account")
+        if user.status == UserStatus.DELETED:
+            raise ValidationError("Deleted accounts cannot be suspended")
         before = {"status": user.status.value}
         user.status = UserStatus.SUSPENDED
         now = datetime.now(UTC)
@@ -189,12 +369,16 @@ class AdminService:
         user = await self.session.get(User, user_id)
         if user is None:
             raise NotFoundError("User not found")
+        if user.status != UserStatus.SUSPENDED:
+            raise ValidationError("Only suspended accounts can be reactivated")
+        before = {"status": user.status.value}
         user.status = UserStatus.ACTIVE
         await self.audit(
             actor_id=admin_id,
             action="users.unsuspend",
             target_type="user",
             target_id=str(user_id),
+            before=before,
             after={"status": UserStatus.ACTIVE.value},
         )
         await self.session.flush()

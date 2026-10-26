@@ -15,6 +15,7 @@ jobs:
   api-tests:
     name: API tests
     runs-on: ubuntu-latest
+    timeout-minutes: 25
     defaults:
       run:
         working-directory: apps/api
@@ -64,8 +65,12 @@ jobs:
 
       - name: Install system deps
         run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends ffmpeg
+          if command -v ffmpeg >/dev/null 2>&1; then
+            ffmpeg -version | head -n 1
+          else
+            timeout 180s sudo apt-get update -o Acquire::Retries=1 -o Acquire::http::Timeout=20
+            timeout 180s sudo apt-get install -y --no-install-recommends ffmpeg
+          fi
 
       - name: Install Python deps
         run: |
@@ -110,3 +115,87 @@ jobs:
         run: corepack pnpm install --no-frozen-lockfile --allow-build=esbuild --allow-build=unrs-resolver --allow-build=workerd
       - name: Build PWA
         run: pnpm build
+
+  staging-smoke:
+    name: Cloudflare staging smoke tests
+    if: github.ref == 'refs/heads/feat/cloudflare-containers-deploy'
+    needs: [deploy-cloudflare-web-staging]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    env:
+      API_URL: https://kubanfy-api-staging.globumlatinmusic.workers.dev
+      WEB_URL: https://kubanfy-web-staging.globumlatinmusic.workers.dev
+
+    steps:
+      - name: Verify deployed PWA responds
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --fail --silent --show-error --retry 5 --retry-all-errors --retry-delay 5 "$WEB_URL/" -o /tmp/kubanfy-index.html
+          grep -q 'id="root"' /tmp/kubanfy-index.html
+          curl --fail --silent --show-error --retry 5 --retry-all-errors --retry-delay 5 "$WEB_URL/manifest.webmanifest" -o /tmp/kubanfy-manifest.json
+          jq -e '.name == "KubanFy" and .display == "standalone" and .start_url == "/"' /tmp/kubanfy-manifest.json
+          curl --fail --silent --show-error --retry 5 --retry-all-errors --retry-delay 5 "$WEB_URL/sw.js" -o /tmp/kubanfy-sw.js
+          grep -q 'Never cache API traffic' /tmp/kubanfy-sw.js
+          curl --fail --silent --show-error --retry 5 --retry-all-errors --retry-delay 5 "$WEB_URL/icon.svg" -o /tmp/kubanfy-icon.svg
+          grep -q '<svg' /tmp/kubanfy-icon.svg
+
+      - name: Verify API liveness and dependency readiness
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --fail --silent --show-error --retry 5 --retry-all-errors --retry-delay 5 "$API_URL/health/live" -o /tmp/kubanfy-live.json
+          jq -e '.status == "ok"' /tmp/kubanfy-live.json
+          curl --fail --silent --show-error --retry 5 --retry-all-errors --retry-delay 5 "$API_URL/health/ready" -o /tmp/kubanfy-ready.json
+          cat /tmp/kubanfy-ready.json
+          jq -e '.status == "ok" and .checks.api == "ok" and .checks.database == "ok" and .checks.redis == "ok" and .checks.storage == "ok"' /tmp/kubanfy-ready.json
+          curl --fail --silent --show-error --retry 5 --retry-all-errors --retry-delay 5 "$API_URL/v1/offline/licenses/public-key" -o /tmp/kubanfy-offline-key.json
+          jq -e '.algorithm == "RS256" and (.public_key | type == "string" and contains("BEGIN PUBLIC KEY"))' /tmp/kubanfy-offline-key.json
+
+      - name: Verify auth CORS preflight from deployed PWA origin
+        shell: bash
+        run: |
+          set -euo pipefail
+          status="$(curl --silent --show-error --retry 5 --retry-all-errors --retry-delay 5 -X OPTIONS "$API_URL/v1/auth/login" -H "Origin: $WEB_URL" -H "Access-Control-Request-Method: POST" -H "Access-Control-Request-Headers: content-type,x-kubanfy-platform,x-device-id" -D /tmp/kubanfy-cors-headers -o /tmp/kubanfy-cors-body -w '%{http_code}')"
+          cat /tmp/kubanfy-cors-headers
+          test "$status" = "200"
+          grep -Fqi "access-control-allow-origin: $WEB_URL" /tmp/kubanfy-cors-headers
+          grep -Fqi "access-control-allow-credentials: true" /tmp/kubanfy-cors-headers
+
+  deploy-cloudflare-web-staging:
+    name: Deploy Cloudflare web staging
+    if: github.ref == 'refs/heads/feat/cloudflare-containers-deploy'
+    needs: [api-tests, docker-api, web-build]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    defaults:
+      run:
+        working-directory: apps/web
+    env:
+      CLOUDFLARE_ACCOUNT_ID: 692849a1e51eea43c2ddbf3cddc42f6f
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      VITE_API_BASE_URL: https://kubanfy-api-staging.globumlatinmusic.workers.dev
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22.23.3"
+
+      - name: Enable pnpm
+        run: |
+          corepack enable
+          corepack prepare pnpm@12.9.1 --activate
+
+      - name: Install dependencies
+        run: corepack pnpm install --no-frozen-lockfile --allow-build=esbuild --allow-build=unrs-resolver --allow-build=workerd
+
+      - name: Build PWA for Cloudflare staging API
+        run: pnpm build
+
+      - name: Deploy Cloudflare web staging
+        run: pnpm exec wrangler deploy

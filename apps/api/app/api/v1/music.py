@@ -174,7 +174,7 @@ async def music_play(
     geo = GeoService()
     ip = request.client.host if request.client else None
     real_ip = geo.resolve_client_ip(ip, forwarded_for=request.headers.get("x-forwarded-for"))
-    await AntiAbuseService().check_download(str(user.id), real_ip)
+    await AntiAbuseService().check_playback(str(user.id), real_ip)
     entitlement = EntitlementService(session)
     await entitlement.require_track_access(user.id, track_id)
     await entitlement.require_quality_access(user.id, quality)
@@ -247,6 +247,7 @@ async def music_download(
             track_id=body.track_id,
             quality=body.quality,
             user_id=user.id,
+            kby_version=body.kby_version,
         )
     elif body.provider and body.provider_track_id:
         result = await engine.download(
@@ -320,6 +321,8 @@ async def music_download(
         download_ticket=download_ticket,
         offline_license=offline_license,
         offline_license_expires_at=offline_license_expires_at,
+        kby_version=result.kby_version,
+        asset_version=result.asset_version,
     )
 
 

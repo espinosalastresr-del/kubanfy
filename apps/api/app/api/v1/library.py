@@ -6,7 +6,7 @@ from uuid import UUID
 
 from fastapi import APIRouter
 
-from app.api.deps import CurrentUser, DbSession
+from app.api.deps import CurrentUser, DbSession, OptionalUser
 from app.models.playlist import FavoriteType, PlaylistVisibility
 from app.schemas.library import (
     EntitlementResponse,
@@ -47,9 +47,9 @@ async def list_playlists(user: CurrentUser, session: DbSession) -> list[Playlist
 
 @router.get("/playlists/{playlist_id}", response_model=PlaylistResponse)
 async def get_playlist(
-    playlist_id: UUID, user: CurrentUser, session: DbSession
+    playlist_id: UUID, user: OptionalUser, session: DbSession
 ) -> PlaylistResponse:
-    pl = await PlaylistService(session).get(playlist_id, user.id)
+    pl = await PlaylistService(session).get(playlist_id, user.id if user else None)
     return PlaylistResponse.model_validate(pl)
 
 
@@ -60,7 +60,10 @@ async def rename_playlist(
     user: CurrentUser,
     session: DbSession,
 ) -> PlaylistResponse:
-    pl = await PlaylistService(session).rename(playlist_id, user.id, body.name)
+    pl = await PlaylistService(session).rename(
+        playlist_id, user.id, body.name, description=body.description,
+        visibility=PlaylistVisibility(body.visibility) if body.visibility else None,
+    )
     return PlaylistResponse.model_validate(pl)
 
 
@@ -92,9 +95,9 @@ async def remove_from_playlist(
 
 @router.get("/playlists/{playlist_id}/tracks", response_model=list[PlaylistTrackResponse])
 async def list_playlist_tracks(
-    playlist_id: UUID, user: CurrentUser, session: DbSession
+    playlist_id: UUID, user: OptionalUser, session: DbSession
 ) -> list[PlaylistTrackResponse]:
-    tracks = await PlaylistService(session).list_tracks(playlist_id, user.id)
+    tracks = await PlaylistService(session).list_tracks(playlist_id, user.id if user else None)
     return [
         PlaylistTrackResponse(track_id=t.track_id, position=t.position, added_at=t.added_at)
         for t in tracks

@@ -8,6 +8,9 @@ from fastapi import APIRouter, Request
 
 from app.api.deps import CurrentUser, DbSession
 from app.schemas.auth import (
+    PasswordResetConfirmRequest,
+    PasswordResetRequest,
+    ProfileUpdateRequest,
     AuthContextResponse,
     DeviceResponse,
     LoginRequest,
@@ -22,6 +25,7 @@ from app.services.anti_abuse import AntiAbuseService
 from app.services.auth import AuthService
 from app.services.session import SessionService
 from app.services.geo import GeoService
+from app.services.password_reset import PasswordResetService
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -57,6 +61,41 @@ async def login(
     return LoginResponse(user=AuthService.to_response(user), tokens=tokens)
 
 
+@router.post("/password-reset/request", status_code=202)
+async def request_password_reset(
+    body: PasswordResetRequest,
+    request: Request,
+    session: DbSession,
+) -> dict[str, str]:
+    # Bound automated email abuse without revealing whether an account exists.
+    ip = request.headers.get("cf-connecting-ip") or (request.client.host if request.client else None)
+    if ip:
+        await AntiAbuseService().enforce_rate_limit(
+            f"password-reset:ip:{ip}", limit=5, window_seconds=900
+        )
+    await PasswordResetService(session).request_reset(str(body.email))
+    return {"message": "Si existe una cuenta para ese correo, recibirás instrucciones para restablecer la contraseña."}
+
+
+@router.post("/password-reset/confirm")
+async def confirm_password_reset(
+    body: PasswordResetConfirmRequest,
+    request: Request,
+    session: DbSession,
+) -> dict[str, str]:
+    ip = request.headers.get("cf-connecting-ip") or (request.client.host if request.client else None)
+    if ip:
+        await AntiAbuseService().enforce_rate_limit(
+            f"password-reset-confirm:ip:{ip}", limit=10, window_seconds=900
+        )
+    changed = await PasswordResetService(session).consume(body.token, body.new_password)
+    if not changed:
+        from app.core.exceptions import AuthError
+
+        raise AuthError("Invalid or expired password reset token")
+    return {"message": "La contraseña se ha actualizado. Inicia sesión con tu nueva contraseña."}
+
+
 @router.post("/refresh", response_model=TokenResponse)
 async def refresh(
     body: RefreshRequest,
@@ -68,6 +107,17 @@ async def refresh(
 
 @router.get("/me", response_model=UserResponse)
 async def me(user: CurrentUser) -> UserResponse:
+    return AuthService.to_response(user)
+
+
+@router.patch("/me", response_model=UserResponse)
+async def update_me(body: ProfileUpdateRequest, user: CurrentUser, session: DbSession) -> UserResponse:
+    """Update only editable fields on the authenticated user's own profile."""
+    user.display_name = body.display_name
+    user.country = body.country
+    user.language = body.language
+    await session.flush()
+    await session.refresh(user)
     return AuthService.to_response(user)
 
 

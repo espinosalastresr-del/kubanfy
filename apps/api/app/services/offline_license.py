@@ -18,6 +18,11 @@ from app.models.offline import OfflineLicense
 from app.services.entitlement import EntitlementService
 
 
+def is_protected_offline_asset_key(storage_key: str | None) -> bool:
+    """Offline licenses may only authorize the protected KBY asset format."""
+    return bool(storage_key and storage_key.endswith(".kby"))
+
+
 class OfflineLicenseService:
     def __init__(self, session: AsyncSession, settings: Settings | None = None) -> None:
         self.session = session
@@ -62,12 +67,12 @@ class OfflineLicenseService:
                 AudioAsset.quality == quality,
                 AudioAsset.is_active.is_(True),
                 AudioAsset.source_type.in_([SourceType.ARTIST_UPLOAD, SourceType.DERIVATIVE]),
-                AudioAsset.storage_key.is_not(None),
+                AudioAsset.storage_key.like("%.kby"),
                 AudioAsset.content_hash.is_not(None),
             )
             .order_by(AudioAsset.version.desc())
         )
-        if asset is None or not asset.content_hash or not asset.storage_key:
+        if asset is None or not asset.content_hash or not is_protected_offline_asset_key(asset.storage_key):
             raise NotFoundError("Offline audio asset not available")
 
         now = datetime.now(UTC)
@@ -180,10 +185,10 @@ class OfflineLicenseService:
                 AudioAsset.version == row.asset_version,
                 AudioAsset.is_active.is_(True),
                 AudioAsset.content_hash == row.content_hash,
-                AudioAsset.storage_key.is_not(None),
+                AudioAsset.storage_key.like("%.kby"),
             )
         )
-        if asset is None:
+        if asset is None or not is_protected_offline_asset_key(asset.storage_key):
             raise AuthError("Offline license asset is no longer available")
 
         row.last_validated_at = datetime.now(UTC)
