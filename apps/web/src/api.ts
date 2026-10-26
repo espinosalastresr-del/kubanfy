@@ -187,8 +187,13 @@ export async function createPlaylist(name: string) {
   });
 }
 export async function getPlaylist(id: string) { return request<Playlist>(`/v1/playlists/${id}`); }
-export async function renamePlaylist(id: string, name: string) {
-  return request<Playlist>(`/v1/playlists/${id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name }) });
+export async function renamePlaylist(id: string, name: string, visibility?: "private" | "public") {
+  return request<Playlist>(`/v1/playlists/${id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name, ...(visibility ? { visibility } : {}) }) });
+}
+export async function reorderPlaylistTracks(id: string, trackIds: string[]) {
+  return request<{ track_id: string; position: number; added_at: string }[]>(`/v1/playlists/${id}/tracks/order`, {
+    method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ track_ids: trackIds }),
+  });
 }
 export async function listPlaylistTracks(id: string) {
   return request<{ track_id: string; position: number; added_at: string }[]>(`/v1/playlists/${id}/tracks`);
