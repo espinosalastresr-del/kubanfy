@@ -1,5 +1,5 @@
 import { FormEvent, useEffect, useRef, useState } from "react";
-import { ApiError, addFavorite, addTrackToPlaylist, clearTokens, createPlaylist, deletePlaylist, discoveryHome, getTrackDetail, listFavorites, listPlaylistTracks, listPlaylists, login, me, register, removeFavorite, removeTrackFromPlaylist, renamePlaylist, reorderPlaylistTracks, searchTracks } from "./api";
+import { ApiError, addFavorite, addTrackToPlaylist, clearTokens, createPlaylist, deletePlaylist, discoveryHome, getPlaylist, getTrackDetail, listFavorites, listPlaylistTracks, listPlaylists, login, me, register, removeFavorite, removeTrackFromPlaylist, renamePlaylist, reorderPlaylistTracks, searchTracks } from "./api";
 import { KbyPlayer } from "./player";
 
 function EyeIcon({ hidden }: { hidden: boolean }) {
@@ -271,6 +271,7 @@ export default function App() {
   const [duration, setDuration] = useState(0);
   const [queueIds, setQueueIds] = useState<string[]>([]);
   const [selectedPlaylistId, setSelectedPlaylistId] = useState<string | null>(null);
+  const [selectedPlaylistName, setSelectedPlaylistName] = useState<string>("");
   const [selectedPlaylistTracks, setSelectedPlaylistTracks] = useState<any[]>([]);
   const [playlistDetailBusy, setPlaylistDetailBusy] = useState(false);
   const [editingPlaylistId, setEditingPlaylistId] = useState<string | null>(null);
@@ -464,6 +465,8 @@ export default function App() {
     setSelectedPlaylistId(id);
     setPlaylistDetailBusy(true);
     try {
+      const playlist = await getPlaylist(id);
+      setSelectedPlaylistName(playlist.name);
       const entries = await listPlaylistTracks(id);
       const details = await Promise.all(entries.map(async entry => {
         try { return await getTrackDetail(entry.track_id); }
@@ -574,8 +577,9 @@ export default function App() {
     const params = new URLSearchParams(window.location.search);
     const playlistId = params.get("playlist");
     const trackId = params.get("track");
-    if (!user) return;
-    if (playlistId) {
+    if (!user || (!playlistId && !trackId)) return;
+    window.history.replaceState({}, "", window.location.pathname);
+    if (playlistId && /^[0-9a-f-]{36}$/i.test(playlistId)) {
       setSection("library");
       void openPlaylist(playlistId);
     } else if (trackId && /^[0-9a-f-]{36}$/i.test(trackId)) {
@@ -760,11 +764,11 @@ export default function App() {
 
           {selectedPlaylistId && <section className="library-section playlist-detail glass">
             <div className="playlist-detail-heading">
-              <div><span className="eyebrow">REPRODUCCIÓN EN COLA</span><h2>{playlists.find(item => item.id === selectedPlaylistId)?.name || "Playlist"}</h2><p>{selectedPlaylistTracks.length} canciones</p></div>
+              <div><span className="eyebrow">REPRODUCCIÓN EN COLA</span><h2>{selectedPlaylistName || playlists.find(item => item.id === selectedPlaylistId)?.name || "Playlist"}</h2><p>{selectedPlaylistTracks.length} canciones</p></div>
               <div className="playlist-detail-actions">
                 <button className="primary-button" disabled={playlistDetailBusy || selectedPlaylistTracks.length === 0} onClick={() => void play(selectedPlaylistTracks[0].id, selectedPlaylistTracks.map(track => track.id))}>▶ Reproducir todo</button>
                 <button className="secondary-button" onClick={() => void shareLink(playlists.find(item => item.id === selectedPlaylistId)?.name || "KubanFy", `/?playlist=${encodeURIComponent(selectedPlaylistId)}`)}>Compartir</button>
-                <button className="icon-button" onClick={() => { setSelectedPlaylistId(null); setSelectedPlaylistTracks([]); }} aria-label="Cerrar playlist">×</button>
+                <button className="icon-button" onClick={() => { setSelectedPlaylistId(null); setSelectedPlaylistName(""); setSelectedPlaylistTracks([]); }} aria-label="Cerrar playlist">×</button>
               </div>
             </div>
             {playlistDetailBusy ? <div className="empty-state">Cargando canciones…</div> : selectedPlaylistTracks.length === 0 ? <div className="empty-state"><strong>Esta playlist está vacía</strong><span>Añade canciones desde el catálogo.</span></div> : <div className="library-list">
