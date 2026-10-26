@@ -65,6 +65,8 @@ export class KbyPlayer {
   private appendQueue: Uint8Array[] = [];
   private generation = 0;
   private trackTitle = "KubanFy";
+  private trackArtist = "KubanFy";
+  private trackArtwork?: string | null;
   private activeTrackId = "";
   private activeQuality: "low" | "medium" = "low";
   onState?: (state: string) => void;
@@ -89,6 +91,8 @@ export class KbyPlayer {
     this.stop();
     const generation = this.generation;
     this.trackTitle = title;
+    this.trackArtist = artist;
+    this.trackArtwork = artwork;
     this.activeTrackId = trackId;
     this.configureMediaSession(artist, artwork);
     this.activeQuality = quality;
@@ -126,6 +130,8 @@ export class KbyPlayer {
     this.stop();
     const generation = this.generation;
     this.trackTitle = track.title;
+    this.trackArtist = "KubanFy";
+    this.trackArtwork = null;
     this.activeTrackId = track.trackId;
     this.activeQuality = track.quality;
     this.key = track.kbyKey;
@@ -228,7 +234,7 @@ export class KbyPlayer {
     return response;
   }
 
-  private configureMediaSession(artist = "KubanFy", artwork?: string | null) {
+  private configureMediaSession(artist = this.trackArtist, artwork = this.trackArtwork) {
     if (!("mediaSession" in navigator)) return;
     try {
       navigator.mediaSession.metadata = new MediaMetadata({ title: this.trackTitle, artist, ...(artwork ? { artwork: [{ src: artwork }] } : {}) });

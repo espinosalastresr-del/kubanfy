@@ -663,10 +663,10 @@ export default function App() {
     return () => { window.clearInterval(timer); player.element.removeEventListener("timeupdate", update); player.element.removeEventListener("durationchange", update); player.element.removeEventListener("play", update); player.element.removeEventListener("pause", update); player.element.removeEventListener("ended", update); };
   }, [player]);
 
+  useEffect(() => { player.onNext = () => void moveQueue(1); player.onPrevious = () => void moveQueue(-1); }, [player, queue, queueIndex]);
+
   useEffect(() => {
     player.onState = setStatus;
-    player.onNext = () => void moveQueue(1);
-    player.onPrevious = () => void moveQueue(-1);
     void me().then(setUser).catch(() => {});
     void listOfflineTracks().then(setOfflineTracks).catch(() => {});
     const markOnline = () => setIsOnline(true);
@@ -859,6 +859,10 @@ export default function App() {
 
   async function play(id: string, title = "KubanFy", artist = "KubanFy", artwork?: string | null, nextQueue?: Array<{ id: string; title: string; artist: string; artwork?: string | null; duration?: number | null }>, index = 0) {
     try {
+      if (title === "KubanFy") {
+        try { const detail = await getTrack(id); title = detail.title; artist = detail.artists.map(item => item.name).join(", ") || "Artista desconocido"; artwork = detail.artwork_url; }
+        catch { /* Playback authorization remains the source of truth if metadata lookup fails. */ }
+      }
       const current = { id, title, artist, artwork };
       if (nextQueue) { setQueue(nextQueue); setQueueIndex(index); }
       else { setQueue([current]); setQueueIndex(0); }
@@ -924,9 +928,7 @@ export default function App() {
   async function playPlaylist(index = 0) {
     const playable = playlistTracks.filter(track => track.title !== "Canción no disponible");
     if (!playable.length) { setStatus("Esta playlist no contiene canciones disponibles."); return; }
-    const selected = playlistTracks[index];
-    const actualIndex = playable.findIndex(track => track.id === selected?.id);
-    const safeIndex = actualIndex >= 0 ? actualIndex : 0;
+    const safeIndex = Math.max(0, Math.min(index, playable.length - 1));
     await play(playable[safeIndex].id, playable[safeIndex].title, playable[safeIndex].artist, playable[safeIndex].artwork, playable, safeIndex);
   }
   async function saveOffline(id: string, title: string) {
@@ -1234,7 +1236,7 @@ export default function App() {
             </div>
             {playlistTracks.length === 0 ? <div className="empty-state glass">Cargando canciones…</div> : <div className="library-list">{playlistTracks.map((track,index) => <article className="glass library-track" key={track.id}>
               <div className="track-art">{track.artwork ? <img src={track.artwork} alt="" /> : <LogoMark />}</div><div className="track-info"><strong>{track.title}</strong><span>{track.artist}{track.duration ? ` · ${formatDuration(track.duration)}` : ""}</span></div>
-              <button className="play-button" onClick={() => void play(track.id, track.title, track.artist, track.artwork, playlistTracks, index)} aria-label={`Reproducir ${track.title}`}>▶</button>
+              <button className="play-button" onClick={() => { const playable = playlistTracks.filter(item => item.title !== "Canción no disponible"); const queueIndex = playable.findIndex(item => item.id === track.id); if (queueIndex >= 0) void play(track.id, track.title, track.artist, track.artwork, playable, queueIndex); }} aria-label={`Reproducir ${track.title}`}>▶</button>
               <button className="icon-button" onClick={async () => { try { const { removeTrackFromPlaylist } = await import("./api"); await removeTrackFromPlaylist(openedPlaylist, track.id); setPlaylistTracks(items => items.filter(item => item.id !== track.id)); setStatus("Canción eliminada de la playlist."); } catch (e) { setStatus(e instanceof Error ? e.message : "No se pudo eliminar la canción."); } }} aria-label={`Quitar ${track.title} de la playlist`}>×</button>
             </article>)}</div>}
           </section>}
