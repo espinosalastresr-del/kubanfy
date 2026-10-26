@@ -106,7 +106,7 @@ export class KbyPlayer {
     const playbackSession = await startPlayback(trackId, quality);
     this.session = { session_id: playbackSession.playback_session_id, token: playbackSession.playback_token };
     this.startHeartbeat(trackId, quality);
-    void this.pump();
+    void this.pump().catch(error => this.onState?.(error instanceof Error ? error.message : "Error cargando audio"));
   }
 
   private async pump() {
