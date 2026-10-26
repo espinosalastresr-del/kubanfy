@@ -50,19 +50,24 @@ export class KbyPlayer {
 
   setMetadata(track: { title: string; artist: string; album?: string; artwork?: string | null }) {
     if (!("mediaSession" in navigator)) return;
-    navigator.mediaSession.metadata = new MediaMetadata({
-      title: track.title || "KubanFy",
-      artist: track.artist || "Artista desconocido",
-      album: track.album || "KubanFy",
-      artwork: track.artwork ? [{ src: track.artwork, sizes: "512x512", type: "image/jpeg" }] : [],
-    });
-    navigator.mediaSession.setActionHandler("play", () => { void this.audio.play().catch(() => {}); });
-    navigator.mediaSession.setActionHandler("pause", () => this.audio.pause());
-    navigator.mediaSession.setActionHandler("seekbackward", details => this.seek(this.audio.currentTime - (details.seekOffset || 10)));
-    navigator.mediaSession.setActionHandler("seekforward", details => this.seek(this.audio.currentTime + (details.seekOffset || 10)));
-    navigator.mediaSession.setActionHandler("seekto", details => { if (details.seekTime !== undefined) this.seek(details.seekTime); });
-    navigator.mediaSession.setActionHandler("nexttrack", () => this.onNext?.());
-    navigator.mediaSession.setActionHandler("previoustrack", () => this.onPrevious?.());
+    try {
+      navigator.mediaSession.metadata = new MediaMetadata({
+        title: track.title || "KubanFy",
+        artist: track.artist || "Artista desconocido",
+        album: track.album || "KubanFy",
+        artwork: track.artwork ? [{ src: track.artwork, sizes: "512x512", type: "image/jpeg" }] : [],
+      });
+    } catch { return; }
+    const safeAction = (action: MediaSessionAction, handler: MediaSessionActionHandler) => {
+      try { navigator.mediaSession.setActionHandler(action, handler); } catch {}
+    };
+    safeAction("play", () => { void this.audio.play().catch(() => {}); });
+    safeAction("pause", () => this.audio.pause());
+    safeAction("seekbackward", details => this.seek(this.audio.currentTime - (details.seekOffset || 10)));
+    safeAction("seekforward", details => this.seek(this.audio.currentTime + (details.seekOffset || 10)));
+    safeAction("seekto", details => { if (details.seekTime !== undefined) this.seek(details.seekTime); });
+    safeAction("nexttrack", () => this.onNext?.());
+    safeAction("previoustrack", () => this.onPrevious?.());
   }
 
   updatePositionState() {
