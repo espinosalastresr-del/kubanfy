@@ -612,6 +612,7 @@ export default function App() {
                   <div className="track-actions">
                     <button className={`icon-button favorite-button${favorites.has(r.track_id) ? " is-active" : ""}`} onClick={() => void toggleFavorite(r.track_id)} aria-label={favorites.has(r.track_id) ? "Quitar de favoritos" : "Añadir a favoritos"}><HeartIcon filled={favorites.has(r.track_id)} /></button>
                     <button className="icon-button" onClick={() => setPlaylistMenuTrack(playlistMenuTrack === r.track_id ? null : r.track_id)} aria-label="Añadir a playlist"><PlusIcon /></button>
+                    <button className="icon-button" onClick={() => void shareLink(r.title, `/?track=${encodeURIComponent(r.track_id)}`)} aria-label="Compartir canción"><ShareIcon /></button>
                     <button className="play-button" onClick={() => void play(r.track_id)} aria-label={`Reproducir ${r.title}`}>▶</button>
                   </div>
                   {playlistMenuTrack === r.track_id && <div className="playlist-popover glass">
@@ -639,6 +640,8 @@ export default function App() {
                   </button>
                   <div className="featured-actions">
                     <button className={`featured-action${favorites.has(track.track_id) ? " is-active" : ""}`} onClick={() => void toggleFavorite(track.track_id)} aria-label={favorites.has(track.track_id) ? "Quitar de favoritos" : "Añadir a favoritos"}><HeartIcon filled={favorites.has(track.track_id)} /></button>
+                    <button className="featured-action" onClick={() => setPlaylistMenuTrack(track.track_id)} aria-label="Añadir a playlist"><PlusIcon /></button>
+                    <button className="featured-action" onClick={() => void shareLink(track.title || "KubanFy", `/?track=${encodeURIComponent(track.track_id)}`)} aria-label="Compartir canción"><ShareIcon /></button>
                     <button className="featured-action featured-play" onClick={() => void play(track.track_id)} aria-label={`Reproducir ${track.title || "Sin título"}`}>▶</button>
                   </div>
                 </article>
@@ -660,6 +663,8 @@ export default function App() {
                   </button>
                   <div className="release-actions">
                     <button className={`release-action${favorites.has(track.id) ? " is-active" : ""}`} onClick={() => void toggleFavorite(track.id)} aria-label={favorites.has(track.id) ? "Quitar de favoritos" : "Añadir a favoritos"}><HeartIcon filled={favorites.has(track.id)} /></button>
+                    <button className="release-action" onClick={() => setPlaylistMenuTrack(track.id)} aria-label="Añadir a playlist"><PlusIcon /></button>
+                    <button className="release-action" onClick={() => void shareLink(track.title, `/?track=${encodeURIComponent(track.id)}`)} aria-label="Compartir canción"><ShareIcon /></button>
                     <button className="release-action" onClick={() => void play(track.id)} aria-label={`Reproducir ${track.title}`}>▶</button>
                   </div>
                 </article>
@@ -710,6 +715,26 @@ export default function App() {
             )}
           </section>
 
+          {selectedPlaylistId && <section className="library-section playlist-detail glass">
+            <div className="playlist-detail-heading">
+              <div><span className="eyebrow">REPRODUCCIÓN EN COLA</span><h2>{playlists.find(item => item.id === selectedPlaylistId)?.name || "Playlist"}</h2><p>{selectedPlaylistTracks.length} canciones</p></div>
+              <div className="playlist-detail-actions">
+                <button className="primary-button" disabled={playlistDetailBusy || selectedPlaylistTracks.length === 0} onClick={() => void play(selectedPlaylistTracks[0].id, selectedPlaylistTracks.map(track => track.id))}>▶ Reproducir todo</button>
+                <button className="secondary-button" onClick={() => void shareLink(playlists.find(item => item.id === selectedPlaylistId)?.name || "KubanFy", `/?playlist=${encodeURIComponent(selectedPlaylistId)}`)}>Compartir</button>
+                <button className="icon-button" onClick={() => { setSelectedPlaylistId(null); setSelectedPlaylistTracks([]); }} aria-label="Cerrar playlist">×</button>
+              </div>
+            </div>
+            {playlistDetailBusy ? <div className="empty-state">Cargando canciones…</div> : selectedPlaylistTracks.length === 0 ? <div className="empty-state"><strong>Esta playlist está vacía</strong><span>Añade canciones desde el catálogo.</span></div> : <div className="library-list">
+              {selectedPlaylistTracks.map((track, index) => <article className="glass library-track" key={track.id}>
+                <span className="featured-number">{String(index + 1).padStart(2, "0")}</span>
+                <div className="track-art">{track.artwork_url ? <img src={track.artwork_url} alt="" /> : <LogoMark />}</div>
+                <button className="track-info playlist-track-play" onClick={() => void play(track.id, selectedPlaylistTracks.map(item => item.id))}><strong>{track.title}</strong><span>{(track.artists || []).map((artist: any) => artist.name).join(", ") || "Artista desconocido"}</span></button>
+                <button className="play-button" onClick={() => void play(track.id, selectedPlaylistTracks.map(item => item.id))} aria-label={`Reproducir ${track.title}`}>▶</button>
+                <button className="icon-button" onClick={() => void removeTrackFromOpenPlaylist(track.id)} aria-label={`Quitar ${track.title} de la playlist`}>×</button>
+              </article>)}
+            </div>}
+          </section>}
+
           <section className="library-section">
             <div className="section-heading"><div><span className="eyebrow">ORGANIZA</span><h2>Playlists</h2></div></div>
             <div className="playlist-create glass">
@@ -721,9 +746,15 @@ export default function App() {
             ) : (
               <div className="playlist-grid">
                 {playlists.map(pl => <article className="glass playlist-card" key={pl.id}>
-                  <div className="playlist-cover"><LogoMark /></div>
-                  <div className="playlist-meta"><strong>{pl.name}</strong><span>{pl.visibility === "private" ? "Privada" : "Pública"}</span></div>
-                  <button className="icon-button" onClick={() => void removePlaylist(pl.id)} aria-label={`Eliminar ${pl.name}`}>×</button>
+                  <button className="playlist-open" onClick={() => void openPlaylist(pl.id)} aria-label={`Abrir playlist ${pl.name}`}><div className="playlist-cover"><LogoMark /></div></button>
+                  <div className="playlist-meta">
+                    {editingPlaylistId === pl.id ? <form onSubmit={e => { e.preventDefault(); void savePlaylistName(pl.id); }}><input aria-label="Nuevo nombre de playlist" value={playlistNameDraft} maxLength={200} onChange={e => setPlaylistNameDraft(e.target.value)} /><button className="tiny-action" type="submit" disabled={libraryBusy || !playlistNameDraft.trim()}>Guardar</button></form> : <button className="playlist-open playlist-open-meta" onClick={() => void openPlaylist(pl.id)}><strong>{pl.name}</strong><span>{pl.visibility === "private" ? "Privada" : "Pública"}</span></button>}
+                    <div className="playlist-card-actions">
+                      <button className="icon-button" onClick={() => { setEditingPlaylistId(pl.id); setPlaylistNameDraft(pl.name); }} aria-label={`Editar ${pl.name}`}>✎</button>
+                      <button className="icon-button" onClick={() => void shareLink(pl.name, `/?playlist=${encodeURIComponent(pl.id)}`)} aria-label={`Compartir ${pl.name}`}><ShareIcon /></button>
+                      <button className="icon-button" onClick={() => void removePlaylist(pl.id)} aria-label={`Eliminar ${pl.name}`}>×</button>
+                    </div>
+                  </div>
                 </article>)}
               </div>
             )}
@@ -770,9 +801,26 @@ export default function App() {
       )}
 
       {activeTrackId && (
-        <div className="player glass" aria-label="Reproductor">
-          <div className="audio-host" ref={el => { if (el && !el.contains(player.element)) el.appendChild(player.element); }} />
-          <button className="player-close" onClick={() => { player.stop(); setActiveTrackId(null); }} aria-label="Cerrar reproductor">×</button>
+        <div className={`player glass${playerExpanded ? " player-expanded" : ""}`} aria-label="Reproductor">
+          <div className="audio-host" ref={el => { if (el && !el.contains(player.element)) el.appendChild(player.element); }} aria-hidden="true" />
+          <button className="player-art" onClick={() => setPlayerExpanded(value => !value)} aria-label="Mostrar detalles de reproducción">{activeTrack?.artwork_url || activeTrack?.artwork ? <img src={activeTrack.artwork_url || activeTrack.artwork} alt="" /> : <LogoMark />}</button>
+          <button className="player-track-info" onClick={() => setPlayerExpanded(value => !value)} aria-label="Abrir detalles de la canción"><strong>{activeTrack?.title || "Cargando canción…"}</strong><span>{Array.isArray(activeTrack?.artists) ? activeTrack.artists.map((artist: any) => typeof artist === "string" ? artist : artist.name).join(", ") : "KubanFy"}</span></button>
+          <div className="player-progress">
+            <input type="range" min={0} max={duration || 1} step={1} value={Math.min(currentTime, duration || 1)} onChange={e => player.seek(Number(e.target.value))} aria-label="Posición de reproducción" />
+            <div><span>{formatDuration(currentTime)}</span><span>{formatDuration(duration || activeTrack?.duration)}</span></div>
+          </div>
+          <div className="player-controls">
+            <button className="icon-button" onClick={() => nextTrack(-1)} aria-label="Canción anterior">|◀</button>
+            <button className="play-button" onClick={() => { void player.togglePlayback()?.catch?.(() => setStatus("Pulsa reproducir para iniciar el audio.")); }} aria-label={isPlaying ? "Pausar" : "Reproducir"}>{isPlaying ? "Ⅱ" : "▶"}</button>
+            <button className="icon-button" onClick={() => nextTrack(1)} aria-label="Canción siguiente">▶|</button>
+            <button className="icon-button" onClick={() => setPlaylistMenuTrack(playlistMenuTrack === activeTrackId ? null : activeTrackId)} aria-label="Añadir canción a playlist"><PlusIcon /></button>
+            <button className="icon-button" onClick={() => void shareLink(activeTrack?.title || "KubanFy", `/?track=${encodeURIComponent(activeTrackId)}`)} aria-label="Compartir canción"><ShareIcon /></button>
+            <button className="player-close" onClick={() => { player.stop(); setActiveTrackId(null); setActiveTrack(null); }} aria-label="Cerrar reproductor">×</button>
+          </div>
+          {playlistMenuTrack === activeTrackId && <div className="playlist-popover player-playlist-popover glass">
+            {playlists.length === 0 ? <span>Crea una playlist en Biblioteca.</span> : playlists.map(pl => <button key={pl.id} onClick={() => void saveToPlaylist(pl.id, activeTrackId)}>{pl.name}</button>)}
+          </div>}
+          {playerExpanded && <div className="player-expanded-details"><span>Reproduciendo en KubanFy</span><strong>{activeTrack?.title}</strong><span>{activeTrack?.album || "Tu música, a tu manera"}</span></div>}
         </div>
       )}
     </section>
