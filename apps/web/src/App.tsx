@@ -488,6 +488,7 @@ export default function App() {
     try {
       const updated = await renamePlaylist(id, name);
       setPlaylists(prev => prev.map(item => item.id === id ? updated : item));
+      if (selectedPlaylistId === id) setSelectedPlaylistName(updated.name);
       setEditingPlaylistId(null);
       setStatus("Playlist actualizada");
     } catch (e) {
@@ -528,6 +529,7 @@ export default function App() {
     try {
       const updated = await renamePlaylist(id, name, visibility === "public" ? "private" : "public");
       setPlaylists(prev => prev.map(item => item.id === id ? updated : item));
+      if (selectedPlaylistId === id) setSelectedPlaylistVisibility(updated.visibility);
       setStatus(updated.visibility === "public" ? "Playlist pública: ya puedes compartirla" : "Playlist privada");
     } catch (e) {
       setStatus(e instanceof Error ? e.message : "No pudimos cambiar la visibilidad.");
