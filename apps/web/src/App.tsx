@@ -1,5 +1,5 @@
 import { FormEvent, useEffect, useRef, useState } from "react";
-import { ApiError, addFavorite, addTrackToPlaylist, clearTokens, createPlaylist, deletePlaylist, discoveryHome, listFavorites, listPlaylists, login, me, register, removeFavorite, searchTracks } from "./api";
+import { ApiError, addFavorite, addTrackToPlaylist, clearTokens, createPlaylist, deletePlaylist, discoveryHome, getPlaylist, getTrackDetail, listFavorites, listPlaylistTracks, listPlaylists, login, me, register, removeFavorite, removeTrackFromPlaylist, renamePlaylist, reorderPlaylistTracks, searchTracks } from "./api";
 import { KbyPlayer } from "./player";
 
 function EyeIcon({ hidden }: { hidden: boolean }) {
@@ -13,6 +13,7 @@ function EyeIcon({ hidden }: { hidden: boolean }) {
 function HeartIcon({ filled }: { filled: boolean }) {
   return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20.8 8.7c0 5.4-8.8 10.3-8.8 10.3S3.2 14.1 3.2 8.7A4.7 4.7 0 0 1 12 6.2a4.7 4.7 0 0 1 8.8 2.5Z" fill={filled ? "currentColor" : "none"} /></svg>;
 }
+function ShareIcon() { return <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="m8.7 10.6 6.6-4.2M8.7 13.4l6.6 4.2"/></svg>; }
 function LibraryIcon() {
   return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4v16M10 4v16M15 4v16M19 7v10" /><path d="M3 4h15M3 20h15" /></svg>;
 }
@@ -264,6 +265,19 @@ export default function App() {
   const [libraryBusy, setLibraryBusy] = useState(false);
   const [playlistMenuTrack, setPlaylistMenuTrack] = useState<string | null>(null);
   const [activeTrackId, setActiveTrackId] = useState<string | null>(null);
+  const [activeTrack, setActiveTrack] = useState<any>(null);
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [currentTime, setCurrentTime] = useState(0);
+  const [duration, setDuration] = useState(0);
+  const [queueIds, setQueueIds] = useState<string[]>([]);
+  const [selectedPlaylistId, setSelectedPlaylistId] = useState<string | null>(null);
+  const [selectedPlaylistName, setSelectedPlaylistName] = useState<string>("");
+  const [selectedPlaylistVisibility, setSelectedPlaylistVisibility] = useState<"private" | "public">("private");
+  const [selectedPlaylistTracks, setSelectedPlaylistTracks] = useState<any[]>([]);
+  const [playlistDetailBusy, setPlaylistDetailBusy] = useState(false);
+  const [editingPlaylistId, setEditingPlaylistId] = useState<string | null>(null);
+  const [playlistNameDraft, setPlaylistNameDraft] = useState("");
+  const [playerExpanded, setPlayerExpanded] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchBusy, setSearchBusy] = useState(false);
   const [recentSearches, setRecentSearches] = useState<string[]>(() => {
@@ -421,15 +435,161 @@ export default function App() {
     return () => window.clearTimeout(timer);
   }, [query, searchOpen]);
 
-  async function play(id: string) {
+  async function play(id: string, requestedQueue?: string[]) {
     try {
+      const known = [...results, ...(home?.trending ?? []), ...(home?.new_releases ?? []), ...selectedPlaylistTracks];
+      const queue = requestedQueue?.length ? requestedQueue : Array.from(new Set([id, ...known.map((track: any) => track.track_id ?? track.id).filter(Boolean)]));
+      setQueueIds(queue);
       setActiveTrackId(id);
+      setStatus("Preparando reproducción…");
+      let metadata: any = known.find((track: any) => (track.track_id ?? track.id) === id) ?? null;
+      try { metadata = await getTrackDetail(id); } catch {
+        if (!metadata) metadata = { id, title: "Canción", duration: null, artists: [] };
+      }
+      setActiveTrack(metadata);
       await player.load(id, "low");
+      player.setMetadata({
+        title: metadata.title || "KubanFy",
+        artist: Array.isArray(metadata.artists) ? metadata.artists.map((artist: any) => typeof artist === "string" ? artist : artist.name).join(", ") : (metadata.artist || "Artista desconocido"),
+        album: metadata.album || "KubanFy",
+        artwork: metadata.artwork_url || metadata.artwork || null,
+      });
+      setStatus("Reproduciendo");
     } catch (e) {
       setActiveTrackId(null);
+      setActiveTrack(null);
       setStatus(e instanceof Error ? e.message : "Error de reproducción");
     }
   }
+
+  async function openPlaylist(id: string) {
+    setSelectedPlaylistId(id);
+    setPlaylistDetailBusy(true);
+    try {
+      const playlist = await getPlaylist(id);
+      setSelectedPlaylistName(playlist.name);
+      setSelectedPlaylistVisibility(playlist.visibility);
+      const entries = await listPlaylistTracks(id);
+      const details = await Promise.all(entries.map(async entry => {
+        try { return await getTrackDetail(entry.track_id); }
+        catch { return { id: entry.track_id, title: "Canción no disponible", duration: null, artists: [] }; }
+      }));
+      setSelectedPlaylistTracks(details);
+    } catch (e) {
+      setStatus(e instanceof Error ? e.message : "No pudimos abrir la playlist.");
+      setSelectedPlaylistId(null);
+    } finally { setPlaylistDetailBusy(false); }
+  }
+
+  async function savePlaylistName(id: string) {
+    const name = playlistNameDraft.trim();
+    if (!name || libraryBusy) return;
+    setLibraryBusy(true);
+    try {
+      const updated = await renamePlaylist(id, name);
+      setPlaylists(prev => prev.map(item => item.id === id ? updated : item));
+      if (selectedPlaylistId === id) setSelectedPlaylistName(updated.name);
+      setEditingPlaylistId(null);
+      setStatus("Playlist actualizada");
+    } catch (e) {
+      setStatus(e instanceof Error ? e.message : "No pudimos editar la playlist.");
+    } finally { setLibraryBusy(false); }
+  }
+
+  async function removeTrackFromOpenPlaylist(trackId: string) {
+    if (!selectedPlaylistId) return;
+    try {
+      await removeTrackFromPlaylist(selectedPlaylistId, trackId);
+      setSelectedPlaylistTracks(prev => prev.filter(track => track.id !== trackId));
+      setStatus("Canción retirada de la playlist");
+    } catch (e) {
+      setStatus(e instanceof Error ? e.message : "No pudimos retirar la canción.");
+    }
+  }
+
+  async function movePlaylistTrack(trackId: string, offset: -1 | 1) {
+    if (!selectedPlaylistId) return;
+    const next = [...selectedPlaylistTracks];
+    const index = next.findIndex(track => track.id === trackId);
+    const target = index + offset;
+    if (index < 0 || target < 0 || target >= next.length) return;
+    [next[index], next[target]] = [next[target], next[index]];
+    setSelectedPlaylistTracks(next);
+    try {
+      await reorderPlaylistTracks(selectedPlaylistId, next.map(track => track.id));
+      setStatus("Orden de la playlist actualizado");
+    } catch (e) {
+      setSelectedPlaylistTracks(prev => [...prev].sort((a, b) => selectedPlaylistTracks.findIndex(t => t.id === a.id) - selectedPlaylistTracks.findIndex(t => t.id === b.id)));
+      setStatus(e instanceof Error ? e.message : "No pudimos cambiar el orden.");
+      void openPlaylist(selectedPlaylistId);
+    }
+  }
+
+  async function togglePlaylistVisibility(id: string, name: string, visibility: "private" | "public") {
+    try {
+      const updated = await renamePlaylist(id, name, visibility === "public" ? "private" : "public");
+      setPlaylists(prev => prev.map(item => item.id === id ? updated : item));
+      if (selectedPlaylistId === id) setSelectedPlaylistVisibility(updated.visibility);
+      setStatus(updated.visibility === "public" ? "Playlist pública: ya puedes compartirla" : "Playlist privada");
+    } catch (e) {
+      setStatus(e instanceof Error ? e.message : "No pudimos cambiar la visibilidad.");
+    }
+  }
+
+  async function sharePlaylist(pl: { id: string; name: string; visibility: "private" | "public" }) {
+    if (pl.visibility !== "public") {
+      setStatus("Haz pública la playlist antes de compartirla.");
+      return;
+    }
+    await shareLink(pl.name, `/?playlist=${encodeURIComponent(pl.id)}`);
+  }
+
+  async function shareLink(title: string, url: string) {
+    try {
+      const absolute = new URL(url, window.location.origin).toString();
+      if (navigator.share) await navigator.share({ title, url: absolute });
+      else if (navigator.clipboard?.writeText) { await navigator.clipboard.writeText(absolute); setStatus("Enlace copiado"); }
+      else { window.prompt("Copia este enlace", absolute); }
+    } catch (e) {
+      if (e instanceof Error && e.name !== "AbortError") setStatus("No pudimos compartir el enlace.");
+    }
+  }
+
+  function nextTrack(direction: 1 | -1) {
+    if (!activeTrackId || queueIds.length < 2) return;
+    const index = queueIds.indexOf(activeTrackId);
+    const nextIndex = index < 0 ? 0 : (index + direction + queueIds.length) % queueIds.length;
+    void play(queueIds[nextIndex], queueIds);
+  }
+
+  useEffect(() => {
+    player.onProgress = (time, total) => { setCurrentTime(time); setDuration(total); };
+    player.onPlaybackChange = setIsPlaying;
+    player.onEnded = () => nextTrack(1);
+    player.onNext = () => nextTrack(1);
+    player.onPrevious = () => nextTrack(-1);
+    return () => {
+      player.onProgress = undefined;
+      player.onPlaybackChange = undefined;
+      player.onEnded = undefined;
+      player.onNext = undefined;
+      player.onPrevious = undefined;
+    };
+  });
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const playlistId = params.get("playlist");
+    const trackId = params.get("track");
+    if (!user || (!playlistId && !trackId)) return;
+    window.history.replaceState({}, "", window.location.pathname);
+    if (playlistId && /^[0-9a-f-]{36}$/i.test(playlistId)) {
+      setSection("library");
+      void openPlaylist(playlistId);
+    } else if (trackId && /^[0-9a-f-]{36}$/i.test(trackId)) {
+      void play(trackId);
+    }
+  }, [user, playlists]);
 
   function logout() {
     player.stop();
@@ -501,6 +661,7 @@ export default function App() {
                   <div className="track-actions">
                     <button className={`icon-button favorite-button${favorites.has(r.track_id) ? " is-active" : ""}`} onClick={() => void toggleFavorite(r.track_id)} aria-label={favorites.has(r.track_id) ? "Quitar de favoritos" : "Añadir a favoritos"}><HeartIcon filled={favorites.has(r.track_id)} /></button>
                     <button className="icon-button" onClick={() => setPlaylistMenuTrack(playlistMenuTrack === r.track_id ? null : r.track_id)} aria-label="Añadir a playlist"><PlusIcon /></button>
+                    <button className="icon-button" onClick={() => void shareLink(r.title, `/?track=${encodeURIComponent(r.track_id)}`)} aria-label="Compartir canción"><ShareIcon /></button>
                     <button className="play-button" onClick={() => void play(r.track_id)} aria-label={`Reproducir ${r.title}`}>▶</button>
                   </div>
                   {playlistMenuTrack === r.track_id && <div className="playlist-popover glass">
@@ -528,8 +689,11 @@ export default function App() {
                   </button>
                   <div className="featured-actions">
                     <button className={`featured-action${favorites.has(track.track_id) ? " is-active" : ""}`} onClick={() => void toggleFavorite(track.track_id)} aria-label={favorites.has(track.track_id) ? "Quitar de favoritos" : "Añadir a favoritos"}><HeartIcon filled={favorites.has(track.track_id)} /></button>
+                    <button className="featured-action" onClick={() => setPlaylistMenuTrack(track.track_id)} aria-label="Añadir a playlist"><PlusIcon /></button>
+                    <button className="featured-action" onClick={() => void shareLink(track.title || "KubanFy", `/?track=${encodeURIComponent(track.track_id)}`)} aria-label="Compartir canción"><ShareIcon /></button>
                     <button className="featured-action featured-play" onClick={() => void play(track.track_id)} aria-label={`Reproducir ${track.title || "Sin título"}`}>▶</button>
                   </div>
+                  {playlistMenuTrack === track.track_id && <div className="playlist-popover glass">{playlists.length === 0 ? <span>Crea una playlist en Biblioteca.</span> : playlists.map(pl => <button key={pl.id} onClick={() => void saveToPlaylist(pl.id, track.track_id)}>{pl.name}</button>)}</div>}
                 </article>
               ))}
             </div>
@@ -549,8 +713,11 @@ export default function App() {
                   </button>
                   <div className="release-actions">
                     <button className={`release-action${favorites.has(track.id) ? " is-active" : ""}`} onClick={() => void toggleFavorite(track.id)} aria-label={favorites.has(track.id) ? "Quitar de favoritos" : "Añadir a favoritos"}><HeartIcon filled={favorites.has(track.id)} /></button>
+                    <button className="release-action" onClick={() => setPlaylistMenuTrack(track.id)} aria-label="Añadir a playlist"><PlusIcon /></button>
+                    <button className="release-action" onClick={() => void shareLink(track.title, `/?track=${encodeURIComponent(track.id)}`)} aria-label="Compartir canción"><ShareIcon /></button>
                     <button className="release-action" onClick={() => void play(track.id)} aria-label={`Reproducir ${track.title}`}>▶</button>
                   </div>
+                  {playlistMenuTrack === track.id && <div className="playlist-popover glass">{playlists.length === 0 ? <span>Crea una playlist en Biblioteca.</span> : playlists.map(pl => <button key={pl.id} onClick={() => void saveToPlaylist(pl.id, track.id)}>{pl.name}</button>)}</div>}
                 </article>
               ))}
             </div>
@@ -599,6 +766,28 @@ export default function App() {
             )}
           </section>
 
+          {selectedPlaylistId && <section className="library-section playlist-detail glass">
+            <div className="playlist-detail-heading">
+              <div><span className="eyebrow">REPRODUCCIÓN EN COLA</span><h2>{selectedPlaylistName || playlists.find(item => item.id === selectedPlaylistId)?.name || "Playlist"}</h2><p>{selectedPlaylistTracks.length} canciones</p></div>
+              <div className="playlist-detail-actions">
+                <button className="primary-button" disabled={playlistDetailBusy || selectedPlaylistTracks.length === 0} onClick={() => void play(selectedPlaylistTracks[0].id, selectedPlaylistTracks.map(track => track.id))}>▶ Reproducir todo</button>
+                <button className="secondary-button" onClick={() => selectedPlaylistVisibility === "public" ? void shareLink(selectedPlaylistName || "KubanFy", `/?playlist=${encodeURIComponent(selectedPlaylistId)}`) : setStatus("Haz pública la playlist antes de compartirla.")}>Compartir</button>
+                <button className="icon-button" onClick={() => { setSelectedPlaylistId(null); setSelectedPlaylistName(""); setSelectedPlaylistVisibility("private"); setSelectedPlaylistTracks([]); }} aria-label="Cerrar playlist">×</button>
+              </div>
+            </div>
+            {playlistDetailBusy ? <div className="empty-state">Cargando canciones…</div> : selectedPlaylistTracks.length === 0 ? <div className="empty-state"><strong>Esta playlist está vacía</strong><span>Añade canciones desde el catálogo.</span></div> : <div className="library-list">
+              {selectedPlaylistTracks.map((track, index) => <article className="glass library-track" key={track.id}>
+                <span className="featured-number">{String(index + 1).padStart(2, "0")}</span>
+                <div className="track-art">{track.artwork_url ? <img src={track.artwork_url} alt="" /> : <LogoMark />}</div>
+                <button className="track-info playlist-track-play" onClick={() => void play(track.id, selectedPlaylistTracks.map(item => item.id))}><strong>{track.title}</strong><span>{(track.artists || []).map((artist: any) => artist.name).join(", ") || "Artista desconocido"}</span></button>
+                <button className="icon-button" onClick={() => void movePlaylistTrack(track.id, -1)} disabled={index === 0} aria-label={`Mover ${track.title} arriba`}>↑</button>
+                <button className="icon-button" onClick={() => void movePlaylistTrack(track.id, 1)} disabled={index === selectedPlaylistTracks.length - 1} aria-label={`Mover ${track.title} abajo`}>↓</button>
+                <button className="play-button" onClick={() => void play(track.id, selectedPlaylistTracks.map(item => item.id))} aria-label={`Reproducir ${track.title}`}>▶</button>
+                <button className="icon-button" onClick={() => void removeTrackFromOpenPlaylist(track.id)} aria-label={`Quitar ${track.title} de la playlist`}>×</button>
+              </article>)}
+            </div>}
+          </section>}
+
           <section className="library-section">
             <div className="section-heading"><div><span className="eyebrow">ORGANIZA</span><h2>Playlists</h2></div></div>
             <div className="playlist-create glass">
@@ -610,9 +799,16 @@ export default function App() {
             ) : (
               <div className="playlist-grid">
                 {playlists.map(pl => <article className="glass playlist-card" key={pl.id}>
-                  <div className="playlist-cover"><LogoMark /></div>
-                  <div className="playlist-meta"><strong>{pl.name}</strong><span>{pl.visibility === "private" ? "Privada" : "Pública"}</span></div>
-                  <button className="icon-button" onClick={() => void removePlaylist(pl.id)} aria-label={`Eliminar ${pl.name}`}>×</button>
+                  <button className="playlist-open" onClick={() => void openPlaylist(pl.id)} aria-label={`Abrir playlist ${pl.name}`}><div className="playlist-cover"><LogoMark /></div></button>
+                  <div className="playlist-meta">
+                    {editingPlaylistId === pl.id ? <form onSubmit={e => { e.preventDefault(); void savePlaylistName(pl.id); }}><input aria-label="Nuevo nombre de playlist" value={playlistNameDraft} maxLength={200} onChange={e => setPlaylistNameDraft(e.target.value)} /><button className="tiny-action" type="submit" disabled={libraryBusy || !playlistNameDraft.trim()}>Guardar</button></form> : <button className="playlist-open playlist-open-meta" onClick={() => void openPlaylist(pl.id)}><strong>{pl.name}</strong><span>{pl.visibility === "private" ? "Privada" : "Pública"}</span></button>}
+                    <div className="playlist-card-actions">
+                      <button className="icon-button" onClick={() => { setEditingPlaylistId(pl.id); setPlaylistNameDraft(pl.name); }} aria-label={`Editar ${pl.name}`}>✎</button>
+                      <button className="icon-button" onClick={() => void togglePlaylistVisibility(pl.id, pl.name, pl.visibility)} aria-label={pl.visibility === "public" ? "Hacer playlist privada" : "Hacer playlist pública"} title={pl.visibility === "public" ? "Hacer privada" : "Hacer pública"}>{pl.visibility === "public" ? "◎" : "◉"}</button>
+                      <button className="icon-button" onClick={() => void sharePlaylist(pl)} aria-label={`Compartir ${pl.name}`}><ShareIcon /></button>
+                      <button className="icon-button" onClick={() => void removePlaylist(pl.id)} aria-label={`Eliminar ${pl.name}`}>×</button>
+                    </div>
+                  </div>
                 </article>)}
               </div>
             )}
@@ -659,9 +855,26 @@ export default function App() {
       )}
 
       {activeTrackId && (
-        <div className="player glass" aria-label="Reproductor">
-          <div className="audio-host" ref={el => { if (el && !el.contains(player.element)) el.appendChild(player.element); }} />
-          <button className="player-close" onClick={() => { player.stop(); setActiveTrackId(null); }} aria-label="Cerrar reproductor">×</button>
+        <div className={`player glass${playerExpanded ? " player-expanded" : ""}`} aria-label="Reproductor">
+          <div className="audio-host" ref={el => { if (el && !el.contains(player.element)) el.appendChild(player.element); }} aria-hidden="true" />
+          <button className="player-art" onClick={() => setPlayerExpanded(value => !value)} aria-label="Mostrar detalles de reproducción">{activeTrack?.artwork_url || activeTrack?.artwork ? <img src={activeTrack.artwork_url || activeTrack.artwork} alt="" /> : <LogoMark />}</button>
+          <button className="player-track-info" onClick={() => setPlayerExpanded(value => !value)} aria-label="Abrir detalles de la canción"><strong>{activeTrack?.title || "Cargando canción…"}</strong><span>{Array.isArray(activeTrack?.artists) ? activeTrack.artists.map((artist: any) => typeof artist === "string" ? artist : artist.name).join(", ") : "KubanFy"}</span></button>
+          <div className="player-progress">
+            <input type="range" min={0} max={duration || 1} step={1} value={Math.min(currentTime, duration || 1)} onChange={e => player.seek(Number(e.target.value))} aria-label="Posición de reproducción" />
+            <div><span>{formatDuration(currentTime)}</span><span>{formatDuration(duration || activeTrack?.duration)}</span></div>
+          </div>
+          <div className="player-controls">
+            <button className="icon-button" onClick={() => nextTrack(-1)} aria-label="Canción anterior">|◀</button>
+            <button className="play-button" onClick={() => { const result = player.togglePlayback(); if (result instanceof Promise) void result.catch(() => setStatus("Pulsa reproducir para iniciar el audio.")); }} aria-label={isPlaying ? "Pausar" : "Reproducir"}>{isPlaying ? "Ⅱ" : "▶"}</button>
+            <button className="icon-button" onClick={() => nextTrack(1)} aria-label="Canción siguiente">▶|</button>
+            <button className="icon-button" onClick={() => setPlaylistMenuTrack(playlistMenuTrack === activeTrackId ? null : activeTrackId)} aria-label="Añadir canción a playlist"><PlusIcon /></button>
+            <button className="icon-button" onClick={() => void shareLink(activeTrack?.title || "KubanFy", `/?track=${encodeURIComponent(activeTrackId)}`)} aria-label="Compartir canción"><ShareIcon /></button>
+            <button className="player-close" onClick={() => { player.stop(); setActiveTrackId(null); setActiveTrack(null); }} aria-label="Cerrar reproductor">×</button>
+          </div>
+          {playlistMenuTrack === activeTrackId && <div className="playlist-popover player-playlist-popover glass">
+            {playlists.length === 0 ? <span>Crea una playlist en Biblioteca.</span> : playlists.map(pl => <button key={pl.id} onClick={() => void saveToPlaylist(pl.id, activeTrackId)}>{pl.name}</button>)}
+          </div>}
+          {playerExpanded && <div className="player-expanded-details"><span>Reproduciendo en KubanFy</span><strong>{activeTrack?.title}</strong><span>{activeTrack?.album || "Tu música, a tu manera"}</span></div>}
         </div>
       )}
     </section>

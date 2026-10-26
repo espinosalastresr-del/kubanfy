@@ -16,6 +16,7 @@ from app.schemas.library import (
     PlaylistRenameRequest,
     PlaylistResponse,
     PlaylistTrackResponse,
+    PlaylistTrackOrderRequest,
 )
 from app.services.entitlement import EntitlementService
 from app.services.playlist import FavoriteService, PlaylistService
@@ -60,13 +61,27 @@ async def rename_playlist(
     user: CurrentUser,
     session: DbSession,
 ) -> PlaylistResponse:
-    pl = await PlaylistService(session).rename(playlist_id, user.id, body.name)
+    service = PlaylistService(session)
+    pl = await service.rename(playlist_id, user.id, body.name)
+    if body.visibility is not None:
+        pl = await service.set_visibility(playlist_id, user.id, PlaylistVisibility(body.visibility))
     return PlaylistResponse.model_validate(pl)
 
 
 @router.delete("/playlists/{playlist_id}", status_code=204)
 async def delete_playlist(playlist_id: UUID, user: CurrentUser, session: DbSession) -> None:
     await PlaylistService(session).delete(playlist_id, user.id)
+
+
+@router.patch("/playlists/{playlist_id}/tracks/order", response_model=list[PlaylistTrackResponse])
+async def reorder_playlist_tracks(
+    playlist_id: UUID,
+    body: PlaylistTrackOrderRequest,
+    user: CurrentUser,
+    session: DbSession,
+) -> list[PlaylistTrackResponse]:
+    tracks = await PlaylistService(session).reorder_tracks(playlist_id, user.id, body.track_ids)
+    return [PlaylistTrackResponse(track_id=t.track_id, position=t.position, added_at=t.added_at) for t in tracks]
 
 
 @router.post("/playlists/{playlist_id}/tracks/{track_id}", status_code=201)

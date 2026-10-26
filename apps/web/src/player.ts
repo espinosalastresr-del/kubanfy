@@ -16,9 +16,67 @@ export class KbyPlayer {
   private url = "";
   private objectUrl = "";
   private appendQueue: Uint8Array[] = [];
+  private attemptedAutoplay = false;
   onState?: (state: string) => void;
+  onProgress?: (currentTime: number, duration: number) => void;
+  onPlaybackChange?: (playing: boolean) => void;
+  onEnded?: () => void;
+  onNext?: () => void;
+  onPrevious?: () => void;
+
+  constructor() {
+    this.audio.preload = "metadata";
+    this.audio.addEventListener("timeupdate", () => {
+      this.onProgress?.(this.audio.currentTime, Number.isFinite(this.audio.duration) ? this.audio.duration : 0);
+      this.updatePositionState();
+    });
+    this.audio.addEventListener("durationchange", () => this.onProgress?.(this.audio.currentTime, Number.isFinite(this.audio.duration) ? this.audio.duration : 0));
+    this.audio.addEventListener("play", () => this.onPlaybackChange?.(true));
+    this.audio.addEventListener("pause", () => this.onPlaybackChange?.(false));
+    this.audio.addEventListener("ended", () => this.onEnded?.());
+    this.audio.addEventListener("error", () => this.onState?.("Error de reproducción"));
+  }
 
   get element() { return this.audio; }
+
+  togglePlayback() {
+    if (this.audio.paused) return this.audio.play();
+    this.audio.pause();
+  }
+
+  seek(seconds: number) {
+    if (Number.isFinite(this.audio.duration)) this.audio.currentTime = Math.max(0, Math.min(seconds, this.audio.duration));
+  }
+
+  setMetadata(track: { title: string; artist: string; album?: string; artwork?: string | null }) {
+    if (!("mediaSession" in navigator)) return;
+    try {
+      navigator.mediaSession.metadata = new MediaMetadata({
+        title: track.title || "KubanFy",
+        artist: track.artist || "Artista desconocido",
+        album: track.album || "KubanFy",
+        artwork: track.artwork ? [{ src: track.artwork, sizes: "512x512", type: "image/jpeg" }] : [],
+      });
+    } catch { return; }
+    const safeAction = (action: MediaSessionAction, handler: MediaSessionActionHandler) => {
+      try { navigator.mediaSession.setActionHandler(action, handler); } catch {}
+    };
+    safeAction("play", () => { void this.audio.play().catch(() => {}); });
+    safeAction("pause", () => this.audio.pause());
+    safeAction("seekbackward", details => this.seek(this.audio.currentTime - (details.seekOffset || 10)));
+    safeAction("seekforward", details => this.seek(this.audio.currentTime + (details.seekOffset || 10)));
+    safeAction("seekto", details => { if (details.seekTime !== undefined) this.seek(details.seekTime); });
+    safeAction("nexttrack", () => this.onNext?.());
+    safeAction("previoustrack", () => this.onPrevious?.());
+  }
+
+  updatePositionState() {
+    if (!("mediaSession" in navigator) || !("setPositionState" in navigator.mediaSession)) return;
+    const duration = this.audio.duration;
+    if (Number.isFinite(duration) && duration > 0) {
+      try { navigator.mediaSession.setPositionState({ duration, playbackRate: this.audio.playbackRate, position: Math.min(this.audio.currentTime, duration) }); } catch {}
+    }
+  }
 
   async load(trackId: string, quality: "low" | "medium") {
     this.stop();
@@ -28,6 +86,7 @@ export class KbyPlayer {
     this.url = meta.url;
     this.key = meta.kby_key;
     this.nextChunk = 0;
+    this.attemptedAutoplay = false;
     const headResponse = await fetch(this.url, { headers: { Range: "bytes=0-4095" } });
     if (!headResponse.ok) throw new Error(`KBY2 header HTTP ${headResponse.status}`);
     const head = new Uint8Array(await headResponse.arrayBuffer());
@@ -54,7 +113,7 @@ export class KbyPlayer {
     const playbackSession = await startPlayback(trackId, quality);
     this.session = { session_id: playbackSession.playback_session_id, token: playbackSession.playback_token };
     this.startHeartbeat(trackId, quality);
-    void this.pump();
+    void this.pump().catch(error => this.onState?.(error instanceof Error ? error.message : "Error cargando audio"));
   }
 
   private async pump() {
@@ -78,7 +137,13 @@ export class KbyPlayer {
       await this.flushQueue();
       this.nextChunk += 1;
       this.onState?.(`cargando ${Math.round(this.nextChunk / this.header.chunk_count * 100)}%`);
-      if (this.audio.paused && this.nextChunk >= 1) void this.audio.play().catch(() => {});
+      if (!this.attemptedAutoplay && this.nextChunk >= 1) {
+        this.attemptedAutoplay = true;
+        void this.audio.play().catch(() => {});
+      }
+    }
+    if (this.media?.readyState === "open" && !this.source?.updating) {
+      try { this.media.endOfStream(); } catch {}
     }
     this.onState?.("listo");
   }
@@ -123,6 +188,7 @@ export class KbyPlayer {
     this.appendQueue = [];
     this.buffer = new Uint8Array();
     this.nextChunk = 0;
+    this.attemptedAutoplay = false;
     this.header = null;
     if (this.objectUrl) URL.revokeObjectURL(this.objectUrl);
     this.objectUrl = "";
