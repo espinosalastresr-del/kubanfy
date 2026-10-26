@@ -889,7 +889,7 @@ export default function App() {
   }
 
   useEffect(() => {
-    if (!user || !playlists.length) return;
+    if (!user) return;
     const params = new URLSearchParams(window.location.hash.replace(/^#/, ""));
     const playlistId = params.get("playlist");
     const trackId = params.get("track");
