@@ -16,6 +16,7 @@ export class KbyPlayer {
   private url = "";
   private objectUrl = "";
   private appendQueue: Uint8Array[] = [];
+  private attemptedAutoplay = false;
   onState?: (state: string) => void;
   onProgress?: (currentTime: number, duration: number) => void;
   onPlaybackChange?: (playing: boolean) => void;
@@ -80,6 +81,7 @@ export class KbyPlayer {
     this.url = meta.url;
     this.key = meta.kby_key;
     this.nextChunk = 0;
+    this.attemptedAutoplay = false;
     const headResponse = await fetch(this.url, { headers: { Range: "bytes=0-4095" } });
     if (!headResponse.ok) throw new Error(`KBY2 header HTTP ${headResponse.status}`);
     const head = new Uint8Array(await headResponse.arrayBuffer());
@@ -130,7 +132,10 @@ export class KbyPlayer {
       await this.flushQueue();
       this.nextChunk += 1;
       this.onState?.(`cargando ${Math.round(this.nextChunk / this.header.chunk_count * 100)}%`);
-      if (this.audio.paused && this.nextChunk >= 1) void this.audio.play().catch(() => {});
+      if (!this.attemptedAutoplay && this.nextChunk >= 1) {
+        this.attemptedAutoplay = true;
+        void this.audio.play().catch(() => {});
+      }
     }
     if (this.media?.readyState === "open" && !this.source?.updating) {
       try { this.media.endOfStream(); } catch {}
@@ -178,6 +183,7 @@ export class KbyPlayer {
     this.appendQueue = [];
     this.buffer = new Uint8Array();
     this.nextChunk = 0;
+    this.attemptedAutoplay = false;
     this.header = null;
     if (this.objectUrl) URL.revokeObjectURL(this.objectUrl);
     this.objectUrl = "";
