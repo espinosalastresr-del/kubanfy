@@ -186,6 +186,17 @@ export async function createPlaylist(name: string) {
     body: JSON.stringify({ name, visibility: "private" }),
   });
 }
+export async function getPlaylist(id: string) { return request<Playlist>(`/v1/playlists/${id}`); }
+export async function renamePlaylist(id: string, name: string) {
+  return request<Playlist>(`/v1/playlists/${id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name }) });
+}
+export async function listPlaylistTracks(id: string) {
+  return request<{ track_id: string; position: number; added_at: string }[]>(`/v1/playlists/${id}/tracks`);
+}
+export async function getTrackDetail(id: string) { return request<Track>(`/v1/music/tracks/${id}`); }
+export async function removeTrackFromPlaylist(playlistId: string, trackId: string) {
+  return request<void>(`/v1/playlists/${playlistId}/tracks/${trackId}`, { method: "DELETE" });
+}
 export async function deletePlaylist(id: string) {
   return request<void>(`/v1/playlists/${id}`, { method: "DELETE" });
 }
