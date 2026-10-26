@@ -336,3 +336,5 @@ a{color:inherit}
   .playlist-card-actions{grid-column:1/-1;justify-content:flex-end}
 }
 @media(prefers-reduced-motion:reduce){.player,.playlist-detail{scroll-behavior:auto}}
+
+.featured-track{overflow:visible}
