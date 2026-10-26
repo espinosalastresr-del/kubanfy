@@ -656,15 +656,22 @@ export default function App() {
   const [canDownload, setCanDownload] = useState(false);
 
   useEffect(() => {
-    const update = () => { setPlayerTime(player.currentTime); setPlayerDuration(player.duration); setPlayerPaused(player.paused); };
+    const update = () => {
+      setPlayerTime(player.currentTime); setPlayerDuration(player.duration); setPlayerPaused(player.paused);
+      if ("mediaSession" in navigator && player.duration > 0 && Number.isFinite(player.duration)) {
+        try { navigator.mediaSession.setPositionState({ duration: player.duration, playbackRate: 1, position: Math.min(player.currentTime, player.duration) }); } catch { /* Optional browser capability. */ }
+      }
+    };
+    const advanceOnEnd = () => { if (queue.length > 1 && queueIndex < queue.length - 1) void moveQueue(1); };
     player.element.addEventListener("timeupdate", update);
     player.element.addEventListener("durationchange", update);
     player.element.addEventListener("play", update);
     player.element.addEventListener("pause", update);
     player.element.addEventListener("ended", update);
+    player.element.addEventListener("ended", advanceOnEnd);
     const timer = window.setInterval(update, 1000);
-    return () => { window.clearInterval(timer); player.element.removeEventListener("timeupdate", update); player.element.removeEventListener("durationchange", update); player.element.removeEventListener("play", update); player.element.removeEventListener("pause", update); player.element.removeEventListener("ended", update); };
-  }, [player]);
+    return () => { window.clearInterval(timer); player.element.removeEventListener("timeupdate", update); player.element.removeEventListener("durationchange", update); player.element.removeEventListener("play", update); player.element.removeEventListener("pause", update); player.element.removeEventListener("ended", update); player.element.removeEventListener("ended", advanceOnEnd); };
+  }, [player, queue, queueIndex]);
 
   useEffect(() => { player.onNext = () => void moveQueue(1); player.onPrevious = () => void moveQueue(-1); }, [player, queue, queueIndex]);
 

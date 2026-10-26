@@ -78,6 +78,8 @@ export class KbyPlayer {
     // mobile users could not pause, seek, or resume after an interruption.
     this.audio.controls = false;
     this.audio.preload = "metadata";
+    this.audio.setAttribute("playsinline", "");
+    this.audio.setAttribute("webkit-playsinline", "");
   }
 
   get element() { return this.audio; }
