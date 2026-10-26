@@ -535,10 +535,15 @@ export default function App() {
   });
 
   useEffect(() => {
-    const id = new URLSearchParams(window.location.search).get("playlist");
-    if (user && id && playlists.some(item => item.id === id)) {
+    const params = new URLSearchParams(window.location.search);
+    const playlistId = params.get("playlist");
+    const trackId = params.get("track");
+    if (!user) return;
+    if (playlistId) {
       setSection("library");
-      void openPlaylist(id);
+      void openPlaylist(playlistId);
+    } else if (trackId && /^[0-9a-f-]{36}$/i.test(trackId)) {
+      void play(trackId);
     }
   }, [user, playlists]);
 
@@ -644,6 +649,7 @@ export default function App() {
                     <button className="featured-action" onClick={() => void shareLink(track.title || "KubanFy", `/?track=${encodeURIComponent(track.track_id)}`)} aria-label="Compartir canción"><ShareIcon /></button>
                     <button className="featured-action featured-play" onClick={() => void play(track.track_id)} aria-label={`Reproducir ${track.title || "Sin título"}`}>▶</button>
                   </div>
+                  {playlists.length > 0 && playlistMenuTrack === track.track_id && <div className="playlist-popover glass">{playlists.map(pl => <button key={pl.id} onClick={() => void saveToPlaylist(pl.id, track.track_id)}>{pl.name}</button>)}</div>}
                 </article>
               ))}
             </div>
@@ -667,6 +673,7 @@ export default function App() {
                     <button className="release-action" onClick={() => void shareLink(track.title, `/?track=${encodeURIComponent(track.id)}`)} aria-label="Compartir canción"><ShareIcon /></button>
                     <button className="release-action" onClick={() => void play(track.id)} aria-label={`Reproducir ${track.title}`}>▶</button>
                   </div>
+                  {playlists.length > 0 && playlistMenuTrack === track.id && <div className="playlist-popover glass">{playlists.map(pl => <button key={pl.id} onClick={() => void saveToPlaylist(pl.id, track.id)}>{pl.name}</button>)}</div>}
                 </article>
               ))}
             </div>
@@ -811,7 +818,7 @@ export default function App() {
           </div>
           <div className="player-controls">
             <button className="icon-button" onClick={() => nextTrack(-1)} aria-label="Canción anterior">|◀</button>
-            <button className="play-button" onClick={() => { void player.togglePlayback()?.catch?.(() => setStatus("Pulsa reproducir para iniciar el audio.")); }} aria-label={isPlaying ? "Pausar" : "Reproducir"}>{isPlaying ? "Ⅱ" : "▶"}</button>
+            <button className="play-button" onClick={() => { const result = player.togglePlayback(); if (result instanceof Promise) void result.catch(() => setStatus("Pulsa reproducir para iniciar el audio.")); }} aria-label={isPlaying ? "Pausar" : "Reproducir"}>{isPlaying ? "Ⅱ" : "▶"}</button>
             <button className="icon-button" onClick={() => nextTrack(1)} aria-label="Canción siguiente">▶|</button>
             <button className="icon-button" onClick={() => setPlaylistMenuTrack(playlistMenuTrack === activeTrackId ? null : activeTrackId)} aria-label="Añadir canción a playlist"><PlusIcon /></button>
             <button className="icon-button" onClick={() => void shareLink(activeTrack?.title || "KubanFy", `/?track=${encodeURIComponent(activeTrackId)}`)} aria-label="Compartir canción"><ShareIcon /></button>
