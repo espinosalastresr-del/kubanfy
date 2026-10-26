@@ -1149,9 +1149,12 @@ export default function App() {
                   </button>
                   <div className="featured-actions">
                     <button className={`featured-action${favorites.has(track.track_id) ? " is-active" : ""}`} onClick={() => void toggleFavorite(track.track_id)} aria-label={favorites.has(track.track_id) ? "Quitar de favoritos" : "Añadir a favoritos"}><HeartIcon filled={favorites.has(track.track_id)} /></button>
+                    <button className="featured-action" onClick={() => setPlaylistMenuTrack(playlistMenuTrack === track.track_id ? null : track.track_id)} aria-label="Añadir a playlist"><PlusIcon /></button>
+                    <button className="featured-action" onClick={() => void shareLink(track.title || "Canción", `/#track=${track.track_id}`)} aria-label={`Compartir ${track.title || "canción"}`}>↗</button>
                     {!offlineTracks.some(saved => saved.id === `${track.track_id}:low`) && <button className="featured-action" disabled={!isOnline || downloadBusy !== null || !canDownload} onClick={() => void saveOffline(track.track_id, track.title || "Sin título")} aria-label={`Guardar ${track.title || "canción"} sin conexión`} title={canDownload ? "Guardar sin conexión" : "Las descargas requieren un plan Premium, Family o Student"}>↓</button>}
                     <button className="featured-action featured-play" onClick={() => void play(track.track_id)} aria-label={`Reproducir ${track.title || "Sin título"}`}>▶</button>
                   </div>
+                  {playlistMenuTrack === track.track_id && <div className="playlist-popover glass">{playlists.length === 0 ? <span>Crea una playlist en Biblioteca.</span> : playlists.map(pl => <button key={pl.id} onClick={() => void saveToPlaylist(pl.id, track.track_id)}>{pl.name}</button>)}</div>}
                 </article>
               ))}
             </div>
@@ -1171,9 +1174,12 @@ export default function App() {
                   </button>
                   <div className="release-actions">
                     <button className={`release-action${favorites.has(track.id) ? " is-active" : ""}`} onClick={() => void toggleFavorite(track.id)} aria-label={favorites.has(track.id) ? "Quitar de favoritos" : "Añadir a favoritos"}><HeartIcon filled={favorites.has(track.id)} /></button>
+                    <button className="release-action" onClick={() => setPlaylistMenuTrack(playlistMenuTrack === track.id ? null : track.id)} aria-label="Añadir a playlist"><PlusIcon /></button>
+                    <button className="release-action" onClick={() => void shareLink(track.title, `/#track=${track.id}`)} aria-label={`Compartir ${track.title}`}>↗</button>
                     {!offlineTracks.some(saved => saved.id === `${track.id}:low`) && <button className="release-action" disabled={!isOnline || downloadBusy !== null || !canDownload} onClick={() => void saveOffline(track.id, track.title)} aria-label={`Guardar ${track.title} sin conexión`} title={canDownload ? "Guardar sin conexión" : "Las descargas requieren un plan Premium, Family o Student"}>↓</button>}
                     <button className="release-action" onClick={() => void play(track.id)} aria-label={`Reproducir ${track.title}`}>▶</button>
                   </div>
+                  {playlistMenuTrack === track.id && <div className="playlist-popover glass">{playlists.length === 0 ? <span>Crea una playlist en Biblioteca.</span> : playlists.map(pl => <button key={pl.id} onClick={() => void saveToPlaylist(pl.id, track.id)}>{pl.name}</button>)}</div>}
                 </article>
               ))}
             </div>
