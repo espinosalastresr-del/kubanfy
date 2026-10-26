@@ -341,6 +341,10 @@ export async function renamePlaylist(playlistId: string, name: string) {
   });
 }
 
+export async function removeTrackFromPlaylist(playlistId: string, trackId: string) {
+  return request<void>(`/v1/playlists/${playlistId}/tracks/${trackId}`, { method: "DELETE" });
+}
+
 export async function addTrackToPlaylist(playlistId: string, trackId: string) {
   return request<void>(`/v1/playlists/${playlistId}/tracks/${trackId}`, { method: "POST" });
 }
