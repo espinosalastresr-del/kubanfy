@@ -1016,8 +1016,13 @@ export default function App() {
     if (!currentUser?.id) { setStatus("Inicia sesión para validar la licencia offline."); return; }
     try {
       await verifyOfflineLicense(track, currentUser.id);
+      const offlineItem = { id: track.trackId, title: track.title, artist: "Descarga sin conexión" };
+      setQueue([offlineItem]);
+      setQueueIndex(0);
+      setActiveTrack(offlineItem);
       setActiveTrackId(track.trackId);
       await player.loadOffline(track);
+      setPlayerPaused(player.paused);
     } catch (e) {
       setActiveTrackId(null);
       setStatus(e instanceof Error ? e.message : "No se pudo reproducir la descarga offline.");

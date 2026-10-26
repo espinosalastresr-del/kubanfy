@@ -132,7 +132,7 @@ export class KbyPlayer {
     this.stop();
     const generation = this.generation;
     this.trackTitle = track.title;
-    this.trackArtist = "KubanFy";
+    this.trackArtist = "Descarga sin conexión";
     this.trackArtwork = null;
     this.activeTrackId = track.trackId;
     this.activeQuality = track.quality;
