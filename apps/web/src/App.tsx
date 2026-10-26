@@ -272,6 +272,7 @@ export default function App() {
   const [queueIds, setQueueIds] = useState<string[]>([]);
   const [selectedPlaylistId, setSelectedPlaylistId] = useState<string | null>(null);
   const [selectedPlaylistName, setSelectedPlaylistName] = useState<string>("");
+  const [selectedPlaylistVisibility, setSelectedPlaylistVisibility] = useState<"private" | "public">("private");
   const [selectedPlaylistTracks, setSelectedPlaylistTracks] = useState<any[]>([]);
   const [playlistDetailBusy, setPlaylistDetailBusy] = useState(false);
   const [editingPlaylistId, setEditingPlaylistId] = useState<string | null>(null);
@@ -467,6 +468,7 @@ export default function App() {
     try {
       const playlist = await getPlaylist(id);
       setSelectedPlaylistName(playlist.name);
+      setSelectedPlaylistVisibility(playlist.visibility);
       const entries = await listPlaylistTracks(id);
       const details = await Promise.all(entries.map(async entry => {
         try { return await getTrackDetail(entry.track_id); }
@@ -767,8 +769,8 @@ export default function App() {
               <div><span className="eyebrow">REPRODUCCIÓN EN COLA</span><h2>{selectedPlaylistName || playlists.find(item => item.id === selectedPlaylistId)?.name || "Playlist"}</h2><p>{selectedPlaylistTracks.length} canciones</p></div>
               <div className="playlist-detail-actions">
                 <button className="primary-button" disabled={playlistDetailBusy || selectedPlaylistTracks.length === 0} onClick={() => void play(selectedPlaylistTracks[0].id, selectedPlaylistTracks.map(track => track.id))}>▶ Reproducir todo</button>
-                <button className="secondary-button" onClick={() => void shareLink(playlists.find(item => item.id === selectedPlaylistId)?.name || "KubanFy", `/?playlist=${encodeURIComponent(selectedPlaylistId)}`)}>Compartir</button>
-                <button className="icon-button" onClick={() => { setSelectedPlaylistId(null); setSelectedPlaylistName(""); setSelectedPlaylistTracks([]); }} aria-label="Cerrar playlist">×</button>
+                <button className="secondary-button" onClick={() => selectedPlaylistVisibility === "public" ? void shareLink(selectedPlaylistName || "KubanFy", `/?playlist=${encodeURIComponent(selectedPlaylistId)}`) : setStatus("Haz pública la playlist antes de compartirla.")}>Compartir</button>
+                <button className="icon-button" onClick={() => { setSelectedPlaylistId(null); setSelectedPlaylistName(""); setSelectedPlaylistVisibility("private"); setSelectedPlaylistTracks([]); }} aria-label="Cerrar playlist">×</button>
               </div>
             </div>
             {playlistDetailBusy ? <div className="empty-state">Cargando canciones…</div> : selectedPlaylistTracks.length === 0 ? <div className="empty-state"><strong>Esta playlist está vacía</strong><span>Añade canciones desde el catálogo.</span></div> : <div className="library-list">
