@@ -324,6 +324,23 @@ export async function createPlaylist(name: string) {
 export async function deletePlaylist(id: string) {
   return request<void>(`/v1/playlists/${id}`, { method: "DELETE" });
 }
+export type PlaylistTrack = { track_id: string; position: number; added_at: string };
+export type MusicTrackDetail = {
+  id: string; title: string; duration: number | null; artwork_url?: string | null;
+  artists: { id: string; name: string; slug: string; verified: boolean }[];
+};
+export async function getTrack(trackId: string) {
+  return request<MusicTrackDetail>(`/v1/music/tracks/${trackId}`);
+}
+export async function getPlaylistTracks(playlistId: string) {
+  return request<PlaylistTrack[]>(`/v1/playlists/${playlistId}/tracks`);
+}
+export async function renamePlaylist(playlistId: string, name: string) {
+  return request<Playlist>(`/v1/playlists/${playlistId}`, {
+    method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name }),
+  });
+}
+
 export async function addTrackToPlaylist(playlistId: string, trackId: string) {
   return request<void>(`/v1/playlists/${playlistId}/tracks/${trackId}`, { method: "POST" });
 }

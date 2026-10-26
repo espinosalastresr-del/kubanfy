@@ -1,5 +1,5 @@
 import { FormEvent, useEffect, useRef, useState } from "react";
-import { AdminAuditLog, AdminFeatureFlag, AdminUser, ApiError, ArtistManagedTrack, ArtistProfile, CurrentUser, ModerationReport, addFavorite, addTrackToPlaylist, clearTokens, confirmPasswordReset, createArtist, createPlaylist, deletePlaylist, discoveryHome, canManageUserPlans, createOfflineDownload, offlineLicensePublicKey, getDeviceId, listAdminAuditLogs, listAdminFeatureFlags, listAdminUsers, listArtistTracks, listModerationReports, listMyArtists, listFavorites, listPlaylists, listMyEntitlements, login, me, publishArtistTrack, register, removeFavorite, requestPasswordReset, resolveModerationReport, searchTracks, suspendAdminUser, unsuspendAdminUser, updateAdminFeatureFlag, updateAdminUserPlan, updateArtist, updateMyProfile, uploadArtistTrack } from "./api";
+import { AdminAuditLog, AdminFeatureFlag, AdminUser, ApiError, ArtistManagedTrack, ArtistProfile, CurrentUser, ModerationReport, addFavorite, addTrackToPlaylist, getPlaylistTracks, getTrack, renamePlaylist, clearTokens, confirmPasswordReset, createArtist, createPlaylist, deletePlaylist, discoveryHome, canManageUserPlans, createOfflineDownload, offlineLicensePublicKey, getDeviceId, listAdminAuditLogs, listAdminFeatureFlags, listAdminUsers, listArtistTracks, listModerationReports, listMyArtists, listFavorites, listPlaylists, listMyEntitlements, login, me, publishArtistTrack, register, removeFavorite, requestPasswordReset, resolveModerationReport, searchTracks, suspendAdminUser, unsuspendAdminUser, updateAdminFeatureFlag, updateAdminUserPlan, updateArtist, updateMyProfile, uploadArtistTrack } from "./api";
 import { KbyPlayer } from "./player";
 import { deleteOfflineTrack as deleteSavedOfflineTrack, downloadProtectedAudio, getPartialDownload, listOfflineTracks, saveOfflineTrack, verifyOfflineLicense, type OfflineTrack } from "./offline";
 
@@ -626,6 +626,16 @@ export default function App() {
   const [libraryBusy, setLibraryBusy] = useState(false);
   const [playlistMenuTrack, setPlaylistMenuTrack] = useState<string | null>(null);
   const [activeTrackId, setActiveTrackId] = useState<string | null>(null);
+  const [activeTrack, setActiveTrack] = useState<{ id: string; title: string; artist: string; artwork?: string | null; duration?: number | null } | null>(null);
+  const [queue, setQueue] = useState<Array<{ id: string; title: string; artist: string; artwork?: string | null; duration?: number | null }>>([]);
+  const [queueIndex, setQueueIndex] = useState(0);
+  const [playerTime, setPlayerTime] = useState(0);
+  const [playerDuration, setPlayerDuration] = useState(0);
+  const [playerPaused, setPlayerPaused] = useState(true);
+  const [openedPlaylist, setOpenedPlaylist] = useState<string | null>(null);
+  const [playlistTracks, setPlaylistTracks] = useState<Array<{ id: string; title: string; artist: string; artwork?: string | null; duration?: number | null }>>([]);
+  const [editingPlaylist, setEditingPlaylist] = useState<string | null>(null);
+  const [editingPlaylistName, setEditingPlaylistName] = useState("");
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchBusy, setSearchBusy] = useState(false);
   const [searchError, setSearchError] = useState("");
@@ -643,7 +653,20 @@ export default function App() {
   const [canDownload, setCanDownload] = useState(false);
 
   useEffect(() => {
+    const update = () => { setPlayerTime(player.currentTime); setPlayerDuration(player.duration); setPlayerPaused(player.paused); };
+    player.element.addEventListener("timeupdate", update);
+    player.element.addEventListener("durationchange", update);
+    player.element.addEventListener("play", update);
+    player.element.addEventListener("pause", update);
+    player.element.addEventListener("ended", update);
+    const timer = window.setInterval(update, 1000);
+    return () => { window.clearInterval(timer); player.element.removeEventListener("timeupdate", update); player.element.removeEventListener("durationchange", update); player.element.removeEventListener("play", update); player.element.removeEventListener("pause", update); player.element.removeEventListener("ended", update); };
+  }, [player]);
+
+  useEffect(() => {
     player.onState = setStatus;
+    player.onNext = () => void moveQueue(1);
+    player.onPrevious = () => void moveQueue(-1);
     void me().then(setUser).catch(() => {});
     void listOfflineTracks().then(setOfflineTracks).catch(() => {});
     const markOnline = () => setIsOnline(true);
@@ -834,14 +857,77 @@ export default function App() {
     return () => window.clearTimeout(timer);
   }, [query, searchOpen]);
 
-  async function play(id: string) {
+  async function play(id: string, title = "KubanFy", artist = "KubanFy", artwork?: string | null, nextQueue?: Array<{ id: string; title: string; artist: string; artwork?: string | null; duration?: number | null }>, index = 0) {
     try {
+      const current = { id, title, artist, artwork };
+      if (nextQueue) { setQueue(nextQueue); setQueueIndex(index); }
+      else { setQueue([current]); setQueueIndex(0); }
+      setActiveTrack(current);
       setActiveTrackId(id);
-      await player.load(id, "low");
+      await player.load(id, "low", title, artist, artwork);
+      setPlayerPaused(player.paused);
     } catch (e) {
       setActiveTrackId(null);
+      setActiveTrack(null);
       setStatus(e instanceof Error ? e.message : "Error de reproducción");
     }
+  }
+
+  async function moveQueue(offset: number) {
+    if (!queue.length) return;
+    const next = (queueIndex + offset + queue.length) % queue.length;
+    const item = queue[next];
+    await play(item.id, item.title, item.artist, item.artwork, queue, next);
+  }
+
+  async function shareLink(title: string, path: string) {
+    const url = new URL(path, window.location.origin).toString();
+    try {
+      if (navigator.share) await navigator.share({ title, text: `Escucha ${title} en KubanFy`, url });
+      else if (navigator.clipboard?.writeText) { await navigator.clipboard.writeText(url); setStatus("Enlace copiado para compartir."); }
+      else { window.prompt("Copia este enlace para compartir:", url); }
+    } catch (error) {
+      if (error instanceof Error && error.name !== "AbortError") setStatus("No se pudo abrir el menú de compartir.");
+    }
+  }
+
+  async function openPlaylist(id: string) {
+    setOpenedPlaylist(id);
+    try {
+      const rows = await getPlaylistTracks(id);
+      const details = await Promise.all(rows.map(async row => {
+        try {
+          const track = await getTrack(row.track_id);
+          return { id: track.id, title: track.title, artist: track.artists.map(a => a.name).join(", ") || "Artista desconocido", artwork: track.artwork_url, duration: track.duration };
+        } catch {
+          return { id: row.track_id, title: "Canción no disponible", artist: "Puede que ya no esté publicada", artwork: null, duration: null };
+        }
+      }));
+      setPlaylistTracks(details);
+    } catch (e) {
+      setPlaylistTracks([]);
+      setStatus(e instanceof Error ? e.message : "No se pudo abrir la playlist.");
+    }
+  }
+
+  async function savePlaylistName(id: string) {
+    const name = editingPlaylistName.trim();
+    if (!name) return;
+    try {
+      const updated = await renamePlaylist(id, name);
+      setPlaylists(items => items.map(item => item.id === id ? updated : item));
+      setEditingPlaylist(null);
+      setStatus("Playlist actualizada.");
+    } catch (e) { setStatus(e instanceof Error ? e.message : "No se pudo editar la playlist."); }
+  }
+
+  async function playPlaylist(index = 0) {
+    const playable = playlistTracks.filter(track => track.title !== "Canción no disponible");
+    if (!playable.length) { setStatus("Esta playlist no contiene canciones disponibles."); return; }
+    const selected = playlistTracks[index];
+    const actualIndex = playable.findIndex(track => track.id === selected?.id);
+    const safeIndex = actualIndex >= 0 ? actualIndex : 0;
+    await play(playable[safeIndex].id, playable[safeIndex].title, playable[safeIndex].artist, playable[safeIndex].artwork, playable, safeIndex);
   }
   async function saveOffline(id: string, title: string) {
     if (downloadBusy) return;
@@ -1131,13 +1217,27 @@ export default function App() {
             ) : (
               <div className="playlist-grid">
                 {playlists.map(pl => <article className="glass playlist-card" key={pl.id}>
-                  <div className="playlist-cover"><LogoMark /></div>
-                  <div className="playlist-meta"><strong>{pl.name}</strong><span>{pl.visibility === "private" ? "Privada" : "Pública"}</span></div>
-                  <button className="icon-button" onClick={() => void removePlaylist(pl.id)} aria-label={`Eliminar ${pl.name}`}>×</button>
+                  <button className="playlist-open" onClick={() => void openPlaylist(pl.id)} aria-label={`Abrir playlist ${pl.name}`}><span className="playlist-cover"><LogoMark /></span><span className="playlist-meta"><strong>{pl.name}</strong><small>{pl.visibility === "private" ? "Privada" : "Pública"}</small></span></button>
+                  <div className="playlist-card-actions">
+                    <button className="icon-button" onClick={() => { setEditingPlaylist(pl.id); setEditingPlaylistName(pl.name); }} aria-label={`Editar ${pl.name}`}>✎</button>
+                    <button className="icon-button" onClick={() => void shareLink(pl.name, `/#playlist=${pl.id}`)} aria-label={`Compartir ${pl.name}`}>↗</button>
+                    <button className="icon-button" onClick={() => void removePlaylist(pl.id)} aria-label={`Eliminar ${pl.name}`}>×</button>
+                  </div>
+                  {editingPlaylist === pl.id && <form className="playlist-edit" onSubmit={event => { event.preventDefault(); void savePlaylistName(pl.id); }}><input value={editingPlaylistName} onChange={event => setEditingPlaylistName(event.target.value)} maxLength={200} aria-label="Nombre de la playlist" /><button className="primary-button" type="submit">Guardar</button><button className="secondary-button" type="button" onClick={() => setEditingPlaylist(null)}>Cancelar</button></form>}
                 </article>)}
               </div>
             )}
           </section>
+          {openedPlaylist && <section className="library-section playlist-detail">
+            <div className="section-heading"><div><span className="eyebrow">TU COLECCIÓN</span><h2>{playlists.find(pl => pl.id === openedPlaylist)?.name || "Playlist"}</h2><p>{playlistTracks.length} canciones</p></div>
+              <div className="playlist-detail-actions"><button className="primary-button" onClick={() => void playPlaylist(0)} disabled={!playlistTracks.length}>▶ Reproducir todo</button><button className="secondary-button" onClick={() => void shareLink(playlists.find(pl => pl.id === openedPlaylist)?.name || "Playlist KubanFy", `/#playlist=${openedPlaylist}`)}>Compartir</button><button className="secondary-button" onClick={() => setOpenedPlaylist(null)}>Cerrar</button></div>
+            </div>
+            {playlistTracks.length === 0 ? <div className="empty-state glass">Cargando canciones…</div> : <div className="library-list">{playlistTracks.map((track,index) => <article className="glass library-track" key={track.id}>
+              <div className="track-art">{track.artwork ? <img src={track.artwork} alt="" /> : <LogoMark />}</div><div className="track-info"><strong>{track.title}</strong><span>{track.artist}{track.duration ? ` · ${formatDuration(track.duration)}` : ""}</span></div>
+              <button className="play-button" onClick={() => void play(track.id, track.title, track.artist, track.artwork, playlistTracks, index)} aria-label={`Reproducir ${track.title}`}>▶</button>
+              <button className="icon-button" onClick={async () => { try { const { removeTrackFromPlaylist } = await import("./api"); await removeTrackFromPlaylist(openedPlaylist, track.id); setPlaylistTracks(items => items.filter(item => item.id !== track.id)); setStatus("Canción eliminada de la playlist."); } catch (e) { setStatus(e instanceof Error ? e.message : "No se pudo eliminar la canción."); } }} aria-label={`Quitar ${track.title} de la playlist`}>×</button>
+            </article>)}</div>}
+          </section>}
         </section>
       )}
 
@@ -1181,10 +1281,17 @@ export default function App() {
         </div>
       )}
 
-      {activeTrackId && (
+      {activeTrackId && activeTrack && (
         <div className="player glass" aria-label="Reproductor">
           <div className="audio-host" ref={el => { if (el && !el.contains(player.element)) el.appendChild(player.element); }} />
-          <button className="player-close" onClick={() => { player.stop(); setActiveTrackId(null); }} aria-label="Cerrar reproductor">×</button>
+          <div className="player-track"><div className="player-art">{activeTrack.artwork ? <img src={activeTrack.artwork} alt="" /> : <LogoMark />}</div><div className="player-track-meta"><strong>{activeTrack.title}</strong><span>{activeTrack.artist}</span></div></div>
+          <div className="player-main-controls"><div className="player-buttons">
+            <button className="player-control" onClick={() => void moveQueue(-1)} aria-label="Canción anterior">|◀</button>
+            <button className="player-control player-toggle" onClick={() => { void player.playPause().then(() => setPlayerPaused(player.paused)).catch(() => setStatus("Pulsa reproducir para continuar.")); }} aria-label={playerPaused ? "Reproducir" : "Pausar"}>{playerPaused ? "▶" : "Ⅱ"}</button>
+            <button className="player-control" onClick={() => void moveQueue(1)} aria-label="Siguiente canción">▶|</button>
+          </div><div className="player-progress"><span>{formatDuration(playerTime)}</span><input type="range" min="0" max={Math.max(1,playerDuration)} step="1" value={Math.min(playerTime,Math.max(1,playerDuration))} onChange={event => player.seek(Number(event.target.value))} aria-label="Posición de reproducción" /><span>{formatDuration(playerDuration)}</span></div></div>
+          <button className="player-control player-share" onClick={() => void shareLink(activeTrack.title, `/#track=${activeTrack.id}`)} aria-label="Compartir canción">↗</button>
+          <button className="player-close" onClick={() => { player.stop(); setActiveTrackId(null); setActiveTrack(null); }} aria-label="Cerrar reproductor">×</button>
         </div>
       )}
     </section>

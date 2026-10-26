@@ -68,21 +68,29 @@ export class KbyPlayer {
   private activeTrackId = "";
   private activeQuality: "low" | "medium" = "low";
   onState?: (state: string) => void;
+  onNext?: () => void;
+  onPrevious?: () => void;
 
   constructor() {
     // The audio element is mounted into the player surface; without controls,
     // mobile users could not pause, seek, or resume after an interruption.
-    this.audio.controls = true;
+    this.audio.controls = false;
     this.audio.preload = "metadata";
   }
 
   get element() { return this.audio; }
+  get currentTime() { return this.audio.currentTime || 0; }
+  get duration() { return Number.isFinite(this.audio.duration) ? this.audio.duration : 0; }
+  get paused() { return this.audio.paused; }
+  playPause() { return this.audio.paused ? this.audio.play() : Promise.resolve(this.audio.pause()); }
+  seek(seconds: number) { if (Number.isFinite(this.audio.duration)) this.audio.currentTime = Math.max(0, Math.min(this.audio.duration, seconds)); }
 
-  async load(trackId: string, quality: "low" | "medium", title = "KubanFy") {
+  async load(trackId: string, quality: "low" | "medium", title = "KubanFy", artist = "KubanFy", artwork?: string | null) {
     this.stop();
     const generation = this.generation;
     this.trackTitle = title;
     this.activeTrackId = trackId;
+    this.configureMediaSession(artist, artwork);
     this.activeQuality = quality;
     this.onState?.("autorizando…");
     const meta = await playback(trackId, quality);
@@ -220,13 +228,16 @@ export class KbyPlayer {
     return response;
   }
 
-  private configureMediaSession() {
+  private configureMediaSession(artist = "KubanFy", artwork?: string | null) {
     if (!("mediaSession" in navigator)) return;
     try {
-      navigator.mediaSession.metadata = new MediaMetadata({ title: this.trackTitle, artist: "KubanFy" });
+      navigator.mediaSession.metadata = new MediaMetadata({ title: this.trackTitle, artist, ...(artwork ? { artwork: [{ src: artwork }] } : {}) });
       navigator.mediaSession.setActionHandler("play", () => { void this.audio.play().catch(() => {}); });
       navigator.mediaSession.setActionHandler("pause", () => this.audio.pause());
       navigator.mediaSession.setActionHandler("stop", () => this.stop());
+      navigator.mediaSession.setActionHandler("nexttrack", () => this.onNext?.());
+      navigator.mediaSession.setActionHandler("previoustrack", () => this.onPrevious?.());
+      navigator.mediaSession.setActionHandler("seekto", details => { if (details.seekTime != null) this.audio.currentTime = details.seekTime; });
     } catch {
       // Media Session is optional and not supported consistently across browsers.
     }
