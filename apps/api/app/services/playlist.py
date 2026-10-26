@@ -63,6 +63,30 @@ class PlaylistService:
         await self.session.flush()
         return pl
 
+    async def set_visibility(self, playlist_id: UUID, user_id: UUID, visibility: PlaylistVisibility) -> Playlist:
+        pl = await self._owned(playlist_id, user_id)
+        pl.visibility = visibility
+        await self.session.flush()
+        return pl
+
+    async def reorder_tracks(self, playlist_id: UUID, user_id: UUID, track_ids: list[UUID]) -> list[PlaylistTrack]:
+        pl = await self._owned(playlist_id, user_id)
+        if len(track_ids) != len(set(track_ids)):
+            from app.core.exceptions import ValidationError
+            raise ValidationError("Track order contains duplicate IDs")
+        result = await self.session.execute(
+            select(PlaylistTrack).where(PlaylistTrack.playlist_id == pl.id).order_by(PlaylistTrack.position.asc())
+        )
+        rows = list(result.scalars().all())
+        by_track = {row.track_id: row for row in rows}
+        if set(track_ids) != set(by_track):
+            from app.core.exceptions import ValidationError
+            raise ValidationError("Track order must contain every playlist track exactly once")
+        for position, track_id in enumerate(track_ids):
+            by_track[track_id].position = position
+        await self.session.flush()
+        return [by_track[track_id] for track_id in track_ids]
+
     async def delete(self, playlist_id: UUID, user_id: UUID) -> None:
         pl = await self._owned(playlist_id, user_id)
         await self.session.delete(pl)
