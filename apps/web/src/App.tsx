@@ -1,5 +1,5 @@
 import { FormEvent, useEffect, useRef, useState } from "react";
-import { ApiError, addFavorite, addTrackToPlaylist, clearTokens, createPlaylist, deletePlaylist, discoveryHome, listFavorites, listPlaylists, login, me, register, removeFavorite, searchTracks } from "./api";
+import { ApiError, addFavorite, addTrackToPlaylist, clearTokens, createPlaylist, deletePlaylist, discoveryHome, getTrackDetail, listFavorites, listPlaylistTracks, listPlaylists, login, me, register, removeFavorite, removeTrackFromPlaylist, renamePlaylist, searchTracks } from "./api";
 import { KbyPlayer } from "./player";
 
 function EyeIcon({ hidden }: { hidden: boolean }) {
@@ -13,6 +13,7 @@ function EyeIcon({ hidden }: { hidden: boolean }) {
 function HeartIcon({ filled }: { filled: boolean }) {
   return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20.8 8.7c0 5.4-8.8 10.3-8.8 10.3S3.2 14.1 3.2 8.7A4.7 4.7 0 0 1 12 6.2a4.7 4.7 0 0 1 8.8 2.5Z" fill={filled ? "currentColor" : "none"} /></svg>;
 }
+function ShareIcon() { return <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="m8.7 10.6 6.6-4.2M8.7 13.4l6.6 4.2"/></svg>; }
 function LibraryIcon() {
   return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4v16M10 4v16M15 4v16M19 7v10" /><path d="M3 4h15M3 20h15" /></svg>;
 }
@@ -264,6 +265,17 @@ export default function App() {
   const [libraryBusy, setLibraryBusy] = useState(false);
   const [playlistMenuTrack, setPlaylistMenuTrack] = useState<string | null>(null);
   const [activeTrackId, setActiveTrackId] = useState<string | null>(null);
+  const [activeTrack, setActiveTrack] = useState<any>(null);
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [currentTime, setCurrentTime] = useState(0);
+  const [duration, setDuration] = useState(0);
+  const [queueIds, setQueueIds] = useState<string[]>([]);
+  const [selectedPlaylistId, setSelectedPlaylistId] = useState<string | null>(null);
+  const [selectedPlaylistTracks, setSelectedPlaylistTracks] = useState<any[]>([]);
+  const [playlistDetailBusy, setPlaylistDetailBusy] = useState(false);
+  const [editingPlaylistId, setEditingPlaylistId] = useState<string | null>(null);
+  const [playlistNameDraft, setPlaylistNameDraft] = useState("");
+  const [playerExpanded, setPlayerExpanded] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchBusy, setSearchBusy] = useState(false);
   const [recentSearches, setRecentSearches] = useState<string[]>(() => {
@@ -421,15 +433,114 @@ export default function App() {
     return () => window.clearTimeout(timer);
   }, [query, searchOpen]);
 
-  async function play(id: string) {
+  async function play(id: string, requestedQueue?: string[]) {
     try {
+      const known = [...results, ...(home?.trending ?? []), ...(home?.new_releases ?? []), ...selectedPlaylistTracks];
+      const queue = requestedQueue?.length ? requestedQueue : Array.from(new Set([id, ...known.map((track: any) => track.track_id ?? track.id).filter(Boolean)]));
+      setQueueIds(queue);
       setActiveTrackId(id);
+      setStatus("Preparando reproducción…");
+      let metadata: any = known.find((track: any) => (track.track_id ?? track.id) === id) ?? null;
+      try { metadata = await getTrackDetail(id); } catch {
+        if (!metadata) metadata = { id, title: "Canción", duration: null, artists: [] };
+      }
+      setActiveTrack(metadata);
       await player.load(id, "low");
+      player.setMetadata({
+        title: metadata.title || "KubanFy",
+        artist: Array.isArray(metadata.artists) ? metadata.artists.map((artist: any) => typeof artist === "string" ? artist : artist.name).join(", ") : (metadata.artist || "Artista desconocido"),
+        album: metadata.album || "KubanFy",
+        artwork: metadata.artwork_url || metadata.artwork || null,
+      });
+      setStatus("Reproduciendo");
     } catch (e) {
       setActiveTrackId(null);
+      setActiveTrack(null);
       setStatus(e instanceof Error ? e.message : "Error de reproducción");
     }
   }
+
+  async function openPlaylist(id: string) {
+    setSelectedPlaylistId(id);
+    setPlaylistDetailBusy(true);
+    try {
+      const entries = await listPlaylistTracks(id);
+      const details = await Promise.all(entries.map(async entry => {
+        try { return await getTrackDetail(entry.track_id); }
+        catch { return { id: entry.track_id, title: "Canción no disponible", duration: null, artists: [] }; }
+      }));
+      setSelectedPlaylistTracks(details);
+    } catch (e) {
+      setStatus(e instanceof Error ? e.message : "No pudimos abrir la playlist.");
+      setSelectedPlaylistId(null);
+    } finally { setPlaylistDetailBusy(false); }
+  }
+
+  async function savePlaylistName(id: string) {
+    const name = playlistNameDraft.trim();
+    if (!name || libraryBusy) return;
+    setLibraryBusy(true);
+    try {
+      const updated = await renamePlaylist(id, name);
+      setPlaylists(prev => prev.map(item => item.id === id ? updated : item));
+      setEditingPlaylistId(null);
+      setStatus("Playlist actualizada");
+    } catch (e) {
+      setStatus(e instanceof Error ? e.message : "No pudimos editar la playlist.");
+    } finally { setLibraryBusy(false); }
+  }
+
+  async function removeTrackFromOpenPlaylist(trackId: string) {
+    if (!selectedPlaylistId) return;
+    try {
+      await removeTrackFromPlaylist(selectedPlaylistId, trackId);
+      setSelectedPlaylistTracks(prev => prev.filter(track => track.id !== trackId));
+      setStatus("Canción retirada de la playlist");
+    } catch (e) {
+      setStatus(e instanceof Error ? e.message : "No pudimos retirar la canción.");
+    }
+  }
+
+  async function shareLink(title: string, url: string) {
+    try {
+      const absolute = new URL(url, window.location.origin).toString();
+      if (navigator.share) await navigator.share({ title, url: absolute });
+      else if (navigator.clipboard?.writeText) { await navigator.clipboard.writeText(absolute); setStatus("Enlace copiado"); }
+      else { window.prompt("Copia este enlace", absolute); }
+    } catch (e) {
+      if (e instanceof Error && e.name !== "AbortError") setStatus("No pudimos compartir el enlace.");
+    }
+  }
+
+  function nextTrack(direction: 1 | -1) {
+    if (!activeTrackId || queueIds.length < 2) return;
+    const index = queueIds.indexOf(activeTrackId);
+    const nextIndex = index < 0 ? 0 : (index + direction + queueIds.length) % queueIds.length;
+    void play(queueIds[nextIndex], queueIds);
+  }
+
+  useEffect(() => {
+    player.onProgress = (time, total) => { setCurrentTime(time); setDuration(total); };
+    player.onPlaybackChange = setIsPlaying;
+    player.onEnded = () => nextTrack(1);
+    player.onNext = () => nextTrack(1);
+    player.onPrevious = () => nextTrack(-1);
+    return () => {
+      player.onProgress = undefined;
+      player.onPlaybackChange = undefined;
+      player.onEnded = undefined;
+      player.onNext = undefined;
+      player.onPrevious = undefined;
+    };
+  });
+
+  useEffect(() => {
+    const id = new URLSearchParams(window.location.search).get("playlist");
+    if (user && id && playlists.some(item => item.id === id)) {
+      setSection("library");
+      void openPlaylist(id);
+    }
+  }, [user, playlists]);
 
   function logout() {
     player.stop();
