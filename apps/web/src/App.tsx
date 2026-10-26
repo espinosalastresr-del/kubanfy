@@ -1,5 +1,5 @@
 import { FormEvent, useEffect, useRef, useState } from "react";
-import { ApiError, addFavorite, addTrackToPlaylist, clearTokens, createPlaylist, deletePlaylist, discoveryHome, getTrackDetail, listFavorites, listPlaylistTracks, listPlaylists, login, me, register, removeFavorite, removeTrackFromPlaylist, renamePlaylist, searchTracks } from "./api";
+import { ApiError, addFavorite, addTrackToPlaylist, clearTokens, createPlaylist, deletePlaylist, discoveryHome, getTrackDetail, listFavorites, listPlaylistTracks, listPlaylists, login, me, register, removeFavorite, removeTrackFromPlaylist, renamePlaylist, reorderPlaylistTracks, searchTracks } from "./api";
 import { KbyPlayer } from "./player";
 
 function EyeIcon({ hidden }: { hidden: boolean }) {
@@ -501,6 +501,42 @@ export default function App() {
     }
   }
 
+  async function movePlaylistTrack(trackId: string, offset: -1 | 1) {
+    if (!selectedPlaylistId) return;
+    const next = [...selectedPlaylistTracks];
+    const index = next.findIndex(track => track.id === trackId);
+    const target = index + offset;
+    if (index < 0 || target < 0 || target >= next.length) return;
+    [next[index], next[target]] = [next[target], next[index]];
+    setSelectedPlaylistTracks(next);
+    try {
+      await reorderPlaylistTracks(selectedPlaylistId, next.map(track => track.id));
+      setStatus("Orden de la playlist actualizado");
+    } catch (e) {
+      setSelectedPlaylistTracks(prev => [...prev].sort((a, b) => selectedPlaylistTracks.findIndex(t => t.id === a.id) - selectedPlaylistTracks.findIndex(t => t.id === b.id)));
+      setStatus(e instanceof Error ? e.message : "No pudimos cambiar el orden.");
+      void openPlaylist(selectedPlaylistId);
+    }
+  }
+
+  async function togglePlaylistVisibility(id: string, name: string, visibility: "private" | "public") {
+    try {
+      const updated = await renamePlaylist(id, name, visibility === "public" ? "private" : "public");
+      setPlaylists(prev => prev.map(item => item.id === id ? updated : item));
+      setStatus(updated.visibility === "public" ? "Playlist pública: ya puedes compartirla" : "Playlist privada");
+    } catch (e) {
+      setStatus(e instanceof Error ? e.message : "No pudimos cambiar la visibilidad.");
+    }
+  }
+
+  async function sharePlaylist(pl: { id: string; name: string; visibility: "private" | "public" }) {
+    if (pl.visibility !== "public") {
+      setStatus("Haz pública la playlist antes de compartirla.");
+      return;
+    }
+    await shareLink(pl.name, `/?playlist=${encodeURIComponent(pl.id)}`);
+  }
+
   async function shareLink(title: string, url: string) {
     try {
       const absolute = new URL(url, window.location.origin).toString();
@@ -736,6 +772,8 @@ export default function App() {
                 <span className="featured-number">{String(index + 1).padStart(2, "0")}</span>
                 <div className="track-art">{track.artwork_url ? <img src={track.artwork_url} alt="" /> : <LogoMark />}</div>
                 <button className="track-info playlist-track-play" onClick={() => void play(track.id, selectedPlaylistTracks.map(item => item.id))}><strong>{track.title}</strong><span>{(track.artists || []).map((artist: any) => artist.name).join(", ") || "Artista desconocido"}</span></button>
+                <button className="icon-button" onClick={() => void movePlaylistTrack(track.id, -1)} disabled={index === 0} aria-label={`Mover ${track.title} arriba`}>↑</button>
+                <button className="icon-button" onClick={() => void movePlaylistTrack(track.id, 1)} disabled={index === selectedPlaylistTracks.length - 1} aria-label={`Mover ${track.title} abajo`}>↓</button>
                 <button className="play-button" onClick={() => void play(track.id, selectedPlaylistTracks.map(item => item.id))} aria-label={`Reproducir ${track.title}`}>▶</button>
                 <button className="icon-button" onClick={() => void removeTrackFromOpenPlaylist(track.id)} aria-label={`Quitar ${track.title} de la playlist`}>×</button>
               </article>)}
@@ -758,7 +796,8 @@ export default function App() {
                     {editingPlaylistId === pl.id ? <form onSubmit={e => { e.preventDefault(); void savePlaylistName(pl.id); }}><input aria-label="Nuevo nombre de playlist" value={playlistNameDraft} maxLength={200} onChange={e => setPlaylistNameDraft(e.target.value)} /><button className="tiny-action" type="submit" disabled={libraryBusy || !playlistNameDraft.trim()}>Guardar</button></form> : <button className="playlist-open playlist-open-meta" onClick={() => void openPlaylist(pl.id)}><strong>{pl.name}</strong><span>{pl.visibility === "private" ? "Privada" : "Pública"}</span></button>}
                     <div className="playlist-card-actions">
                       <button className="icon-button" onClick={() => { setEditingPlaylistId(pl.id); setPlaylistNameDraft(pl.name); }} aria-label={`Editar ${pl.name}`}>✎</button>
-                      <button className="icon-button" onClick={() => void shareLink(pl.name, `/?playlist=${encodeURIComponent(pl.id)}`)} aria-label={`Compartir ${pl.name}`}><ShareIcon /></button>
+                      <button className="icon-button" onClick={() => void togglePlaylistVisibility(pl.id, pl.name, pl.visibility)} aria-label={pl.visibility === "public" ? "Hacer playlist privada" : "Hacer playlist pública"} title={pl.visibility === "public" ? "Hacer privada" : "Hacer pública"}>{pl.visibility === "public" ? "◎" : "◉"}</button>
+                      <button className="icon-button" onClick={() => void sharePlaylist(pl)} aria-label={`Compartir ${pl.name}`}><ShareIcon /></button>
                       <button className="icon-button" onClick={() => void removePlaylist(pl.id)} aria-label={`Eliminar ${pl.name}`}>×</button>
                     </div>
                   </div>
