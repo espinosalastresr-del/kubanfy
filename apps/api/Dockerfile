@@ -18,7 +18,11 @@ FROM base AS builder
 RUN python -m venv /app/.venv
 COPY pyproject.toml README.md ./
 COPY app ./app
-RUN pip install --upgrade pip && pip install .
+RUN python -m pip install \
+    --disable-pip-version-check \
+    --retries 10 \
+    --timeout 120 \
+    .
 
 FROM base AS runtime
 COPY --from=builder /app/.venv /app/.venv
