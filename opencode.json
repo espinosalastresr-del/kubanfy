@@ -1,0 +1,49 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "default_agent": "build",
+  "subagent_depth": 1,
+  "permission": {
+    "edit": "allow",
+    "bash": "ask",
+    "webfetch": "allow",
+    "websearch": "ask",
+    "skill": "allow",
+    "external_directory": "ask"
+  },
+  "agent": {
+    "architect": {
+      "mode": "subagent",
+      "description": "Analiza arquitectura, dependencias y diseña planes de cambio sin modificar archivos.",
+      "permission": {
+        "edit": "deny",
+        "bash": "ask"
+      }
+    },
+    "backend": {
+      "mode": "subagent",
+      "description": "Implementa y prueba funcionalidades de FastAPI, Pydantic, SQLAlchemy y PostgreSQL."
+    },
+    "frontend": {
+      "mode": "subagent",
+      "description": "Implementa interfaces móviles/web, PWA, accesibilidad y experiencia de reproducción."
+    },
+    "infrastructure": {
+      "mode": "subagent",
+      "description": "Analiza y mantiene Cloudflare, Render, Docker y CI/CD; despliegues siempre con aprobación."
+    },
+    "security-reviewer": {
+      "mode": "subagent",
+      "description": "Auditoría de seguridad de solo lectura, con hallazgos priorizados.",
+      "permission": {
+        "edit": "deny",
+        "bash": {
+          "*": "ask",
+          "git status*": "allow",
+          "git diff*": "allow",
+          "git log*": "allow"
+        },
+        "websearch": "ask"
+      }
+    }
+  }
+}
