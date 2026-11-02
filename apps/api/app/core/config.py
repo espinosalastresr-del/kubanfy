@@ -265,7 +265,14 @@ class Settings(BaseSettings):
 
     @property
     def cors_origins_list(self) -> list[str]:
-        return [o.strip() for o in self.cors_origins.split(",") if o.strip()]
+        origins = [o.strip() for o in self.cors_origins.split(",") if o.strip()]
+        # The staging frontend uses the account-scoped Workers hostname.
+        # Keep this explicit allowlist entry even if an older deployment
+        # still carries the legacy workers.dev CORS variable.
+        staging_web_origin = "https://kubanfy-web-staging.globumlatinmusic.workers.dev"
+        if self.environment == Environment.STAGING and staging_web_origin not in origins:
+            origins.append(staging_web_origin)
+        return origins
 
     @property
     def trusted_proxy_ip_list(self) -> list[str]:
