@@ -7,6 +7,7 @@ postgresql:// connection strings to the asyncpg SQLAlchemy dialect.
 from __future__ import annotations
 
 import asyncio
+import os
 from logging.config import fileConfig
 
 from alembic import context
@@ -34,7 +35,9 @@ if config.config_file_name is not None:
 target_metadata = Base.metadata
 
 settings = get_settings()
-database_url = settings.database_url
+# Prefer a dedicated direct/admin connection for migrations when provided.
+# DATABASE_URL remains the application runtime connection (Neon may use -pooler).
+database_url = os.environ.get("DATABASE_URL_SYNC") or settings.database_url
 if database_url.startswith("postgresql://"):
     database_url = "postgresql+asyncpg://" + database_url[len("postgresql://"):]
 elif database_url.startswith("postgres://"):
