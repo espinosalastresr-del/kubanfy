@@ -108,3 +108,21 @@ def test_staging_local_storage_accepts_https() -> None:
         public_base_url="https://staging.example.test",
     )
     assert s.staging_use_local_storage is True
+
+def test_staging_cors_includes_canonical_cloudflare_web_origin() -> None:
+    s = Settings(
+        environment=Environment.STAGING,
+        cors_origins="https://legacy.example.workers.dev",
+    )
+    assert s.cors_origins_list == [
+        "https://legacy.example.workers.dev",
+        "https://kubanfy-web-staging.globumlatinmusic.workers.dev",
+    ]
+
+
+def test_non_staging_cors_does_not_add_staging_origin() -> None:
+    s = Settings(
+        environment=Environment.DEVELOPMENT,
+        cors_origins="http://localhost:3000",
+    )
+    assert s.cors_origins_list == ["http://localhost:3000"]
