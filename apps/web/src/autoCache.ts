@@ -132,15 +132,16 @@ export class AutoCacheSession {
         return;
       }
       if (encrypted.byteLength < 8) return;
+      // Copy into a standalone ArrayBuffer; the source view may be backed by
+      // SharedArrayBuffer and IndexedDB records require an ArrayBuffer.
+      const encryptedCopy = new Uint8Array(encrypted.byteLength);
+      encryptedCopy.set(encrypted);
       await putChunk({
         id: `${this.trackId}:${this.quality}:${index}`,
         trackId: this.trackId,
         quality: this.quality,
         chunkIndex: index,
-        encryptedBytes: encrypted.buffer.slice(
-          encrypted.byteOffset,
-          encrypted.byteOffset + encrypted.byteLength,
-        ),
+        encryptedBytes: encryptedCopy.buffer,
         byteLength: encrypted.byteLength,
         verified: true,
         downloadedAt: Date.now(),
