@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { addFavorite, addTrackToPlaylist, clearTokens, discoveryHome, getTrackDetail, listFavorites, listPlaylists, login, me, removeFavorite, searchTracks } from "./api";
+import { addFavorite, addTrackToPlaylist, clearTokens, discoveryHome, getTrackDetail, listFavorites, listMyEntitlements, listPlaylists, login, me, removeFavorite, searchTracks } from "./api";
 import { KbyPlayer } from "./player";
 import { QueueSheet } from "./QueueSheet";
 import { buildDefaultQueue, mergeQueueMeta, trackArtistsLabel, type QueueTrackMeta } from "./queue";
@@ -18,6 +18,8 @@ import { ForgotPasswordView } from "./ForgotPasswordView";
 import { ResetPasswordView } from "./ResetPasswordView";
 import { DiagnosticsPanel } from "./DiagnosticsPanel";
 import { AccountPanel } from "./AccountPanel";
+import { EntitlementsPanel } from "./EntitlementsPanel";
+import { planTierFromEntitlements } from "./entitlements";
 
 function HeartIcon({ filled }: { filled: boolean }) {
   return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20.8 8.7c0 5.4-8.8 10.3-8.8 10.3S3.2 14.1 3.2 8.7A4.7 4.7 0 0 1 12 6.2a4.7 4.7 0 0 1 8.8 2.5Z" fill={filled ? "currentColor" : "none"} /></svg>;
@@ -69,7 +71,13 @@ export default function App() {
       try {
         const u = await me();
         setUser(u);
-        const tier = tierFromUser(u);
+        let tier = tierFromUser(u);
+        try {
+          const ents = await listMyEntitlements();
+          tier = planTierFromEntitlements(ents);
+        } catch {
+          /* keep tierFromUser fallback */
+        }
         setPlanTier(tier);
         player.setPlanTier(tier);
       } catch {
@@ -120,7 +128,13 @@ export default function App() {
     await login(email, password);
     const u = await me();
     setUser(u);
-    const tier = tierFromUser(u);
+    let tier = tierFromUser(u);
+    try {
+      const ents = await listMyEntitlements();
+      tier = planTierFromEntitlements(ents);
+    } catch {
+      /* fallback */
+    }
     setPlanTier(tier);
     player.setPlanTier(tier);
   }
@@ -375,6 +389,14 @@ export default function App() {
               onLoggedOut={() => {
                 clearTokens();
                 setUser(null);
+              }}
+            />
+            <EntitlementsPanel
+              tier={planTier}
+              setStatus={setStatus}
+              onTierResolved={(t) => {
+                setPlanTier(t);
+                player.setPlanTier(t);
               }}
             />
           </>
