@@ -5,6 +5,8 @@ import {
   setSessionPositionState, type SessionTrackMeta,
 } from "./mediaSession";
 import { isTrackReadyOffline, loadOfflineTrackMeta, readOfflineChunk } from "./offlinePlayback";
+import { AutoCacheSession, type PlanTier } from "./autoCache";
+import { touchTrackAccess } from "./offlineDb";
 
 /** KBY2 fMP4 MSE player: online Range + offline IndexedDB. Media Session + iOS playsinline. */
 export class KbyPlayer {
@@ -26,6 +28,9 @@ export class KbyPlayer {
   private audioMounted = false;
   private sessionBound = false;
   private offlineQuality = "low";
+  private autoCache: AutoCacheSession | null = null;
+  private planTier: PlanTier = "free";
+  private currentTrackMeta: { title?: string; duration?: number | null; artworkUrl?: string | null } = {};
 
   onState?: (s: string) => void;
   onProgress?: (t: number, d: number) => void;
@@ -60,6 +65,16 @@ export class KbyPlayer {
 
   async playOffline(trackId: string) { return this.loadOffline(trackId); }
 
+  /** App sets entitlement tier for auto-cache policy (guest disables). */
+  setPlanTier(tier: PlanTier) {
+    this.planTier = tier;
+  }
+
+  /** Optional metadata for auto-cache record labels. */
+  setTrackInfo(info: { title?: string; duration?: number | null; artworkUrl?: string | null }) {
+    this.currentTrackMeta = info || {};
+  }
+
   togglePlayback() {
     if (this.audio.paused) return this.audio.play();
     this.audio.pause();
@@ -78,6 +93,8 @@ export class KbyPlayer {
   updatePositionState() { this.syncPositionState(); }
 
   stop(clearMediaSession = true) {
+    this.autoCache?.cancel();
+    this.autoCache = null;
     if (this.timer) window.clearInterval(this.timer);
     this.timer = null;
     this.session = null;
@@ -119,6 +136,7 @@ export class KbyPlayer {
     this.ensureAudioInDom();
     this.ensureSessionActions();
     this.onState?.("offline…");
+    void touchTrackAccess(trackId).catch(() => {});
     const { track, header, headerBytes, key } = await loadOfflineTrackMeta(trackId);
     this.header = header;
     this.headerEnd = track.headerEnd;
@@ -171,6 +189,23 @@ export class KbyPlayer {
     this.header = parsed.header;
     this.headerEnd = parsed.headerEnd;
     this.headerBytes = head.slice(9, this.headerEnd);
+
+    this.autoCache?.cancel();
+    this.autoCache = await AutoCacheSession.begin({
+      trackId,
+      title: this.currentTrackMeta.title || "Canción",
+      duration: this.currentTrackMeta.duration ?? null,
+      quality,
+      contentHash: meta.content_hash,
+      kbyKey: meta.kby_key,
+      assetVersion: meta.asset_version ?? 1,
+      header: this.header,
+      headerEnd: this.headerEnd,
+      headerJsonBytes: this.headerBytes,
+      artworkUrl: this.currentTrackMeta.artworkUrl ?? null,
+      tier: this.planTier,
+    });
+
     await this.openMse();
     this.onState?.("descifrando…");
     const ps = await startPlayback(trackId, quality);
@@ -188,6 +223,9 @@ export class KbyPlayer {
       const response = await fetch(this.url, { headers: { Range: `bytes=${start}-${end}` } });
       if (!response.ok) throw new Error(`KBY2 chunk HTTP ${response.status}`);
       const record = new Uint8Array(await response.arrayBuffer());
+      if (this.autoCache) {
+        await this.autoCache.storeChunk(this.nextChunk, record);
+      }
       await this.feedPlaintext(await decryptChunk(record, this.headerBytes, this.nextChunk, this.key));
       this.nextChunk += 1;
       this.onState?.(`cargando ${Math.round((this.nextChunk / this.header.chunk_count) * 100)}%`);
@@ -197,6 +235,10 @@ export class KbyPlayer {
       }
     }
     this.endStream();
+    if (this.autoCache) {
+      await this.autoCache.finalize();
+      this.autoCache = null;
+    }
     this.onState?.("listo");
   }
 
