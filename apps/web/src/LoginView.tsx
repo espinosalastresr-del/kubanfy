@@ -13,7 +13,7 @@ function LogoMark() {
   return <div className="logo-mark" aria-hidden="true"><span /><span /><span /></div>;
 }
 
-export function LoginView({ onLogin, onRegister, initialEmail }: { onLogin: (email: string, password: string) => Promise<void>; onRegister: () => void; initialEmail: string }) {
+export function LoginView({ onLogin, onRegister, onForgot, initialEmail }: { onLogin: (email: string, password: string) => Promise<void>; onRegister: () => void; onForgot?: () => void; initialEmail: string }) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -121,7 +121,7 @@ export function LoginView({ onLogin, onRegister, initialEmail }: { onLogin: (ema
           {notice && <div className="form-status is-notice">{notice}</div>}
 
           <div className="form-meta">
-            <a href="#forgot">¿Olvidaste tu contraseña?</a>
+            <a href="#forgot" onClick={e => { e.preventDefault(); onForgot?.(); }}>¿Olvidaste tu contraseña?</a>
           </div>
 
           <button className={`primary-button login-button${busy ? " is-loading" : ""}`} type="submit" disabled={busy} aria-busy={busy}>
