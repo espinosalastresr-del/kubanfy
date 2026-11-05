@@ -56,8 +56,8 @@ def test_other_query_params_preserved() -> None:
     qs = parse_qs(urlparse(out).query)
     assert qs.get("ssl") == ["require"]
     assert "sslmode" not in qs
-    assert qs.get("channel_binding") == ["require"]
-    assert "options" in qs
+    assert "channel_binding" not in qs
+    assert qs.get("options") == ["-c search_path=public"]
 
 
 def test_postgres_scheme_rewritten() -> None:
