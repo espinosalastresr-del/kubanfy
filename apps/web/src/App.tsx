@@ -11,6 +11,9 @@ import { getTrack as getOfflineTrack } from "./offlineDb";
 import { subscribeConnectivity, isOnline } from "./connectivity";
 import { applyServiceWorkerUpdate } from "./swRegister";
 import { tierFromUser } from "./autoCache";
+import { SettingsPanel } from "./SettingsPanel";
+import { isDataSaverEnabled, resolveStreamingQuality } from "./dataSaver";
+import type { PlanTier } from "./cachePolicy";
 
 function HeartIcon({ filled }: { filled: boolean }) {
   return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20.8 8.7c0 5.4-8.8 10.3-8.8 10.3S3.2 14.1 3.2 8.7A4.7 4.7 0 0 1 12 6.2a4.7 4.7 0 0 1 8.8 2.5Z" fill={filled ? "currentColor" : "none"} /></svg>;
@@ -43,6 +46,8 @@ export default function App() {
   const [queueMeta, setQueueMeta] = useState<Record<string, QueueTrackMeta>>({});
   const [queueOpen, setQueueOpen] = useState(false);
   const [playlistMenuTrack, setPlaylistMenuTrack] = useState<string | null>(null);
+  const [planTier, setPlanTier] = useState<PlanTier>("free");
+  const [dataSaver, setDataSaver] = useState(isDataSaverEnabled());
   const playerRef = useRef(new KbyPlayer());
   const player = playerRef.current;
 
@@ -51,9 +56,12 @@ export default function App() {
       try {
         const u = await me();
         setUser(u);
-        player.setPlanTier(tierFromUser(u));
+        const tier = tierFromUser(u);
+        setPlanTier(tier);
+        player.setPlanTier(tier);
       } catch {
         clearTokens();
+        setPlanTier("guest");
         player.setPlanTier("guest");
       }
     })();
@@ -63,10 +71,13 @@ export default function App() {
     setOnline(isOnline());
     const unsub = subscribeConnectivity(setOnline);
     const onUpd = () => setSwUpdate(true);
+    const onSaver = () => setDataSaver(isDataSaverEnabled());
     window.addEventListener("kubanfy:sw-update", onUpd);
+    window.addEventListener("kubanfy:data-saver", onSaver);
     return () => {
       unsub();
       window.removeEventListener("kubanfy:sw-update", onUpd);
+      window.removeEventListener("kubanfy:data-saver", onSaver);
     };
   }, []);
 
@@ -96,7 +107,9 @@ export default function App() {
     await login(email, password);
     const u = await me();
     setUser(u);
-    player.setPlanTier(tierFromUser(u));
+    const tier = tierFromUser(u);
+    setPlanTier(tier);
+    player.setPlanTier(tier);
   }
 
   async function play(id: string, requestedQueue?: string[]) {
@@ -139,7 +152,8 @@ export default function App() {
         duration: metadata?.duration ?? null,
         artworkUrl: metadata?.artwork_url || metadata?.artwork || null,
       });
-      await player.playTrack(id);
+      const q = resolveStreamingQuality(planTier, isDataSaverEnabled(), "medium");
+      await player.playTrack(id, q);
       setStatus("");
       setPlayerExpanded(false);
     } catch (e) {
@@ -311,6 +325,7 @@ export default function App() {
               setStatus={setStatus}
             />
             <OfflinePanel setStatus={setStatus} onPlayOnline={(id) => void play(id)} />
+            <SettingsPanel tier={planTier} setStatus={setStatus} />
           </>
         )}
       </main>
@@ -354,7 +369,7 @@ export default function App() {
           )}
           {playerExpanded && !queueOpen && (
             <div className="player-expanded-details">
-              <span>Reproduciendo en KubanFy</span>
+              <span>Reproduciendo en KubanFy{dataSaver ? " · Ahorro de datos" : ""}</span>
               <strong>{activeTrack?.title}</strong>
               <span>{activeTrack?.album || "Tu música, a tu manera"}</span>
             </div>
