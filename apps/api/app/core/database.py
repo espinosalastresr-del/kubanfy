@@ -28,15 +28,14 @@ class Base(DeclarativeBase):
 def normalize_asyncpg_url(database_url: str) -> str:
     """Return a SQLAlchemy URL suitable for the asyncpg dialect.
 
-    - Rewrites ``postgresql://`` / ``postgres://`` to ``postgresql+asyncpg://``.
-    - Converts query param ``sslmode`` → ``ssl`` (same value) because asyncpg
-      rejects the libpq-style ``sslmode`` keyword.
-    - Does not mutate the original settings value; call sites pass a copy.
-    - Leaves ``ssl`` untouched if already present; drops redundant ``sslmode``.
-    - Preserves all other query parameters.
+    - Rewrites PostgreSQL/libpq URL schemes to postgresql+asyncpg://.
+    - Converts sslmode to asyncpg ssl without weakening TLS.
+    - Removes channel_binding: it is a libpq option and asyncpg.connect()
+      does not accept it. asyncpg negotiates supported SCRAM/TLS behavior itself.
+    - Preserves other query parameters and does not mutate application settings.
 
-    Sync / psycopg URLs (``DATABASE_URL_SYNC``) must NOT be passed through this
-    helper so that ``sslmode`` remains valid for libpq-based drivers.
+    Do not pass DATABASE_URL_SYNC through this helper; libpq options must remain
+    available to the synchronous driver used by Alembic.
     """
     url = database_url
     if url.startswith("postgresql+asyncpg://"):
@@ -55,8 +54,12 @@ def normalize_asyncpg_url(database_url: str) -> str:
     sslmode_value: str | None = None
     has_ssl = False
     new_pairs: list[tuple[str, str]] = []
+
     for key, value in pairs:
         lowered = key.lower()
+        if lowered == "channel_binding":
+            # libpq-only option; asyncpg.connect() raises TypeError for it.
+            continue
         if lowered == "sslmode":
             sslmode_value = value
             continue
