@@ -122,15 +122,16 @@ export async function downloadKby2ToOffline(opts: {
       throw new Error(`Chunk ${index} vacío o corrupto`);
     }
 
+    // IndexedDB stores an ArrayBuffer. Copy the exact view bytes so a
+    // SharedArrayBuffer-backed response cannot leak into the stored record.
+    const encryptedCopy = new Uint8Array(encrypted.byteLength);
+    encryptedCopy.set(encrypted);
     await putChunk({
       id: `${opts.trackId}:${opts.quality}:${index}`,
       trackId: opts.trackId,
       quality: opts.quality,
       chunkIndex: index,
-      encryptedBytes: encrypted.buffer.slice(
-        encrypted.byteOffset,
-        encrypted.byteOffset + encrypted.byteLength,
-      ),
+      encryptedBytes: encryptedCopy.buffer,
       byteLength: encrypted.byteLength,
       verified: true,
       downloadedAt: Date.now(),
