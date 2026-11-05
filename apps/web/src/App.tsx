@@ -58,6 +58,17 @@ export default function App() {
   const playerRef = useRef(new KbyPlayer());
   const player = playerRef.current;
 
+  // Match the real /v1/discovery/home response. The API exposes trending,
+  // new_releases and top_50_country (not the legacy featured/recent fields).
+  const discoveryTracks = [
+    ...(home?.trending || []),
+    ...(home?.new_releases || []),
+    ...(home?.top_50_country || []),
+  ].filter((track: any, index: number, rows: any[]) => {
+    const id = String(track?.track_id || track?.id || "");
+    return id && rows.findIndex((row) => String(row?.track_id || row?.id || "") === id) === index;
+  });
+
   const [resetToken, setResetToken] = useState<string | null>(() => {
     try {
       const p = new URLSearchParams(window.location.search);
@@ -171,7 +182,7 @@ export default function App() {
           /* ignore */
         }
       }
-      const known = [...(home?.featured || []), ...(home?.recent || []), ...searchResults, ...favorites];
+      const known = [...discoveryTracks, ...searchResults, ...favorites];
       const queue = requestedQueue?.length ? requestedQueue : buildDefaultQueue(id, known);
       setQueueIds(queue);
       setQueueMeta(prev => mergeQueueMeta(prev, [...known, metadata]));
@@ -301,7 +312,7 @@ export default function App() {
     );
   }
 
-  const tracksHome = [...(home?.featured || []), ...(home?.recent || [])];
+  const tracksHome = discoveryTracks;
 
   return (
     <div className="app-shell">
