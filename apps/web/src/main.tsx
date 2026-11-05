@@ -3,6 +3,9 @@ import { createRoot } from "react-dom/client";
 import App from "./App";
 import "./styles.css";
 import { registerServiceWorker } from "./swRegister";
+import { initInstallPromptCapture } from "./installPrompt";
+
+initInstallPromptCapture();
 
 void registerServiceWorker({
   onUpdateAvailable: () => {
