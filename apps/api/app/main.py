@@ -131,7 +131,7 @@ def create_app() -> FastAPI:
                 "error": {
                     "code": "VALIDATION_ERROR",
                     "message": "Request validation failed",
-                    "details": {"errors": exc.errors()},
+                    "details": {"errors": exp.errors()},
                 }
             },
         )
@@ -180,6 +180,9 @@ def create_app() -> FastAPI:
                 checks["database"] = "ok"
                 DB_UP.set(1)
         except Exception as exc:
+            # Full traceback in server logs only; client still gets type name.
+            # Do not log connection strings, credentials, or query parameters.
+            logger.exception("database_readiness_check_failed")
             checks["database"] = f"error: {type(exc).__name__}"
             overall = "not_ready"
             DB_UP.set(0)
