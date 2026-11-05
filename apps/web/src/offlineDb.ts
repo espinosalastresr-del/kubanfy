@@ -14,7 +14,7 @@ export type OfflineTrackRecord = {
   /** Base64 of KBY2 JSON header bytes (after MAGIC+VERSION+LEN). Required for offline decrypt AAD. */
   headerBytesB64?: string;
   artworkUrl?: string | null;
-  source: "bootstrap" | "premium";
+  source: "bootstrap" | "premium" | "auto";
   status: "partial" | "ready" | "failed";
   totalChunks: number;
   completedChunks: number;
@@ -45,7 +45,7 @@ export type OfflineLicenseRecord = {
   contentHash: string;
   assetVersion: number;
   deviceId: string;
-  source: "bootstrap" | "premium";
+  source: "bootstrap" | "premium" | "auto";
   updatedAt: number;
 };
 
