@@ -8,6 +8,8 @@ import { RegisterView } from "./RegisterView";
 import { LibraryPanel } from "./LibraryPanel";
 import { OfflinePanel } from "./OfflinePanel";
 import { getTrack as getOfflineTrack } from "./offlineDb";
+import { subscribeConnectivity, isOnline } from "./connectivity";
+import { applyServiceWorkerUpdate } from "./swRegister";
 
 function HeartIcon({ filled }: { filled: boolean }) {
   return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20.8 8.7c0 5.4-8.8 10.3-8.8 10.3S3.2 14.1 3.2 8.7A4.7 4.7 0 0 1 12 6.2a4.7 4.7 0 0 1 8.8 2.5Z" fill={filled ? "currentColor" : "none"} /></svg>;
@@ -24,6 +26,8 @@ export default function App() {
   const [registeredEmail, setRegisteredEmail] = useState("");
   const [tab, setTab] = useState<"home" | "search" | "library">("home");
   const [status, setStatus] = useState("");
+  const [online, setOnline] = useState(isOnline());
+  const [swUpdate, setSwUpdate] = useState(false);
   const [home, setHome] = useState<any>(null);
   const [searchQ, setSearchQ] = useState("");
   const [searchResults, setSearchResults] = useState<any[]>([]);
@@ -49,6 +53,17 @@ export default function App() {
         clearTokens();
       }
     })();
+  }, []);
+
+  useEffect(() => {
+    setOnline(isOnline());
+    const unsub = subscribeConnectivity(setOnline);
+    const onUpd = () => setSwUpdate(true);
+    window.addEventListener("kubanfy:sw-update", onUpd);
+    return () => {
+      unsub();
+      window.removeEventListener("kubanfy:sw-update", onUpd);
+    };
   }, []);
 
   useEffect(() => {
@@ -206,6 +221,19 @@ export default function App() {
       </header>
 
       {status && <p className="status-banner">{status}</p>}
+      {!online && (
+        <p className="status-banner" style={{ background: "rgba(255,180,80,.15)", color: "var(--accent-2, #f0c674)" }}>
+          Sin conexión — puedes reproducir descargas offline listas
+        </p>
+      )}
+      {swUpdate && (
+        <p className="status-banner" style={{ background: "rgba(141,225,208,.12)", color: "var(--accent-2)" }}>
+          Nueva versión disponible{" "}
+          <button className="secondary-button" style={{ marginLeft: 8 }} onClick={() => applyServiceWorkerUpdate()}>
+            Actualizar
+          </button>
+        </p>
+      )}
 
       <main className="main-scroll">
         {tab === "home" && (
