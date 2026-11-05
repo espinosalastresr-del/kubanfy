@@ -6,6 +6,7 @@ import { buildDefaultQueue, mergeQueueMeta, trackArtistsLabel, type QueueTrackMe
 import { LoginView } from "./LoginView";
 import { RegisterView } from "./RegisterView";
 import { LibraryPanel } from "./LibraryPanel";
+import { OfflinePanel } from "./OfflinePanel";
 
 function HeartIcon({ filled }: { filled: boolean }) {
   return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20.8 8.7c0 5.4-8.8 10.3-8.8 10.3S3.2 14.1 3.2 8.7A4.7 4.7 0 0 1 12 6.2a4.7 4.7 0 0 1 8.8 2.5Z" fill={filled ? "currentColor" : "none"} /></svg>;
@@ -209,7 +210,7 @@ export default function App() {
             <div className="search-input">
               <SearchIcon />
               <input value={searchQ} onChange={e => setSearchQ(e.target.value)} placeholder="Buscar canciones"
-                onKeyDown={e => { if (e.key === "Enter") void searchTracks(searchQ).then(setSearchResults).catch(err => setStatus(String(err))); }} />
+                onKeyDown={e => { if (e.key === "Enter") void searchTracks(searchQ).then(setSearchResults).catch(err => setStatus(String(err)); }} />
             </div>
             <div className="track-grid">
               {searchResults.map((t: any) => {
@@ -226,15 +227,18 @@ export default function App() {
         )}
 
         {tab === "library" && (
-          <LibraryPanel
-            playlists={playlists}
-            setPlaylists={setPlaylists}
-            favorites={favorites}
-            favoriteIds={favoriteIds}
-            onToggleFavorite={(id) => void toggleFavorite(id)}
-            onPlay={(id, queue) => void play(id, queue)}
-            setStatus={setStatus}
-          />
+          <>
+            <LibraryPanel
+              playlists={playlists}
+              setPlaylists={setPlaylists}
+              favorites={favorites}
+              favoriteIds={favoriteIds}
+              onToggleFavorite={(id) => void toggleFavorite(id)}
+              onPlay={(id, queue) => void play(id, queue)}
+              setStatus={setStatus}
+            />
+            <OfflinePanel setStatus={setStatus} onPlayOnline={(id) => void play(id)} />
+          </>
         )}
       </main>
 
