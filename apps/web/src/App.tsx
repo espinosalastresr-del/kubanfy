@@ -5,6 +5,7 @@ import { QueueSheet } from "./QueueSheet";
 import { buildDefaultQueue, mergeQueueMeta, trackArtistsLabel, type QueueTrackMeta } from "./queue";
 import { LoginView } from "./LoginView";
 import { RegisterView } from "./RegisterView";
+import { LibraryPanel } from "./LibraryPanel";
 
 function HeartIcon({ filled }: { filled: boolean }) {
   return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20.8 8.7c0 5.4-8.8 10.3-8.8 10.3S3.2 14.1 3.2 8.7A4.7 4.7 0 0 1 12 6.2a4.7 4.7 0 0 1 8.8 2.5Z" fill={filled ? "currentColor" : "none"} /></svg>;
@@ -26,6 +27,7 @@ export default function App() {
   const [searchResults, setSearchResults] = useState<any[]>([]);
   const [playlists, setPlaylists] = useState<any[]>([]);
   const [favorites, setFavorites] = useState<any[]>([]);
+  const [favoriteIds, setFavoriteIds] = useState<Set<string>>(new Set());
   const [activeTrackId, setActiveTrackId] = useState<string | null>(null);
   const [activeTrack, setActiveTrack] = useState<any>(null);
   const [isPlaying, setIsPlaying] = useState(false);
@@ -34,8 +36,6 @@ export default function App() {
   const [queueOpen, setQueueOpen] = useState(false);
   const [queueMeta, setQueueMeta] = useState<Record<string, QueueTrackMeta>>({});
   const [playlistMenuTrack, setPlaylistMenuTrack] = useState<string | null>(null);
-  const [selectedPlaylist, setSelectedPlaylist] = useState<any>(null);
-  const [playlistTracks, setPlaylistTracks] = useState<any[]>([]);
   const playerRef = useRef<KbyPlayer | null>(null);
   if (!playerRef.current) playerRef.current = new KbyPlayer();
   const player = playerRef.current;
@@ -59,6 +59,7 @@ export default function App() {
         setHome(h);
         setPlaylists(pls || []);
         setFavorites(favs || []);
+        setFavoriteIds(new Set((favs || []).map((t: any) => String(t?.track_id || t?.id || "")).filter(Boolean)));
       } catch (e) {
         setStatus(e instanceof Error ? e.message : "Error al cargar");
       }
@@ -88,7 +89,6 @@ export default function App() {
         ...(home?.recent || []),
         ...searchResults,
         ...favorites,
-        ...playlistTracks,
       ];
       const queue = requestedQueue?.length ? requestedQueue : buildDefaultQueue(id, known);
       setQueueIds(queue);
@@ -143,6 +143,27 @@ export default function App() {
     const base = index >= 0 ? index : 0;
     const nextIndex = (base + direction + queueIds.length) % queueIds.length;
     void play(queueIds[nextIndex], queueIds);
+  }
+
+  async function toggleFavorite(trackId: string) {
+    if (!trackId) return;
+    const was = favoriteIds.has(trackId);
+    try {
+      if (was) {
+        await removeFavorite(trackId);
+        setFavoriteIds(prev => { const n = new Set(prev); n.delete(trackId); return n; });
+        setFavorites(prev => prev.filter(t => String(t?.track_id || t?.id || "") !== trackId));
+        setStatus("Quitada de favoritos");
+      } else {
+        await addFavorite(trackId);
+        setFavoriteIds(prev => new Set(prev).add(trackId));
+        const detail = await getTrackDetail(trackId).catch(() => ({ id: trackId, track_id: trackId, title: "Canción" }));
+        setFavorites(prev => [...prev, detail]);
+        setStatus("Añadida a favoritos");
+      }
+    } catch (e) {
+      setStatus(e instanceof Error ? e.message : "No se pudo actualizar favoritos");
+    }
   }
 
   async function shareLink(title: string, path: string) {
@@ -229,42 +250,15 @@ export default function App() {
         )}
 
         {tab === "library" && (
-          <section>
-            <h2>Playlists</h2>
-            <div className="playlist-list">
-              {playlists.map((pl: any) => (
-                <button key={pl.id} className="playlist-card glass" onClick={() => void (async () => {
-                  setSelectedPlaylist(pl);
-                  const tracks = await listPlaylistTracks(pl.id);
-                  setPlaylistTracks(tracks || []);
-                })()}>
-                  <strong>{pl.name}</strong>
-                </button>
-              ))}
-            </div>
-            {selectedPlaylist && (
-              <div className="playlist-detail">
-                <h3>{selectedPlaylist.name}</h3>
-                {playlistTracks.map((t: any) => {
-                  const id = t.track_id || t.id;
-                  return (
-                    <button key={id} className="track-row" onClick={() => void play(id, playlistTracks.map((x: any) => x.track_id || x.id))}>
-                      {t.title}
-                    </button>
-                  );
-                })}
-              </div>
-            )}
-            <h2>Favoritos</h2>
-            {favorites.map((t: any) => {
-              const id = t.track_id || t.id;
-              return (
-                <button key={id} className="track-row" onClick={() => void play(id)}>
-                  {t.title}
-                </button>
-              );
-            })}
-          </section>
+          <LibraryPanel
+            playlists={playlists}
+            setPlaylists={setPlaylists}
+            favorites={favorites}
+            favoriteIds={favoriteIds}
+            onToggleFavorite={(id) => void toggleFavorite(id)}
+            onPlay={(id, queue) => void play(id, queue)}
+            setStatus={setStatus}
+          />
         )}
       </main>
 
@@ -280,6 +274,7 @@ export default function App() {
             <button className="play-button" onClick={() => { const r = player.togglePlayback(); if (r instanceof Promise) void r.catch(() => setStatus("Pulsa reproducir")); }} aria-label={isPlaying ? "Pausar" : "Reproducir"}>{isPlaying ? "Ⅱ" : "▶"}</button>
             <button className="icon-button" onClick={() => nextTrack(1)} aria-label="Siguiente" disabled={queueIds.length === 0}>▶|</button>
             <button className={`icon-button${queueOpen ? " is-active" : ""}`} onClick={() => { setQueueOpen(v => !v); setPlaylistMenuTrack(null); }} aria-label={queueOpen ? "Cerrar cola" : "Abrir cola"} aria-expanded={queueOpen}><QueueIcon /></button>
+            <button className={`icon-button favorite-button${favoriteIds.has(activeTrackId) ? " is-active" : ""}`} onClick={() => void toggleFavorite(activeTrackId)} aria-label={favoriteIds.has(activeTrackId) ? "Quitar de favoritos" : "Añadir a favoritos"}><HeartIcon filled={favoriteIds.has(activeTrackId)} /></button>
             <button className="icon-button" onClick={() => setPlaylistMenuTrack(playlistMenuTrack === activeTrackId ? null : activeTrackId)} aria-label="Añadir a playlist"><PlusIcon /></button>
             <button className="icon-button" onClick={() => void shareLink(activeTrack?.title || "KubanFy", `/?track=${encodeURIComponent(activeTrackId)}`)} aria-label="Compartir"><ShareIcon /></button>
             <button className="player-close" onClick={() => { player.stop(); setActiveTrackId(null); setActiveTrack(null); setQueueOpen(false); }} aria-label="Cerrar">×</button>
