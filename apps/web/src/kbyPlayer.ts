@@ -19,7 +19,7 @@ export class KbyPlayer {
   private nextChunk = 0;
   private header: KbyHeader | null = null;
   private headerEnd = 0;
-  private headerBytes = new Uint8Array();
+  private headerBytes: Uint8Array<ArrayBufferLike> = new Uint8Array();
   private key = "";
   private url = "";
   private objectUrl = "";
