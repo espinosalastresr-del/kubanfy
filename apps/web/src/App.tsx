@@ -10,6 +10,7 @@ import { OfflinePanel } from "./OfflinePanel";
 import { getTrack as getOfflineTrack } from "./offlineDb";
 import { subscribeConnectivity, isOnline } from "./connectivity";
 import { applyServiceWorkerUpdate } from "./swRegister";
+import { tierFromUser } from "./autoCache";
 
 function HeartIcon({ filled }: { filled: boolean }) {
   return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20.8 8.7c0 5.4-8.8 10.3-8.8 10.3S3.2 14.1 3.2 8.7A4.7 4.7 0 0 1 12 6.2a4.7 4.7 0 0 1 8.8 2.5Z" fill={filled ? "currentColor" : "none"} /></svg>;
@@ -48,9 +49,12 @@ export default function App() {
   useEffect(() => {
     void (async () => {
       try {
-        setUser(await me());
+        const u = await me();
+        setUser(u);
+        player.setPlanTier(tierFromUser(u));
       } catch {
         clearTokens();
+        player.setPlanTier("guest");
       }
     })();
   }, []);
@@ -90,7 +94,9 @@ export default function App() {
 
   async function doLogin(email: string, password: string) {
     await login(email, password);
-    setUser(await me());
+    const u = await me();
+    setUser(u);
+    player.setPlanTier(tierFromUser(u));
   }
 
   async function play(id: string, requestedQueue?: string[]) {
@@ -127,6 +133,11 @@ export default function App() {
         artist: trackArtistsLabel(metadata) || "KubanFy",
         album: metadata?.album || undefined,
         artwork: metadata?.artwork_url || metadata?.artwork || null,
+      });
+      player.setTrackInfo({
+        title: metadata?.title || "Canción",
+        duration: metadata?.duration ?? null,
+        artworkUrl: metadata?.artwork_url || metadata?.artwork || null,
       });
       await player.playTrack(id);
       setStatus("");
