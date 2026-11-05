@@ -12,7 +12,6 @@ void registerServiceWorker({
     window.dispatchEvent(new CustomEvent("kubanfy:sw-update"));
   },
   onControlling: () => {
-    // New SW took control after SKIP_WAITING — soft reload once.
     window.location.reload();
   },
 });
