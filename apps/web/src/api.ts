@@ -359,3 +359,18 @@ export async function revokeSession(sessionId: string) {
 export async function logoutAll() {
   return request<void>("/v1/auth/logout-all", { method: "POST" });
 }
+
+export type EntitlementItem = {
+  id: string;
+  scope_type: string;
+  scope_id: string | null;
+  source: string;
+  status: string;
+  starts_at: string;
+  expires_at: string | null;
+  created_at: string;
+};
+
+export async function listMyEntitlements() {
+  return request<EntitlementItem[]>("/v1/entitlements/me");
+}
