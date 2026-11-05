@@ -14,6 +14,9 @@ import { tierFromUser } from "./autoCache";
 import { SettingsPanel } from "./SettingsPanel";
 import { isDataSaverEnabled, resolveStreamingQuality } from "./dataSaver";
 import type { PlanTier } from "./cachePolicy";
+import { ForgotPasswordView } from "./ForgotPasswordView";
+import { ResetPasswordView } from "./ResetPasswordView";
+import { DiagnosticsPanel } from "./DiagnosticsPanel";
 
 function HeartIcon({ filled }: { filled: boolean }) {
   return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20.8 8.7c0 5.4-8.8 10.3-8.8 10.3S3.2 14.1 3.2 8.7A4.7 4.7 0 0 1 12 6.2a4.7 4.7 0 0 1 8.8 2.5Z" fill={filled ? "currentColor" : "none"} /></svg>;
@@ -26,7 +29,7 @@ function LogoMark() { return <div className="logo-mark" aria-hidden="true"><span
 
 export default function App() {
   const [user, setUser] = useState<any>(null);
-  const [authMode, setAuthMode] = useState<"login" | "register">("login");
+  const [authMode, setAuthMode] = useState<"login" | "register" | "forgot">("login");
   const [registeredEmail, setRegisteredEmail] = useState("");
   const [tab, setTab] = useState<"home" | "search" | "library">("home");
   const [status, setStatus] = useState("");
@@ -50,6 +53,15 @@ export default function App() {
   const [dataSaver, setDataSaver] = useState(isDataSaverEnabled());
   const playerRef = useRef(new KbyPlayer());
   const player = playerRef.current;
+
+  const [resetToken, setResetToken] = useState<string | null>(() => {
+    try {
+      const p = new URLSearchParams(window.location.search);
+      return p.get("reset_token") || p.get("token") || null;
+    } catch {
+      return null;
+    }
+  });
 
   useEffect(() => {
     void (async () => {
@@ -224,11 +236,39 @@ export default function App() {
     }
   }
 
+  if (resetToken) {
+    return (
+      <ResetPasswordView
+        token={resetToken}
+        onDone={() => {
+          setResetToken(null);
+          try {
+            const u = new URL(window.location.href);
+            u.searchParams.delete("reset_token");
+            u.searchParams.delete("token");
+            window.history.replaceState({}, "", u.pathname + u.search);
+          } catch { /* ignore */ }
+          setAuthMode("login");
+        }}
+      />
+    );
+  }
+
   if (!user) {
     if (authMode === "register") {
       return <RegisterView onBack={() => setAuthMode("login")} onRegistered={(email) => { setRegisteredEmail(email); setAuthMode("login"); }} />;
     }
-    return <LoginView onLogin={doLogin} onRegister={() => setAuthMode("register")} initialEmail={registeredEmail} />;
+    if (authMode === "forgot") {
+      return <ForgotPasswordView initialEmail={registeredEmail} onBack={() => setAuthMode("login")} />;
+    }
+    return (
+      <LoginView
+        onLogin={doLogin}
+        onRegister={() => setAuthMode("register")}
+        onForgot={() => setAuthMode("forgot")}
+        initialEmail={registeredEmail}
+      />
+    );
   }
 
   const tracksHome = [...(home?.featured || []), ...(home?.recent || [])];
@@ -326,6 +366,7 @@ export default function App() {
             />
             <OfflinePanel setStatus={setStatus} onPlayOnline={(id) => void play(id)} />
             <SettingsPanel tier={planTier} setStatus={setStatus} />
+            <DiagnosticsPanel tier={planTier} setStatus={setStatus} />
           </>
         )}
       </main>
