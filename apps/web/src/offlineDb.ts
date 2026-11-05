@@ -11,6 +11,8 @@ export type OfflineTrackRecord = {
   contentHash: string;
   assetVersion: number;
   kbyKey: string;
+  /** Base64 of KBY2 JSON header bytes (after MAGIC+VERSION+LEN). Required for offline decrypt AAD. */
+  headerBytesB64?: string;
   artworkUrl?: string | null;
   source: "bootstrap" | "premium";
   status: "partial" | "ready" | "failed";
@@ -103,13 +105,15 @@ export async function listTracks(): Promise<OfflineTrackRecord[]> {
   });
 }
 
+/** Only tracks that are fully downloaded. Incomplete never appears here. */
 export async function listReadyTracks(): Promise<OfflineTrackRecord[]> {
   const all = await listTracks();
   return all.filter(
     (t) =>
       t.status === "ready" &&
       t.totalChunks > 0 &&
-      t.completedChunks === t.totalChunks,
+      t.completedChunks === t.totalChunks &&
+      Boolean(t.headerBytesB64),
   );
 }
 
@@ -163,6 +167,12 @@ export async function getLicense(trackId: string): Promise<OfflineLicenseRecord 
   });
 }
 
+export async function touchTrackAccess(trackId: string): Promise<void> {
+  const track = await getTrack(trackId);
+  if (!track) return;
+  await putTrack({ ...track, lastAccessedAt: Date.now() });
+}
+
 export async function removeOfflineTrack(trackId: string): Promise<void> {
   const db = await openDb();
   const tx = db.transaction(["tracks", "chunks", "licenses"], "readwrite");
@@ -178,4 +188,17 @@ export async function removeOfflineTrack(trackId: string): Promise<void> {
     }
   };
   await txDone(tx);
+}
+
+export function headerBytesFromB64(b64: string): Uint8Array {
+  const bin = atob(b64);
+  const out = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+  return out;
+}
+
+export function headerBytesToB64(bytes: Uint8Array): string {
+  let s = "";
+  for (let i = 0; i < bytes.length; i++) s += String.fromCharCode(bytes[i]);
+  return btoa(s);
 }
