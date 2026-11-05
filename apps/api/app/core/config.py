@@ -78,114 +78,191 @@ class Settings(BaseSettings):
     r2_region: str = "auto"
     r2_signed_url_expiry_seconds: int = 900
     # Public HTTPS origin used only for staging local-storage delivery.
-    storage_public_base_url: str = ""
+    public_base_url: str = ""
+    staging_use_local_storage: bool = False
 
     # -------------------------------------------------------------------------
-    # JWT / Auth
+    # Authentication
     # -------------------------------------------------------------------------
+    # Server-only secret used to derive per-asset .kby encryption keys.
+    kby_master_key: str = "dev-only-kby-master-key-change-in-production"
     jwt_secret_key: str = Field(
-        default="dev-only-change-me-in-production-min-32-chars",
+        default="dev-only-change-me-in-production-use-a-long-random-string",
         min_length=32,
     )
     jwt_algorithm: str = "HS256"
-    access_token_expire_minutes: int = 15
+    # Offline licenses use a separate asymmetric keypair. The private key is
+    # server-only; the public key may be embedded in the mobile client.
+    offline_license_algorithm: str = "RS256"
+    offline_license_private_key: str = ""
+    offline_license_public_key: str = ""
+    access_token_expire_minutes: int = 30
     refresh_token_expire_days: int = 30
     password_reset_token_expire_minutes: int = 60
+    email_verification_token_expire_hours: int = 48
 
     # -------------------------------------------------------------------------
-    # Offline licenses (RS256)
+    # Frontend (password-reset deep links, public web origin)
     # -------------------------------------------------------------------------
-    offline_license_algorithm: str = "RS256"
-    offline_license_private_key_pem: str = ""
-    offline_license_public_key_pem: str = ""
-    offline_license_ttl_hours: int = 72
+    frontend_base_url: str = "http://localhost:5173"
 
     # -------------------------------------------------------------------------
-    # CORS / Hosts
+    # Sessions / Devices
     # -------------------------------------------------------------------------
-    cors_origins: str = "http://localhost:5173,http://localhost:3000"
-    allowed_hosts: str = "*"
+    max_devices_per_user: int = 5
+    max_concurrent_sessions: int = 3
+    session_idle_timeout_minutes: int = 60
+    offline_license_expire_hours: int = 72
+
+    # -------------------------------------------------------------------------
+    # Cache / TTL (hours)
+    # -------------------------------------------------------------------------
+    cache_ttl_low_demand_hours: int = 36
+    cache_ttl_medium_demand_hours: int = 72
+    cache_ttl_high_demand_hours: int = 168
+    cache_single_flight_timeout_seconds: int = 120
+
+    # -------------------------------------------------------------------------
+    # Audio / Quality
+    # -------------------------------------------------------------------------
+    audio_low_bitrate_kbps: int = 128
+    audio_medium_bitrate_kbps: int = 320
+    qualified_play_seconds: int = 30
+    max_upload_size_mb: int = 100
+    allowed_audio_extensions: str = "mp3,flac,wav,m4a,aac,ogg"
+
+    # -------------------------------------------------------------------------
+    # Rate limits (requests per minute)
+    # -------------------------------------------------------------------------
+    rate_limit_login: int = 10
+    rate_limit_register: int = 5
+    rate_limit_search: int = 60
+    rate_limit_download: int = 20
+    rate_limit_preview: int = 30
+    rate_limit_analytics: int = 120
+    rate_limit_playback: int = 120
+    rate_limit_share: int = 30
+    rate_limit_upload: int = 10
+    # If true, sensitive rate limits allow traffic when Redis is unavailable.
+    # Production forces fail-closed unless explicitly changed in a future policy.
+    rate_limit_fail_open: bool = True
+
+    # -------------------------------------------------------------------------
+    # Geo
+    # -------------------------------------------------------------------------
+    default_country: str = "CU"
+    geoip_db_path: str = ""
     trusted_proxy_ips: str = ""
 
     # -------------------------------------------------------------------------
-    # Frontend (password-reset links, etc.)
+    # Feature flags
     # -------------------------------------------------------------------------
-    frontend_base_url: str = "http://localhost:5173"
+    feature_artist_publishing: bool = True
+    feature_monetization: bool = False
+    feature_google_play: bool = False
+    feature_maintenance_mode: bool = False
+    feature_provider_youtube: bool = False
+    maintenance_message: str = "KubanFy está en mantenimiento. Volvemos pronto."
 
     # -------------------------------------------------------------------------
     # Email
     # -------------------------------------------------------------------------
     email_provider: EmailProviderType = EmailProviderType.CONSOLE
-    email_from: str = "noreply@kubanfy.local"
-    resend_api_key: str = ""
-    brevo_api_key: str = ""
     smtp_host: str = ""
     smtp_port: int = 587
     smtp_user: str = ""
     smtp_password: str = ""
+    email_from: str = "noreply@kubanfy.local"
+    resend_api_key: str = ""
+    brevo_api_key: str = ""
 
     # -------------------------------------------------------------------------
-    # Rate limiting / anti-abuse
+    # Observability
     # -------------------------------------------------------------------------
-    rate_limit_enabled: bool = True
-    rate_limit_fail_open: bool = True  # staging-friendly; set false in production
+    log_level: str = "INFO"
+    log_format: str = "json"  # json | console
+    sentry_dsn: str = ""
 
     # -------------------------------------------------------------------------
-    # Audio / upload constraints
+    # Admin bootstrap
     # -------------------------------------------------------------------------
-    max_upload_bytes: int = 200 * 1024 * 1024
-    allowed_audio_extensions: str = "mp3,flac,wav,m4a,aac,ogg,opus"
-    allowed_image_extensions: str = "jpg,jpeg,png,webp"
+    super_admin_email: str = "admin@kubanfy.local"
+    super_admin_password: str = "change-me-immediately"
 
     # -------------------------------------------------------------------------
-    # Playback / KBY
+    # CORS
     # -------------------------------------------------------------------------
-    kby_default_version: int = 2
-    playback_session_ttl_seconds: int = 3600
-    playback_heartbeat_interval_seconds: int = 30
-
-    # -------------------------------------------------------------------------
-    # Maintenance
-    # -------------------------------------------------------------------------
-    maintenance_mode: bool = False
-    maintenance_message: str = "KubanFy is temporarily under maintenance."
+    allowed_hosts: str = Field(default="*", description="Comma-separated hosts or *")
+    cors_origins: str = "http://localhost:3000,http://localhost:3001,http://localhost:8081"
 
     # -------------------------------------------------------------------------
     # Validators
     # -------------------------------------------------------------------------
-    @field_validator("environment", mode="before")
+    @field_validator("jwt_secret_key")
     @classmethod
-    def parse_environment(cls, v: Any) -> Any:
-        if isinstance(v, str):
-            return v.lower()
-        return v
-
-    @field_validator("email_provider", mode="before")
-    @classmethod
-    def parse_email_provider(cls, v: Any) -> Any:
-        if isinstance(v, str):
-            return v.lower()
+    def validate_jwt_secret(cls, v: str, info: Any) -> str:
+        # In production we require a strong secret; in other envs we only warn
+        # via logging later if needed.
+        if len(v) < 32:
+            raise ValueError("JWT_SECRET_KEY must be at least 32 characters")
         return v
 
     @model_validator(mode="after")
-    def validate_jwt_in_non_dev(self) -> Settings:
-        if self.environment in (Environment.STAGING, Environment.PRODUCTION):
-            if self.jwt_secret_key.startswith("dev-only"):
-                # Soft warning path: still allow boot so ops can inspect,
-                # but production readiness checks should fail.
-                pass
+    def production_guards(self) -> Settings:
+        if (
+            self.environment == Environment.STAGING
+            and self.staging_use_local_storage
+            and not self.public_base_url.strip().lower().startswith("https://")
+        ):
+            raise ValueError(
+                "PUBLIC_BASE_URL must be an HTTPS origin when STAGING_USE_LOCAL_STORAGE is enabled"
+            )
+        if self.environment == Environment.PRODUCTION:
+            # Redis-backed abuse controls must remain effective in production.
+            self.rate_limit_fail_open = False
+            if self.debug:
+                raise ValueError("DEBUG must be false in production")
+            if (
+                "change-me" in self.jwt_secret_key.lower()
+                or "dev-only" in self.jwt_secret_key.lower()
+            ):
+                raise ValueError("JWT_SECRET_KEY must be changed for production")
+            if "change-me" in self.super_admin_password.lower():
+                raise ValueError("SUPER_ADMIN_PASSWORD must be changed for production")
+            if self.offline_license_algorithm != "RS256":
+                raise ValueError("OFFLINE_LICENSE_ALGORITHM must be RS256")
+            if not self.offline_license_private_key or not self.offline_license_public_key:
+                raise ValueError(
+                    "OFFLINE_LICENSE_PRIVATE_KEY and OFFLINE_LICENSE_PUBLIC_KEY are required"
+                )
+            if not self.kby_master_key:
+                raise ValueError("KBY_MASTER_KEY is required")
+            if self.kby_master_key.lower().startswith("dev-only") or "change-me" in self.kby_master_key.lower():
+                raise ValueError("KBY_MASTER_KEY must be changed for production")
+            if not self.r2_configured:
+                raise ValueError("R2_ENDPOINT, R2_ACCESS_KEY_ID and R2_SECRET_ACCESS_KEY are required in production")
+            if self.allowed_hosts.strip() == "*":
+                raise ValueError("ALLOWED_HOSTS must not be '*' in production")
+            if not self.cors_origins_list:
+                raise ValueError("CORS_ORIGINS must contain at least one explicit origin in production")
+            if not self.trusted_proxy_ip_list:
+                raise ValueError("TRUSTED_PROXY_IPS must be configured in production")
         return self
 
     # -------------------------------------------------------------------------
-    # Derived helpers
+    # Helpers
     # -------------------------------------------------------------------------
     @property
     def is_production(self) -> bool:
         return self.environment == Environment.PRODUCTION
 
     @property
-    def is_staging(self) -> bool:
-        return self.environment == Environment.STAGING
+    def is_development(self) -> bool:
+        return self.environment == Environment.DEVELOPMENT
+
+    @property
+    def is_test(self) -> bool:
+        return self.environment == Environment.TEST
 
     @property
     def allowed_audio_ext_list(self) -> list[str]:
