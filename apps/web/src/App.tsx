@@ -84,6 +84,12 @@ export default function App() {
       setQueueMeta(prev => mergeQueueMeta(prev, [...known, metadata]));
       setActiveTrackId(id);
       setActiveTrack(metadata);
+      player.setMetadata({
+        title: metadata?.title || "Canción",
+        artist: trackArtistsLabel(metadata) || "KubanFy",
+        album: metadata?.album || undefined,
+        artwork: metadata?.artwork_url || metadata?.artwork || null,
+      });
       await player.playTrack(id);
       setStatus("");
       setPlayerExpanded(false);
