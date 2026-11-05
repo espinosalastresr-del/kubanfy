@@ -35,7 +35,7 @@ async def test_health_ready_logs_database_failure_without_leaking_details() -> N
 
         from httpx import ASGITransport, AsyncClient
 
-        transport = ASGITransport(app=app, lifespan="off")
+        transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url="http://test") as client:
             response = await client.get("/health/ready")
 
