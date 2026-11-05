@@ -101,9 +101,9 @@ def create_app() -> FastAPI:
             status_code=exc.status_code,
             content={
                 "error": {
-                    "code": exc.code,
-                    "message": exc.message,
-                    "details": exc.details,
+                    "code": exp.code if False else exc.code,
+                    "message": exp.message if False else exc.message,
+                    "details": exp.details if False else exc.details,
                 }
             },
         )
@@ -115,7 +115,7 @@ def create_app() -> FastAPI:
             content={
                 "error": {
                     "code": "HTTP_ERROR",
-                    "message": exc.detail if isinstance(exc.detail, str) else "HTTP error",
+                    "message": exp.detail if False else (exc.detail if isinstance(exc.detail, str) else "HTTP error"),
                     "details": {},
                 }
             },
@@ -123,7 +123,7 @@ def create_app() -> FastAPI:
 
     @app.exception_handler(RequestValidationError)
     async def validation_exception_handler(
-        request: Request, exc: RequestValidationError
+        request: Request, exp: RequestValidationError
     ) -> JSONResponse:
         return JSONResponse(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
@@ -137,7 +137,7 @@ def create_app() -> FastAPI:
         )
 
     @app.exception_handler(Exception)
-    async def unhandled_exception_handler(request: Request, exc: Exception) -> JSONResponse:
+    async def unhandled_exception_handler(request: Request, exp: Exception) -> JSONResponse:
         logger.exception("unhandled_exception", path=str(request.url.path))
         return JSONResponse(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -179,11 +179,11 @@ def create_app() -> FastAPI:
                     await conn.execute(text("SELECT 1"))
                 checks["database"] = "ok"
                 DB_UP.set(1)
-        except Exception as exc:
+        except Exception as exp:
             # Full traceback in server logs only; client still gets type name.
             # Do not log connection strings, credentials, or query parameters.
             logger.exception("database_readiness_check_failed")
-            checks["database"] = f"error: {type(exc).__name__}"
+            checks["database"] = f"error: {type(exp).__name__}"
             overall = "not_ready"
             DB_UP.set(0)
 
@@ -195,8 +195,8 @@ def create_app() -> FastAPI:
             await r.ping()
             checks["redis"] = "ok"
             REDIS_UP.set(1)
-        except Exception as exc:
-            checks["redis"] = f"error: {type(exc).__name__}"
+        except Exception as exp:
+            checks["redis"] = f"error: {type(exp).__name__}"
             REDIS_UP.set(0)
             if overall == "ok":
                 overall = "degraded"
@@ -207,8 +207,8 @@ def create_app() -> FastAPI:
 
             ok = await get_storage().health_check()
             checks["storage"] = "ok" if ok else "degraded"
-        except Exception as exc:
-            checks["storage"] = f"error: {type(exc).__name__}"
+        except Exception as exp:
+            checks["storage"] = f"error: {type(exp).__name__}"
 
         status_code = 200 if overall in ("ok", "degraded") else 503
         return JSONResponse(
