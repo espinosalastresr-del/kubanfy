@@ -33,12 +33,12 @@ if config.config_file_name is not None:
 
 target_metadata = Base.metadata
 
+from app.core.database import normalize_asyncpg_url
+
 settings = get_settings()
-database_url = settings.database_url
-if database_url.startswith("postgresql://"):
-    database_url = "postgresql+asyncpg://" + database_url[len("postgresql://"):]
-elif database_url.startswith("postgres://"):
-    database_url = "postgresql+asyncpg://" + database_url[len("postgres://"):]
+# Derive async URL for Alembic online mode; do not mutate settings.database_url.
+# DATABASE_URL_SYNC (psycopg) keeps sslmode and is not used here.
+database_url = normalize_asyncpg_url(settings.database_url)
 config.set_main_option("sqlalchemy.url", database_url)
 
 

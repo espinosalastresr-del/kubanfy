@@ -7,6 +7,7 @@ from __future__ import annotations
 
 from collections.abc import AsyncGenerator
 from typing import Any
+from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
 
 from sqlalchemy.ext.asyncio import (
     AsyncSession,
@@ -24,13 +25,55 @@ class Base(DeclarativeBase):
     pass
 
 
+def normalize_asyncpg_url(database_url: str) -> str:
+    """Return a SQLAlchemy URL suitable for the asyncpg dialect.
+
+    - Rewrites ``postgresql://`` / ``postgres://`` to ``postgresql+asyncpg://``.
+    - Converts query param ``sslmode`` → ``ssl`` (same value) because asyncpg
+      rejects the libpq-style ``sslmode`` keyword.
+    - Does not mutate the original settings value; call sites pass a copy.
+    - Leaves ``ssl`` untouched if already present; drops redundant ``sslmode``.
+    - Preserves all other query parameters.
+
+    Sync / psycopg URLs (``DATABASE_URL_SYNC``) must NOT be passed through this
+    helper so that ``sslmode`` remains valid for libpq-based drivers.
+    """
+    url = database_url
+    if url.startswith("postgresql+asyncpg://"):
+        pass
+    elif url.startswith("postgresql://"):
+        url = "postgresql+asyncpg://" + url[len("postgresql://") :]
+    elif url.startswith("postgres://"):
+        url = "postgresql+asyncpg://" + url[len("postgres://") :]
+    elif url.startswith("postgresql+psycopg://"):
+        url = "postgresql+asyncpg://" + url[len("postgresql+psycopg://") :]
+    elif url.startswith("postgresql+psycopg2://"):
+        url = "postgresql+asyncpg://" + url[len("postgresql+psycopg2://") :]
+
+    parsed = urlparse(url)
+    pairs = parse_qsl(parsed.query, keep_blank_values=True)
+    sslmode_value: str | None = None
+    has_ssl = False
+    new_pairs: list[tuple[str, str]] = []
+    for key, value in pairs:
+        lowered = key.lower()
+        if lowered == "sslmode":
+            sslmode_value = value
+            continue
+        if lowered == "ssl":
+            has_ssl = True
+        new_pairs.append((key, value))
+
+    if sslmode_value is not None and not has_ssl:
+        new_pairs.append(("ssl", sslmode_value))
+
+    return urlunparse(parsed._replace(query=urlencode(new_pairs)))
+
+
 def create_engine(settings: Settings | None = None) -> Any:
     settings = settings or get_settings()
-    database_url = settings.database_url
-    if database_url.startswith("postgresql://"):
-        database_url = "postgresql+asyncpg://" + database_url[len("postgresql://"):]
-    elif database_url.startswith("postgres://"):
-        database_url = "postgresql+asyncpg://" + database_url[len("postgres://"):]
+    # Normalize a derived URL only; never write back to settings.database_url.
+    database_url = normalize_asyncpg_url(settings.database_url)
 
     return create_async_engine(
         database_url,
