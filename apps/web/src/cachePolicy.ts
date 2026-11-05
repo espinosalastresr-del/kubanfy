@@ -1,7 +1,6 @@
 /**
- * B3 — automatic cache policy (distinct from explicit Premium downloads).
+ * Automatic cache policy (distinct from explicit Premium downloads).
  * FREE: max 3 tracks, LOW only, LRU. Never marks incomplete as ready.
- * Encrypted chunks live in offlineDb; this module only enforces counts.
  */
 
 import { listTracks, removeOfflineTrack, type OfflineTrackRecord } from "./offlineDb";
@@ -18,11 +17,14 @@ export function autoCacheQualityForTier(tier: PlanTier): "low" | "medium" {
 export function autoCacheLimitForTier(tier: PlanTier): number {
   if (tier === "guest") return 0;
   if (tier === "free") return FREE_AUTO_CACHE_LIMIT;
-  // Premium automatic cache: soft limit (storage quota will constrain further).
   return 50;
 }
 
-/** Evict LRU automatic-cache tracks (source bootstrap treated as auto for FREE). */
+function isAutoManaged(t: OfflineTrackRecord): boolean {
+  return t.source === "auto" || t.source === "bootstrap";
+}
+
+/** Evict LRU auto/bootstrap tracks only — never explicit premium downloads. */
 export async function enforceAutoCacheLimit(
   tier: PlanTier,
   protectTrackId?: string | null,
@@ -31,9 +33,8 @@ export async function enforceAutoCacheLimit(
   if (limit <= 0) return [];
 
   const all = await listTracks();
-  // Automatic cache candidates: bootstrap or partial auto; never delete premium explicit while enforcing FREE limit.
   const auto = all
-    .filter((t) => t.source === "bootstrap" || t.source === "premium")
+    .filter(isAutoManaged)
     .filter((t) => t.status === "ready")
     .sort((a, b) => a.lastAccessedAt - b.lastAccessedAt);
 
