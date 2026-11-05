@@ -208,3 +208,76 @@ export async function deletePlaylist(id: string) {
 export async function addTrackToPlaylist(playlistId: string, trackId: string) {
   return request<void>(`/v1/playlists/${playlistId}/tracks/${trackId}`, { method: "POST" });
 }
+
+export type MusicDownloadResult = {
+  url: string | null;
+  expires_in_seconds: number | null;
+  quality: string;
+  from_cache: boolean;
+  track_id: string | null;
+  storage_key?: string | null;
+  content_hash: string | null;
+  kby_key: string | null;
+  size_bytes?: number | null;
+  download_ticket?: string | null;
+  offline_license?: string | null;
+  offline_license_expires_at?: string | null;
+  asset_version?: number | null;
+};
+
+export type OfflineBootstrapItem = {
+  track_id: string;
+  title: string;
+  duration: number | null;
+  url: string;
+  expires_in_seconds: number;
+  quality: string;
+  content_hash: string;
+  kby_key: string;
+  asset_version: number;
+  offline_license: string;
+  offline_license_expires_at: string;
+};
+
+export type OfflineLicenseValidation = {
+  license_id: string;
+  track_id: string;
+  device_id: string;
+  quality: string;
+  content_hash: string;
+  asset_version: number;
+  expires_at: string;
+};
+
+/** Premium persistent download — requires entitlement. */
+export async function downloadTrack(trackId: string, quality: "low" | "medium" | "lossless" = "medium") {
+  return request<MusicDownloadResult>("/v1/music/download", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ track_id: trackId, quality, device_id: getDeviceId() }),
+  });
+}
+
+/** Free bootstrap set (1–3 tracks), device-bound. */
+export async function offlineBootstrap(limit = 3) {
+  const q = Math.min(3, Math.max(1, limit));
+  return request<OfflineBootstrapItem[]>(`/v1/music/offline/bootstrap?limit=${q}`);
+}
+
+/** Server-side offline license validation (Bearer). */
+export async function validateOfflineLicense(token: string) {
+  return request<OfflineLicenseValidation>("/v1/offline/licenses/validate", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ token, device_id: getDeviceId() }),
+  });
+}
+
+/** Report download complete for analytics ticket (optional). */
+export async function completeDownloadTicket(ticket: string, sizeBytes?: number) {
+  return request<{ qualified: boolean }>("/v1/analytics/downloads/complete", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ ticket, size_bytes: sizeBytes ?? null, device_id: getDeviceId() }),
+  });
+}
