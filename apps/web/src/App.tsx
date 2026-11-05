@@ -7,6 +7,7 @@ import { LoginView } from "./LoginView";
 import { RegisterView } from "./RegisterView";
 import { LibraryPanel } from "./LibraryPanel";
 import { OfflinePanel } from "./OfflinePanel";
+import { getTrack as getOfflineTrack } from "./offlineDb";
 
 function HeartIcon({ filled }: { filled: boolean }) {
   return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20.8 8.7c0 5.4-8.8 10.3-8.8 10.3S3.2 14.1 3.2 8.7A4.7 4.7 0 0 1 12 6.2a4.7 4.7 0 0 1 8.8 2.5Z" fill={filled ? "currentColor" : "none"} /></svg>;
@@ -34,16 +35,19 @@ export default function App() {
   const [isPlaying, setIsPlaying] = useState(false);
   const [playerExpanded, setPlayerExpanded] = useState(false);
   const [queueIds, setQueueIds] = useState<string[]>([]);
-  const [queueOpen, setQueueOpen] = useState(false);
   const [queueMeta, setQueueMeta] = useState<Record<string, QueueTrackMeta>>({});
+  const [queueOpen, setQueueOpen] = useState(false);
   const [playlistMenuTrack, setPlaylistMenuTrack] = useState<string | null>(null);
-  const playerRef = useRef<KbyPlayer | null>(null);
-  if (!playerRef.current) playerRef.current = new KbyPlayer();
+  const playerRef = useRef(new KbyPlayer());
   const player = playerRef.current;
 
   useEffect(() => {
     void (async () => {
-      try { setUser(await me()); } catch { setUser(null); }
+      try {
+        setUser(await me());
+      } catch {
+        clearTokens();
+      }
     })();
   }, []);
 
@@ -51,11 +55,11 @@ export default function App() {
     if (!user) return;
     void (async () => {
       try {
-        const [h, pls, favs] = await Promise.all([discoveryHome(), listPlaylists(), listFavorites()]);
-        setHome(h);
-        setPlaylists(pls || []);
-        setFavorites(favs || []);
-        setFavoriteIds(new Set((favs || []).map((t: any) => String(t?.track_id || t?.id || "")).filter(Boolean)));
+        setHome(await discoveryHome());
+        setPlaylists(await listPlaylists());
+        const favs = await listFavorites();
+        setFavorites(favs);
+        setFavoriteIds(new Set(favs.map((t: any) => String(t?.track_id || t?.id || ""))));
       } catch (e) {
         setStatus(e instanceof Error ? e.message : "Error al cargar");
       }
@@ -77,8 +81,26 @@ export default function App() {
   async function play(id: string, requestedQueue?: string[]) {
     try {
       setStatus("Cargando…");
-      const detail = await getTrackDetail(id);
-      const metadata = detail || { id, track_id: id, title: "Canción" };
+      let metadata: any = { id, track_id: id, title: "Canción" };
+      try {
+        const detail = await getTrackDetail(id);
+        if (detail) metadata = detail;
+      } catch {
+        try {
+          const offline = await getOfflineTrack(id);
+          if (offline) {
+            metadata = {
+              id,
+              track_id: id,
+              title: offline.title || "Canción",
+              artwork_url: offline.artworkUrl || null,
+              duration: offline.duration,
+            };
+          }
+        } catch {
+          /* ignore */
+        }
+      }
       const known = [...(home?.featured || []), ...(home?.recent || []), ...searchResults, ...favorites];
       const queue = requestedQueue?.length ? requestedQueue : buildDefaultQueue(id, known);
       setQueueIds(queue);
@@ -120,13 +142,11 @@ export default function App() {
   function nextTrack(direction: 1 | -1) {
     if (!queueIds.length) return;
     if (queueIds.length === 1) { if (direction > 0 && activeTrackId) void play(activeTrackId, queueIds); return; }
-    const index = activeTrackId ? queueIds.indexOf(activeTrackId) : -1;
-    const base = index >= 0 ? index : 0;
+    const base = activeTrackId ? queueIds.indexOf(activeTrackId) : 0;
     void play(queueIds[(base + direction + queueIds.length) % queueIds.length], queueIds);
   }
 
   async function toggleFavorite(trackId: string) {
-    if (!trackId) return;
     const was = favoriteIds.has(trackId);
     try {
       if (was) {
@@ -182,21 +202,21 @@ export default function App() {
           <button className={tab === "search" ? "is-active" : ""} onClick={() => setTab("search")}>Buscar</button>
           <button className={tab === "library" ? "is-active" : ""} onClick={() => setTab("library")}>Biblioteca</button>
         </nav>
-        <button className="icon-button" onClick={() => { clearTokens(); setUser(null); }} aria-label="Cerrar sesión">⎋</button>
+        <button className="icon-button" onClick={() => { clearTokens(); setUser(null); }} aria-label="Salir">⎋</button>
       </header>
 
-      <main className="content">
-        {status && <p className="status-banner">{status}</p>}
+      {status && <p className="status-banner">{status}</p>}
 
+      <main className="main-scroll">
         {tab === "home" && (
-          <section>
+          <section className="home-section">
             <h2>Para ti</h2>
             <div className="track-grid">
               {tracksHome.map((t: any) => {
-                const id = t.track_id || t.id;
+                const id = String(t?.track_id || t?.id || "");
                 return (
                   <button key={id} className="track-card glass" onClick={() => void play(id)}>
-                    <strong>{t.title || "Canción"}</strong>
+                    <strong>{t.title}</strong>
                     <small>{trackArtistsLabel(t)}</small>
                   </button>
                 );
@@ -206,15 +226,29 @@ export default function App() {
         )}
 
         {tab === "search" && (
-          <section>
-            <div className="search-input">
+          <section className="search-section">
+            <div className="search-bar glass">
               <SearchIcon />
-              <input value={searchQ} onChange={e => setSearchQ(e.target.value)} placeholder="Buscar canciones"
-                onKeyDown={e => { if (e.key === "Enter") void searchTracks(searchQ).then(setSearchResults).catch(err => setStatus(String(err)); }} />
+              <input
+                value={searchQ}
+                onChange={(e) => setSearchQ(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    void (async () => {
+                      try {
+                        setSearchResults(await searchTracks(searchQ));
+                      } catch (err) {
+                        setStatus(err instanceof Error ? err.message : "Búsqueda falló");
+                      }
+                    })();
+                  }
+                }}
+                placeholder="Buscar canciones…"
+              />
             </div>
             <div className="track-grid">
               {searchResults.map((t: any) => {
-                const id = t.track_id || t.id;
+                const id = String(t?.track_id || t?.id || "");
                 return (
                   <button key={id} className="track-card glass" onClick={() => void play(id)}>
                     <strong>{t.title}</strong>
@@ -250,8 +284,8 @@ export default function App() {
             <small>{trackArtistsLabel(activeTrack)}</small>
           </div>
           <div className="player-controls">
-            <button className="icon-button" onClick={() => nextTrack(-1)} aria-label="Anterior" disabled={queueIds.length < 2}>|◀</button>
-            <button className="play-button" onClick={() => { const r = player.togglePlayback(); if (r instanceof Promise) void r.catch(() => setStatus("Pulsa reproducir")); }} aria-label={isPlaying ? "Pausar" : "Reproducir"}>{isPlaying ? "Ⅱ" : "▶"}</button>
+            <button className="icon-button" onClick={() => nextTrack(-1)} aria-label="Anterior" disabled={queueIds.length === 0}>|◀</button>
+            <button className="icon-button primary" onClick={() => player.togglePlayback()} aria-label={isPlaying ? "Pausa" : "Play"}>{isPlaying ? "❚❚" : "▶"}</button>
             <button className="icon-button" onClick={() => nextTrack(1)} aria-label="Siguiente" disabled={queueIds.length === 0}>▶|</button>
             <button className={`icon-button${queueOpen ? " is-active" : ""}`} onClick={() => { setQueueOpen(v => !v); setPlaylistMenuTrack(null); }} aria-label={queueOpen ? "Cerrar cola" : "Abrir cola"} aria-expanded={queueOpen}><QueueIcon /></button>
             <button className={`icon-button favorite-button${favoriteIds.has(activeTrackId) ? " is-active" : ""}`} onClick={() => void toggleFavorite(activeTrackId)} aria-label={favoriteIds.has(activeTrackId) ? "Quitar de favoritos" : "Añadir a favoritos"}><HeartIcon filled={favoriteIds.has(activeTrackId)} /></button>
