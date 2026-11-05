@@ -1,6 +1,5 @@
 import { useState } from "react";
 import {
-  addTrackToPlaylist,
   createPlaylist,
   deletePlaylist,
   getPlaylist,
@@ -10,10 +9,7 @@ import {
   reorderPlaylistTracks,
 } from "./api";
 import { trackArtistsLabel } from "./queue";
-
-function trackIdOf(t: any): string {
-  return String(t?.track_id || t?.id || "");
-}
+import { enrichTrackIds, resolveTrackId } from "./trackMeta";
 
 type Props = {
   playlists: any[];
@@ -85,8 +81,20 @@ export function LibraryPanel({
       const playlist = await getPlaylist(id);
       setSelectedPlaylistName(playlist?.name || "");
       setSelectedPlaylistVisibility((playlist?.visibility as "private" | "public") || "private");
-      const tracks = await listPlaylistTracks(id);
-      setSelectedPlaylistTracks(tracks || []);
+      const rows = (await listPlaylistTracks(id)) || [];
+      const sorted = [...rows].sort(
+        (a, b) => (Number(a.position) || 0) - (Number(b.position) || 0),
+      );
+      const enriched = await enrichTrackIds(
+        sorted
+          .map((r) => ({
+            trackId: String(r.track_id || ""),
+            position: r.position,
+            added_at: r.added_at,
+          }))
+          .filter((r) => r.trackId),
+      );
+      setSelectedPlaylistTracks(enriched);
     } catch (e) {
       setStatus(e instanceof Error ? e.message : "No pudimos abrir la playlist");
       setSelectedPlaylistId(null);
@@ -118,7 +126,7 @@ export function LibraryPanel({
     if (!selectedPlaylistId) return;
     try {
       await removeTrackFromPlaylist(selectedPlaylistId, trackId);
-      setSelectedPlaylistTracks((prev) => prev.filter((t) => trackIdOf(t) !== trackId));
+      setSelectedPlaylistTracks((prev) => prev.filter((t) => resolveTrackId(t) !== trackId));
       setStatus("Canción quitada de la playlist");
     } catch (e) {
       setStatus(e instanceof Error ? e.message : "No se pudo quitar");
@@ -127,7 +135,7 @@ export function LibraryPanel({
 
   async function movePlaylistTrack(trackId: string, direction: -1 | 1) {
     if (!selectedPlaylistId) return;
-    const ids = selectedPlaylistTracks.map(trackIdOf);
+    const ids = selectedPlaylistTracks.map(resolveTrackId);
     const index = ids.indexOf(trackId);
     if (index < 0) return;
     const target = index + direction;
@@ -138,7 +146,7 @@ export function LibraryPanel({
     try {
       await reorderPlaylistTracks(selectedPlaylistId, next);
       const reordered = next
-        .map((id) => selectedPlaylistTracks.find((t) => trackIdOf(t) === id))
+        .map((id) => selectedPlaylistTracks.find((t) => resolveTrackId(t) === id))
         .filter(Boolean);
       setSelectedPlaylistTracks(reordered as any[]);
     } catch (e) {
@@ -153,7 +161,7 @@ export function LibraryPanel({
       await renamePlaylist(selectedPlaylistId, selectedPlaylistName, nextVis);
       setSelectedPlaylistVisibility(nextVis);
       setPlaylists((prev) =>
-        prev.map((p) => (p.id === selectedPlaylistId ? { ...p, visibility: nextVis } : p))
+        prev.map((p) => (p.id === selectedPlaylistId ? { ...p, visibility: nextVis } : p)),
       );
       setStatus(nextVis === "public" ? "Playlist pública" : "Playlist privada");
     } catch (e) {
@@ -270,8 +278,8 @@ export function LibraryPanel({
                 disabled={playlistDetailBusy || selectedPlaylistTracks.length === 0}
                 onClick={() =>
                   void onPlay(
-                    trackIdOf(selectedPlaylistTracks[0]),
-                    selectedPlaylistTracks.map(trackIdOf)
+                    resolveTrackId(selectedPlaylistTracks[0]),
+                    selectedPlaylistTracks.map(resolveTrackId),
                   )
                 }
               >
@@ -307,12 +315,12 @@ export function LibraryPanel({
           ) : (
             <div className="library-list">
               {selectedPlaylistTracks.map((track, index) => {
-                const id = trackIdOf(track);
+                const id = resolveTrackId(track);
                 return (
                   <article key={id} className="glass library-track">
                     <button
                       className="track-info playlist-track-play"
-                      onClick={() => void onPlay(id, selectedPlaylistTracks.map(trackIdOf))}
+                      onClick={() => void onPlay(id, selectedPlaylistTracks.map(resolveTrackId))}
                     >
                       <strong>{track.title || "Canción"}</strong>
                       <span>{trackArtistsLabel(track)}</span>
@@ -357,7 +365,7 @@ export function LibraryPanel({
       ) : (
         <div className="library-list">
           {favorites.map((t: any) => {
-            const id = trackIdOf(t);
+            const id = resolveTrackId(t);
             return (
               <article key={id} className="glass library-track">
                 <button className="track-info" onClick={() => void onPlay(id)}>
@@ -365,7 +373,7 @@ export function LibraryPanel({
                   <span>{trackArtistsLabel(t)}</span>
                 </button>
                 <button
-                  className="icon-button favorite-button is-active"
+                  className={`icon-button favorite-button${favoriteIds.has(id) ? " is-active" : ""}`}
                   onClick={() => onToggleFavorite(id)}
                   aria-label="Quitar de favoritos"
                 >
