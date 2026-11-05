@@ -1,8 +1,9 @@
 /** Range download of KBY2 into IndexedDB. Never marks incomplete as ready. */
 
-import { parseHeader } from "./kby2";
+import { chunkRange, parseHeader } from "./kby2";
 import {
   getChunk,
+  headerBytesToB64,
   putChunk,
   putLicense,
   putTrack,
@@ -27,7 +28,8 @@ async function fetchRange(url: string, start: number, end: number): Promise<Uint
 
 /**
  * Download KBY2 asset into IDB as encrypted records.
- * Status becomes `ready` only when every chunk is stored.
+ * Uses correct KBY2 chunk layout (PLAINTEXT_LEN + NONCE + CIPHERTEXT+TAG).
+ * Status becomes `ready` only when every chunk is stored and headerBytes saved.
  */
 export async function downloadKby2ToOffline(opts: {
   trackId: string;
@@ -45,11 +47,24 @@ export async function downloadKby2ToOffline(opts: {
   artworkUrl?: string | null;
   onProgress?: (p: DownloadProgress) => void;
 }): Promise<OfflineTrackRecord> {
-  const headBytes = await fetchRange(opts.url, 0, 4095);
+  // Fetch enough bytes for header (MAGIC+VER+LEN+JSON up to ~4k is safe)
+  const headBytes = await fetchRange(opts.url, 0, 8191);
   const { header, headerEnd } = parseHeader(headBytes);
+  const headerJsonBytes = headBytes.slice(9, headerEnd);
   const totalChunks = header.chunk_count;
-  const now = Date.now();
+  if (totalChunks <= 0) {
+    throw new Error("KBY2 sin chunks");
+  }
 
+  // Approximate total encrypted size for progress/metadata
+  const normalRecord = 4 + 12 + header.chunk_size + 16;
+  const lastPlain =
+    header.plaintext_size - header.chunk_size * Math.max(0, totalChunks - 1);
+  const lastRecord = 4 + 12 + lastPlain + 16;
+  const totalEncrypted =
+    headerEnd + normalRecord * Math.max(0, totalChunks - 1) + lastRecord;
+
+  const now = Date.now();
   let track: OfflineTrackRecord = {
     trackId: opts.trackId,
     title: opts.title,
@@ -58,12 +73,13 @@ export async function downloadKby2ToOffline(opts: {
     contentHash: opts.contentHash,
     assetVersion: opts.assetVersion,
     kbyKey: opts.kbyKey,
+    headerBytesB64: headerBytesToB64(headerJsonBytes),
     artworkUrl: opts.artworkUrl ?? null,
     source: opts.source,
     status: "partial",
     totalChunks,
     completedChunks: 0,
-    totalBytes: header.total_size,
+    totalBytes: totalEncrypted,
     headerEnd,
     chunkSize: header.chunk_size,
     createdAt: now,
@@ -87,7 +103,7 @@ export async function downloadKby2ToOffline(opts: {
   let completed = 0;
   for (let index = 0; index < totalChunks; index++) {
     const existing = await getChunk(opts.trackId, opts.quality, index);
-    if (existing?.verified) {
+    if (existing?.verified && existing.byteLength >= 8) {
       completed += 1;
       opts.onProgress?.({
         trackId: opts.trackId,
@@ -97,14 +113,15 @@ export async function downloadKby2ToOffline(opts: {
       });
       continue;
     }
-    const start = headerEnd + index * header.chunk_size;
-    const end = Math.min(start + header.chunk_size, header.total_size) - 1;
+
+    const { start, end } = chunkRange(header, headerEnd, index);
     const encrypted = await fetchRange(opts.url, start, end);
     if (encrypted.byteLength < 8) {
       track = { ...track, status: "failed", updatedAt: Date.now() };
       await putTrack(track);
       throw new Error(`Chunk ${index} vacío o corrupto`);
     }
+
     await putChunk({
       id: `${opts.trackId}:${opts.quality}:${index}`,
       trackId: opts.trackId,
@@ -204,6 +221,7 @@ export async function isTrackReadyOffline(trackId: string): Promise<boolean> {
     track &&
       track.status === "ready" &&
       track.totalChunks > 0 &&
-      track.completedChunks === track.totalChunks,
+      track.completedChunks === track.totalChunks &&
+      track.headerBytesB64,
   );
 }
