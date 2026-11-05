@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+import re
 from uuid import UUID
 
 from pydantic import BaseModel, EmailStr, Field, field_validator
@@ -99,3 +100,49 @@ class SessionResponse(BaseModel):
     expires_at: datetime
 
     model_config = {"from_attributes": True}
+
+
+class PasswordResetRequest(BaseModel):
+    email: EmailStr
+
+
+class PasswordResetConfirmRequest(BaseModel):
+    token: str = Field(min_length=32, max_length=256)
+    new_password: str = Field(min_length=8, max_length=128)
+
+    @field_validator("new_password")
+    @classmethod
+    def password_strength(cls, v: str) -> str:
+        if v.isdigit() or v.isalpha():
+            raise ValueError("Password must contain letters and numbers or symbols")
+        return v
+
+
+class ProfileUpdateRequest(BaseModel):
+    display_name: str = Field(min_length=1, max_length=120)
+    country: str = Field(min_length=2, max_length=2)
+    language: str = Field(min_length=2, max_length=10)
+
+    @field_validator("display_name")
+    @classmethod
+    def display_name_not_blank(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("Display name cannot be blank")
+        return value
+
+    @field_validator("country")
+    @classmethod
+    def profile_country_upper(cls, value: str) -> str:
+        normalized = value.strip().upper()
+        if not re.fullmatch(r"[A-Z]{2}", normalized):
+            raise ValueError("Country must be a two-letter ISO code")
+        return normalized
+
+    @field_validator("language")
+    @classmethod
+    def profile_language_supported(cls, value: str) -> str:
+        normalized = value.strip().lower()
+        if normalized not in {"es", "en"}:
+            raise ValueError("Language must be es or en")
+        return normalized
