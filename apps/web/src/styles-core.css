@@ -85,6 +85,10 @@ a{color:inherit}
 .tabs button.is-active{color:var(--text);background:var(--surface-light)}
 .status-banner{padding:10px 12px;border-radius:12px;background:rgba(255,143,156,.12);color:var(--danger);font-size:13px}
 .playlist-card{padding:12px;border-radius:16px;text-align:left;margin-bottom:8px}
+.search-input{width:100%;border:1px solid var(--border);background:rgba(7,9,13,.34);color:var(--text);border-radius:16px;padding:14px 15px;outline:none;margin-bottom:16px}
+.search-input:focus{border-color:rgba(217,244,90,.55)}
+.signup-prompt{text-align:center;margin-top:18px;color:var(--muted);font-size:13px}
+h2{font-size:18px;letter-spacing:-.02em;margin:0 0 12px}
 @media(max-width:760px){
   .content{padding-bottom:200px}
   .player{left:7px;right:7px;bottom:max(7px,env(safe-area-inset-bottom));gap:9px;padding:9px 10px;min-height:70px}
