@@ -17,6 +17,7 @@ export class KubanFyApiContainer extends Container {
     KBY_MASTER_KEY: env.KBY_MASTER_KEY,
     OFFLINE_LICENSE_PRIVATE_KEY: env.OFFLINE_LICENSE_PRIVATE_KEY,
     OFFLINE_LICENSE_PUBLIC_KEY: env.OFFLINE_LICENSE_PUBLIC_KEY,
+    OFFLINE_LICENSE_ALGORITHM: env.OFFLINE_LICENSE_ALGORITHM,
     SUPER_ADMIN_EMAIL: env.SUPER_ADMIN_EMAIL,
     SUPER_ADMIN_PASSWORD: env.SUPER_ADMIN_PASSWORD,
     DEFAULT_COUNTRY: env.DEFAULT_COUNTRY,
@@ -34,12 +35,12 @@ export class KubanFyApiContainer extends Container {
     R2_REGION: env.R2_REGION,
     R2_SIGNED_URL_EXPIRY_SECONDS: env.R2_SIGNED_URL_EXPIRY_SECONDS,
     CORS_ORIGINS: env.CORS_ORIGINS,
-    ALLOWED_HOSTS: env.ALLOWED_HOSTS
+    ALLOWED_HOSTS: env.ALLOWED_HOSTS,
   };
 }
 
 export default {
   async fetch(request: Request, workerEnv: typeof env) {
     return getContainer(workerEnv.KUBANFY_API_CONTAINER, "staging-api").fetch(request);
-  }
+  },
 };
