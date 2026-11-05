@@ -41,6 +41,13 @@ export class KubanFyApiContainer extends Container {
 
 export default {
   async fetch(request: Request, workerEnv: typeof env) {
-    return getContainer(workerEnv.KUBANFY_API_CONTAINER, "staging-api").fetch(request);
+    const container = getContainer(workerEnv.KUBANFY_API_CONTAINER, "staging-api");
+
+    // Explicitly request startup before forwarding traffic. The Container SDK's
+    // fetch path normally starts automatically, but this makes the lifecycle
+    // transition explicit for the staging API instance.
+    await container.start();
+
+    return container.fetch(request);
   },
 };
