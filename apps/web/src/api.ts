@@ -34,18 +34,30 @@ export class ApiError extends Error {
 
 const API = (import.meta.env.VITE_API_BASE_URL || "https://kubanfy-api-staging.globumlatinmusic.workers.dev").replace(/\/+$/, "");
 let accessToken: string | null = null;
-let refreshToken: string | null = sessionStorage.getItem("kubanfy.refresh");
+function readSessionValue(key: string): string | null {
+  try { return window.sessionStorage.getItem(key); } catch { return null; }
+}
+function writeSessionValue(key: string, value: string | null): void {
+  try {
+    if (value === null) window.sessionStorage.removeItem(key);
+    else window.sessionStorage.setItem(key, value);
+  } catch {
+    // Storage can be unavailable in private/restricted browser contexts.
+  }
+}
+let refreshToken: string | null = readSessionValue("kubanfy.refresh");
+let fallbackDeviceId: string | null = null;
 
 export function setTokens(tokens: Tokens) {
   accessToken = tokens.access_token;
   refreshToken = tokens.refresh_token;
-  sessionStorage.setItem("kubanfy.refresh", refreshToken);
+  writeSessionValue("kubanfy.refresh", refreshToken);
 }
 
 export function clearTokens() {
   accessToken = null;
   refreshToken = null;
-  sessionStorage.removeItem("kubanfy.refresh");
+  writeSessionValue("kubanfy.refresh", null);
 }
 
 async function request<T>(path: string, init: RequestInit = {}, retry = true): Promise<T> {
@@ -90,13 +102,32 @@ async function request<T>(path: string, init: RequestInit = {}, retry = true): P
   return response.status === 204 ? (undefined as T) : response.json();
 }
 
-export function getDeviceId() {
-  let id = localStorage.getItem("kubanfy.device");
-  if (!id) {
-    id = crypto.randomUUID();
-    localStorage.setItem("kubanfy.device", id);
+function createDeviceId(): string {
+  try {
+    if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+      return crypto.randomUUID();
+    }
+    if (typeof crypto !== "undefined" && typeof crypto.getRandomValues === "function") {
+      const bytes = new Uint8Array(16);
+      crypto.getRandomValues(bytes);
+      return Array.from(bytes, (value) => value.toString(16).padStart(2, "0")).join("");
+    }
+  } catch {
+    // Fall through to a non-secret, per-browser identifier.
   }
-  return id;
+  return `kf-${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
+}
+
+export function getDeviceId(): string {
+  try {
+    const stored = window.localStorage.getItem("kubanfy.device");
+    if (stored) return stored;
+  } catch {
+    // Safari private mode / storage restrictions: keep an in-memory ID.
+  }
+  if (!fallbackDeviceId) fallbackDeviceId = createDeviceId();
+  try { window.localStorage.setItem("kubanfy.device", fallbackDeviceId); } catch {}
+  return fallbackDeviceId;
 }
 
 export async function register(email: string, password: string, displayName: string) {
