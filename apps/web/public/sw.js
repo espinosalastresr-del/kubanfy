@@ -5,8 +5,8 @@
  * - NEVER intercept cross-origin (R2 signed URLs, API hosts).
  * - Does not touch entitlement, audio, or IndexedDB.
  */
-const CACHE = "kubanfy-shell-v2";
-const SHELL = ["/", "/index.html", "/manifest.webmanifest", "/icon.svg"];
+const CACHE = "kubanfy-shell-v3";
+const SHELL = ["/", "/index.html", "/manifest.webmanifest", "/icon.svg", "/icon-192.png", "/icon-512.png", "/apple-touch-icon.png", "/favicon-32.png"];
 
 self.addEventListener("install", (event) => {
   event.waitUntil(
@@ -71,7 +71,7 @@ self.addEventListener("fetch", (event) => {
     path === "/" ||
     path === "/index.html" ||
     path === "/manifest.webmanifest" ||
-    path === "/icon.svg" ||
+    path === "/icon.svg" ||\n    path === "/icon-192.png" ||\n    path === "/icon-512.png" ||\n    path === "/apple-touch-icon.png" ||\n    path === "/favicon-32.png" ||
     path.endsWith(".css") ||
     path.endsWith(".js") ||
     path.endsWith(".svg") ||
