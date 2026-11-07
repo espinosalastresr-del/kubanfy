@@ -1,4 +1,4 @@
-"""Auth-related request and response schemas."""
+""""Auth-related request and response schemas."""
 
 from __future__ import annotations
 
@@ -44,6 +44,16 @@ class TokenResponse(BaseModel):
     expires_in: int  # seconds
 
 
+class BrowserTokenResponse(BaseModel):
+    """Browser-visible token payload; refresh credentials are cookie-only."""
+
+    model_config = {"extra": "forbid"}
+
+    access_token: str
+    token_type: str = "bearer"
+    expires_in: int
+
+
 class UserResponse(BaseModel):
     id: UUID
     email: EmailStr
@@ -62,6 +72,11 @@ class UserResponse(BaseModel):
 class LoginResponse(BaseModel):
     user: UserResponse
     tokens: TokenResponse
+
+
+class BrowserLoginResponse(BaseModel):
+    user: UserResponse
+    tokens: BrowserTokenResponse
 
 
 class AuthContextResponse(BaseModel):
