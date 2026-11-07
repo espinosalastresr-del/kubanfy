@@ -60,20 +60,49 @@ class SessionService:
             await self.db.flush()
             return existing
 
-        # Count active devices
+        # Reclaim only devices without a live session; never evict an in-use device.
+        await self.cleanup_expired_sessions(user_id)
         active_count = await self.db.scalar(
-            select(func.count())
-            .select_from(Device)
-            .where(
-                Device.user_id == user_id,
-                Device.status == DeviceStatus.ACTIVE,
+            select(func.count()).select_from(Device).where(
+                Device.user_id == user_id, Device.status == DeviceStatus.ACTIVE
             )
         )
         if active_count is not None and active_count >= self.settings.max_devices_per_user:
-            raise ForbiddenError(
-                f"Maximum number of devices ({self.settings.max_devices_per_user}) reached. "
-                "Revoke an existing device first."
+            candidates = await self.db.scalars(
+                select(Device).where(
+                    Device.user_id == user_id,
+                    Device.status == DeviceStatus.ACTIVE,
+                    ~select(Session.id).where(
+                        Session.device_id == Device.id,
+                        Session.user_id == user_id,
+                        Session.status == SessionStatus.ACTIVE,
+                        Session.expires_at > now,
+                        Session.last_activity_at > now - timedelta(minutes=self.settings.session_idle_timeout_minutes),
+                    ).exists(),
+                ).order_by(Device.last_seen_at.asc()).limit(
+                    active_count - self.settings.max_devices_per_user + 1
+                ).with_for_update()
             )
+            for stale_device in candidates:
+                await self.db.execute(
+                    update(OfflineLicense).where(
+                        OfflineLicense.device_id == stale_device.id,
+                        OfflineLicense.revoked.is_(False),
+                    ).values(revoked=True, revoked_at=now)
+                )
+                stale_device.status = DeviceStatus.REVOKED
+                stale_device.revoked_at = now
+            await self.db.flush()
+            active_count = await self.db.scalar(
+                select(func.count()).select_from(Device).where(
+                    Device.user_id == user_id, Device.status == DeviceStatus.ACTIVE
+                )
+            )
+            if active_count is not None and active_count >= self.settings.max_devices_per_user:
+                raise ForbiddenError(
+                    f"Maximum number of devices ({self.settings.max_devices_per_user}) reached. "
+                    "All registered devices have active sessions. Sign out elsewhere or revoke a device in Account > Devices."
+                )
 
         device = Device(
             user_id=user_id,
@@ -103,12 +132,14 @@ class SessionService:
         # Serialize per-user session creation so concurrent logins cannot bypass
         # the configured concurrent-session limit.
         await self.db.scalar(select(User).where(User.id == user_id).with_for_update())
+        await self.cleanup_expired_sessions(user_id)
+        now = datetime.now(UTC)
         active_count = await self.db.scalar(
-            select(func.count())
-            .select_from(Session)
-            .where(
+            select(func.count()).select_from(Session).where(
                 Session.user_id == user_id,
                 Session.status == SessionStatus.ACTIVE,
+                Session.expires_at > now,
+                Session.last_activity_at > now - timedelta(minutes=self.settings.session_idle_timeout_minutes),
             )
         )
         if active_count is not None and active_count >= self.settings.max_concurrent_sessions:
@@ -144,6 +175,20 @@ class SessionService:
         self.db.add(sess)
         await self.db.flush()
         return sess
+
+    async def cleanup_expired_sessions(self, user_id: UUID) -> int:
+        """Mark expired and idle sessions inactive before enforcing account limits."""
+        now = datetime.now(UTC)
+        result = await self.db.execute(
+            update(Session).where(
+                Session.user_id == user_id,
+                Session.status == SessionStatus.ACTIVE,
+                (Session.expires_at <= now) |
+                (Session.last_activity_at <= now - timedelta(minutes=self.settings.session_idle_timeout_minutes)),
+            ).values(status=SessionStatus.EXPIRED, revoked_at=None)
+        )
+        await self.db.flush()
+        return result.rowcount or 0
 
     async def get_session_by_jti(self, jti: str, *, for_update: bool = False) -> Session | None:
         stmt = select(Session).where(Session.refresh_token_jti == jti)
