@@ -46,8 +46,12 @@ class SessionService:
         now = datetime.now(UTC)
 
         if existing is not None:
+            # A revoked device may be re-enrolled only after a fresh password
+            # login reaches this method. Old refresh sessions remain revoked.
             if existing.status == DeviceStatus.REVOKED:
-                raise ForbiddenError("This device has been revoked")
+                existing.status = DeviceStatus.ACTIVE
+                existing.revoked_at = None
+                logger.info("device_reenrolled_after_password_login", user_id=str(user_id))
             existing.last_seen_at = now
             if name:
                 existing.name = name
