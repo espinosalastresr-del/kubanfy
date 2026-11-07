@@ -67,7 +67,17 @@ async function request<T>(path: string, init: RequestInit = {}, retry = true): P
   const device = getDeviceId();
   headers.set("X-Device-ID", device);
   if (accessToken) headers.set("Authorization", `Bearer ${accessToken}`);
-  const response = await fetch(`${API}${path}`, { ...init, headers });
+  const requestUrl = `${API}${path}`;
+  const method = (init.method || "GET").toUpperCase();
+  let response: Response;
+  try {
+    response = await fetch(requestUrl, { ...init, headers });
+  } catch (error) {
+    // Retry only safe reads. Never replay login, writes, or other POST requests.
+    if (method !== "GET") throw error;
+    await new Promise((resolve) => window.setTimeout(resolve, 350));
+    response = await fetch(requestUrl, { ...init, headers });
+  }
   if (response.status === 401 && retry && refreshToken) {
     const refreshed = await fetch(`${API}/v1/auth/refresh`, {
       method: "POST", headers: { "Content-Type": "application/json", Accept: "application/json" },
