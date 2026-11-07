@@ -1,5 +1,6 @@
 import { FormEvent, useEffect, useState } from "react";
 import { ApiError } from "./api";
+import { isInstallAvailable, isStandaloneDisplay, promptPwaInstall, subscribeInstallAvailable } from "./installPrompt";
 
 function EyeIcon({ hidden }: { hidden: boolean }) {
   return hidden ? (
@@ -21,10 +22,16 @@ export function LoginView({ onLogin, onRegister, onForgot, initialEmail }: { onL
   const [submitted, setSubmitted] = useState(false);
   const [notice, setNotice] = useState("");
   const [authError, setAuthError] = useState("");
+  const [installAvailable, setInstallAvailable] = useState(isInstallAvailable());
+  const [installGuideOpen, setInstallGuideOpen] = useState(false);
+  const [installMessage, setInstallMessage] = useState("");
+  const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent) && !(window as Window & { MSStream?: unknown }).MSStream;
   
   useEffect(() => {
     setEmail(initialEmail);
   }, [initialEmail]);
+
+  useEffect(() => subscribeInstallAvailable(setInstallAvailable), []);
 
   async function submit(event: FormEvent) {
     event.preventDefault();
@@ -133,6 +140,54 @@ export function LoginView({ onLogin, onRegister, onForgot, initialEmail }: { onL
         <p className="signup-prompt">¿No tienes cuenta? <a href="#register" onClick={e => { e.preventDefault(); onRegister(); }}>Crear cuenta</a></p>
       </div>
 
+      {!isStandaloneDisplay() && (
+        <section className="install-panel" aria-label="Instalar KubanFy">
+          <div className="install-panel-copy">
+            <strong>Instala KubanFy</strong>
+            <span>Acceso directo, pantalla completa y tu música siempre a mano.</span>
+          </div>
+          {installAvailable ? (
+            <button className="secondary-button install-action" onClick={async () => {
+              try {
+                const outcome = await promptPwaInstall();
+                setInstallMessage(outcome === "accepted" ? "KubanFy se está instalando." : "Puedes instalarla cuando quieras desde el menú del navegador.");
+              } catch {
+                setInstallGuideOpen(true);
+              }
+            }}>Instalar aplicación</button>
+          ) : (
+            <button className="secondary-button install-action" onClick={() => setInstallGuideOpen((v) => !v)}>
+              Cómo instalar
+            </button>
+          )}
+          {installGuideOpen && (
+            <div className="install-guide" role="status">
+              {isIOS ? (
+                <>
+                  <strong>En iPhone o iPad</strong>
+                  <ol>
+                    <li>Abre esta página en Safari.</li>
+                    <li>Pulsa el botón Compartir.</li>
+                    <li>Selecciona «Añadir a pantalla de inicio».</li>
+                    <li>Confirma con «Añadir».</li>
+                  </ol>
+                </>
+              ) : (
+                <>
+                  <strong>En Android</strong>
+                  <ol>
+                    <li>Abre el menú ⋮ de Chrome.</li>
+                    <li>Selecciona «Instalar aplicación» o «Añadir a pantalla principal».</li>
+                    <li>Confirma la instalación.</li>
+                  </ol>
+                  <span>Si no aparece la opción, espera a que termine de cargar y vuelve a abrir el menú.</span>
+                </>
+              )}
+            </div>
+          )}
+          {installMessage && <span className="install-message" role="status">{installMessage}</span>}
+        </section>
+      )}
       <p className="auth-footnote">Diseñado para consumir menos datos y seguir sonando.</p>
     </section>
   </main>;
