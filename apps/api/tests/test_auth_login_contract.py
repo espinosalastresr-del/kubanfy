@@ -12,7 +12,7 @@ def test_browser_login_response_never_accepts_or_serializes_refresh_token() -> N
     payload = {
         "user": {
             "id": "6d2d6e8a-6c1a-4a9a-8a1a-7b9d8f1a2c33",
-            "email": "listener@example.test",
+            "email": "listener@example.com",
             "display_name": "Listener",
             "avatar": None,
             "country": "CU",
@@ -44,7 +44,7 @@ def test_browser_login_response_rejects_missing_access_token() -> None:
     payload = {
         "user": {
             "id": "6d2d6e8a-6c1a-4a9a-8a1a-7b9d8f1a2c33",
-            "email": "listener@example.test",
+            "email": "listener@example.com",
             "display_name": "Listener",
             "avatar": None,
             "country": "CU",
