@@ -21,6 +21,7 @@ test("proxy fixes upstream, strips /api, and preserves query, method, headers an
       "x-kubanfy-platform": "web",
     },
     body,
+    duplex: "half",
   });
   let observedUrl;
   let observedInit;
