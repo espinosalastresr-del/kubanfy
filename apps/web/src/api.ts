@@ -128,15 +128,40 @@ function createDeviceId(): string {
   return `kf-${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
 }
 
+const DEVICE_COOKIE = "kubanfy_device";
+function readDeviceCookie(): string | null {
+  try {
+    const entry = document.cookie.split("; ").find((part) => part.startsWith(DEVICE_COOKIE + "="));
+    return entry ? decodeURIComponent(entry.slice(DEVICE_COOKIE.length + 1)) : null;
+  } catch { return null; }
+}
+function persistDeviceCookie(value: string): void {
+  try {
+    const secure = window.location.protocol === "https:" ? "; Secure" : "";
+    document.cookie = `${DEVICE_COOKIE}=${encodeURIComponent(value)}; Max-Age=31536000; Path=/; SameSite=Lax${secure}`;
+  } catch {}
+}
+
 export function getDeviceId(): string {
   try {
     const stored = window.localStorage.getItem("kubanfy.device");
-    if (stored) return stored;
-  } catch {
-    // Safari private mode / storage restrictions: keep an in-memory ID.
+    if (stored) { persistDeviceCookie(stored); return stored; }
+  } catch {}
+  try {
+    const stored = window.sessionStorage.getItem("kubanfy.device");
+    if (stored) { persistDeviceCookie(stored); return stored; }
+  } catch {}
+  const cookie = readDeviceCookie();
+  if (cookie && /^[a-zA-Z0-9-]{16,128}$/.test(cookie)) {
+    try { window.localStorage.setItem("kubanfy.device", cookie); } catch {}
+    try { window.sessionStorage.setItem("kubanfy.device", cookie); } catch {}
+    fallbackDeviceId = cookie;
+    return cookie;
   }
   if (!fallbackDeviceId) fallbackDeviceId = createDeviceId();
   try { window.localStorage.setItem("kubanfy.device", fallbackDeviceId); } catch {}
+  try { window.sessionStorage.setItem("kubanfy.device", fallbackDeviceId); } catch {}
+  persistDeviceCookie(fallbackDeviceId);
   return fallbackDeviceId;
 }
 
