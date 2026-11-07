@@ -7,7 +7,8 @@
     "dev": "vite",
     "build": "tsc --noEmit && vite build && node scripts/generate-icons.mjs",
     "preview": "pnpm build && wrangler dev",
-    "deploy": "pnpm build && wrangler deploy"
+    "deploy": "pnpm build && wrangler deploy",
+    "test:worker": "node --experimental-strip-types --test src/worker.test.mjs"
   },
   "dependencies": {
     "@vitejs/plugin-react": "^6.0.0",
