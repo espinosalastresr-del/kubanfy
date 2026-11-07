@@ -8,6 +8,21 @@
 const CACHE = "kubanfy-shell-v3";
 const SHELL = ["/", "/index.html", "/manifest.webmanifest", "/icon.svg", "/icon-192.png", "/icon-512.png", "/apple-touch-icon.png", "/favicon-32.png"];
 
+async function fetchWithRetry(request, attempts = 2) {
+  let lastError;
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    try {
+      return await fetch(request);
+    } catch (error) {
+      lastError = error;
+      if (attempt + 1 < attempts) {
+        await new Promise((resolve) => setTimeout(resolve, 350 * (attempt + 1)));
+      }
+    }
+  }
+  throw lastError;
+}
+
 self.addEventListener("install", (event) => {
   event.waitUntil(
     caches
