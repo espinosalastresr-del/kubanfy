@@ -1,0 +1,37 @@
+.install-panel {
+  width: min(100% - 32px, 440px);
+  margin: 18px auto 0;
+  padding: 15px 16px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  border: 1px solid rgba(255,255,255,.12);
+  border-radius: 16px;
+  background: rgba(255,255,255,.045);
+  color: var(--text, #f5f5f5);
+  text-align: left;
+}
+.install-panel-copy { display: grid; gap: 4px; min-width: 0; }
+.install-panel-copy strong { font-size: .94rem; }
+.install-panel-copy span, .install-message, .install-guide span {
+  color: var(--muted, #a6a6ad);
+  font-size: .78rem;
+  line-height: 1.45;
+}
+.install-action { white-space: nowrap; font-size: .8rem; padding: 9px 12px; }
+.install-guide {
+  grid-column: 1 / -1;
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: rgba(0,0,0,.22);
+  font-size: .84rem;
+  line-height: 1.5;
+}
+.install-guide ol { margin: 8px 0; padding-left: 20px; }
+.install-guide li { margin: 4px 0; }
+.install-message { grid-column: 1 / -1; }
+@media (max-width: 380px) {
+  .install-panel { grid-template-columns: 1fr; }
+  .install-action { width: 100%; }
+}
