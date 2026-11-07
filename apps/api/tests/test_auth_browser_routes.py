@@ -57,7 +57,7 @@ async def test_browser_refresh_reads_cookie_rotates_it_and_hides_refresh_token(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     service = type("Service", (), {"refresh": AsyncMock(return_value=issued_tokens())})()
-    monkeypatch.setattr(auth, "AuthService", lambda session: service)
+    monkeypatch.setattr(auth, "AuthService", lambda _session: service)
     monkeypatch.setattr(auth, "get_settings", settings)
     response = Response()
 
@@ -90,7 +90,7 @@ async def test_legacy_refresh_keeps_json_body_and_response_contract(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     service = type("Service", (), {"refresh": AsyncMock(return_value=issued_tokens())})()
-    monkeypatch.setattr(auth, "AuthService", lambda session: service)
+    monkeypatch.setattr(auth, "AuthService", lambda _session: service)
     response = Response()
 
     result = await auth.refresh(
@@ -110,7 +110,7 @@ async def test_browser_refresh_rejects_untrusted_origin_before_rotating(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     service = type("Service", (), {"refresh": AsyncMock(return_value=issued_tokens())})()
-    monkeypatch.setattr(auth, "AuthService", lambda session: service)
+    monkeypatch.setattr(auth, "AuthService", lambda _session: service)
     monkeypatch.setattr(auth, "get_settings", settings)
 
     with pytest.raises(AuthError):
@@ -132,7 +132,7 @@ async def test_browser_refresh_rejects_missing_cookie(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     service = type("Service", (), {"refresh": AsyncMock(return_value=issued_tokens())})()
-    monkeypatch.setattr(auth, "AuthService", lambda session: service)
+    monkeypatch.setattr(auth, "AuthService", lambda _session: service)
     monkeypatch.setattr(auth, "get_settings", settings)
 
     with pytest.raises(AuthError):
@@ -151,7 +151,7 @@ async def test_browser_logout_revokes_cookie_session_and_expires_cookie(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     service = type("Service", (), {"logout": AsyncMock(return_value=None)})()
-    monkeypatch.setattr(auth, "AuthService", lambda session: service)
+    monkeypatch.setattr(auth, "AuthService", lambda _session: service)
     monkeypatch.setattr(auth, "get_settings", settings)
     response = Response()
 
