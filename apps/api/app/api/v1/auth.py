@@ -4,11 +4,15 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Request, Response
 
 from app.api.deps import CurrentUser, DbSession
+from app.core.auth_cookies import ensure_allowed_web_origin, set_refresh_cookie
+from app.core.config import get_settings
 from app.schemas.auth import (
     AuthContextResponse,
+    BrowserLoginResponse,
+    BrowserTokenResponse,
     DeviceResponse,
     LoginRequest,
     LoginResponse,
@@ -45,12 +49,13 @@ async def register(
     return AuthService.to_response(user)
 
 
-@router.post("/login", response_model=LoginResponse)
+@router.post("/login")
 async def login(
     body: LoginRequest,
     request: Request,
+    response: Response,
     session: DbSession,
-) -> LoginResponse:
+) -> LoginResponse | BrowserLoginResponse:
     geo = GeoService()
     ip = request.client.host if request.client else None
     real_ip = geo.resolve_client_ip(ip, forwarded_for=request.headers.get("x-forwarded-for"))
@@ -60,7 +65,23 @@ async def login(
     user, tokens = await service.login(
         body, ip_country=geo.resolve(ip=real_ip).country, user_agent=user_agent
     )
-    return LoginResponse(user=AuthService.to_response(user), tokens=tokens)
+
+    origin = request.headers.get("origin")
+    if origin is None:
+        # Native/legacy clients retain the existing JSON refresh-token contract.
+        return LoginResponse(user=AuthService.to_response(user), tokens=tokens)
+
+    settings = get_settings()
+    ensure_allowed_web_origin(origin, settings)
+    set_refresh_cookie(response, tokens.refresh_token, settings)
+    return BrowserLoginResponse(
+        user=AuthService.to_response(user),
+        tokens=BrowserTokenResponse(
+            access_token=tokens.access_token,
+            token_type=tokens.token_type,
+            expires_in=tokens.expires_in,
+        ),
+    )
 
 
 @router.post("/password-reset/request", status_code=202)
