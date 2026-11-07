@@ -71,7 +71,11 @@ self.addEventListener("fetch", (event) => {
     path === "/" ||
     path === "/index.html" ||
     path === "/manifest.webmanifest" ||
-    path === "/icon.svg" ||\n    path === "/icon-192.png" ||\n    path === "/icon-512.png" ||\n    path === "/apple-touch-icon.png" ||\n    path === "/favicon-32.png" ||
+    path === "/icon.svg" ||
+    path === "/icon-192.png" ||
+    path === "/icon-512.png" ||
+    path === "/apple-touch-icon.png" ||
+    path === "/favicon-32.png" ||
     path.endsWith(".css") ||
     path.endsWith(".js") ||
     path.endsWith(".svg") ||
