@@ -1,3 +1,4 @@
 @import "./styles-core.css";
 @import "./styles-queue.css";
-\n@import "./styles-install.css";\n
+
+@import "./styles-install.css";
