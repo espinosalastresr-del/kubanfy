@@ -54,6 +54,21 @@ async function writePrivateKey(deviceId: string, key: CryptoKey): Promise<void> 
   }
 }
 
+async function writePublicKey(deviceId: string, publicKey: string): Promise<void> {
+  const db = await openKeyDatabase();
+  try {
+    await new Promise<void>((resolve, reject) => {
+      const transaction = db.transaction(STORE_NAME, "readwrite");
+      transaction.objectStore(STORE_NAME).put(publicKey, `${deviceId}:public`);
+      transaction.oncomplete = () => resolve();
+      transaction.onerror = () => reject(transaction.error || new Error("No se pudo guardar la clave pública."));
+      transaction.onabort = () => reject(transaction.error || new Error("Se canceló el guardado de la clave pública."));
+    });
+  } finally {
+    db.close();
+  }
+}
+
 function toBase64(bytes: ArrayBuffer): string {
   const view = new Uint8Array(bytes);
   let binary = "";
@@ -106,6 +121,7 @@ export async function enrollCurrentBrowserIdentity(): Promise<"verified" | "unsu
       const identity = await createNonExtractableIdentity();
       privateKey = identity.privateKey;
       await writePrivateKey(device.device_id, privateKey);
+      await writePublicKey(device.device_id, identity.publicKey);
       const challenge = await createDeviceChallenge(device.id, identity.publicKey);
       const signature = await signMessage(privateKey, challenge.message);
       await verifyDeviceChallenge(challenge.challenge_id, signature);
@@ -114,7 +130,7 @@ export async function enrollCurrentBrowserIdentity(): Promise<"verified" | "unsu
 
     // Re-prove possession when this browser starts a new authenticated session.
     // The server binds each short-lived challenge to this user, device and public key.
-    const publicKey = await getStoredPublicKey(device.device_id, privateKey);
+    const publicKey = await getStoredPublicKey(device.device_id);
     const challenge = await createDeviceChallenge(device.id, publicKey);
     const signature = await signMessage(privateKey, challenge.message);
     await verifyDeviceChallenge(challenge.challenge_id, signature);
@@ -131,7 +147,7 @@ export async function enrollCurrentBrowserIdentity(): Promise<"verified" | "unsu
   }
 }
 
-async function getStoredPublicKey(deviceId: string, privateKey: CryptoKey): Promise<string> {
+async function getStoredPublicKey(deviceId: string): Promise<string> {
   // The public half is intentionally stored separately; private CryptoKey remains non-extractable.
   const db = await openKeyDatabase();
   try {
