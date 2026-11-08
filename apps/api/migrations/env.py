@@ -24,7 +24,7 @@ from app.models import (  # noqa: F401
     ModerationReport, PaymentOrder, Permission, Plan, PlanPrice, Playlist,
     PlaylistTrack, Provider, ProviderTrack, RankingSnapshot, Release, Role,
     RolePermission, Session, Subscription, SystemSetting, Track, TrackArtist,
-    User, UserRole,
+    User, UserPreferences, UserRole,
 )
 
 config = context.config

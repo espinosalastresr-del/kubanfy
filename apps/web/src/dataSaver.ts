@@ -6,8 +6,26 @@
 import type { PlanTier } from "./cachePolicy";
 
 const KEY = "kubanfy.dataSaver";
+const QUALITY_KEY = "kubanfy.audioQuality";
 
 export type StreamQuality = "low" | "medium";
+export type PreferredAudioQuality = "auto" | "low" | "medium" | "high";
+
+export function getPreferredAudioQuality(): PreferredAudioQuality {
+  try {
+    const value = localStorage.getItem(QUALITY_KEY);
+    return value === "low" || value === "medium" || value === "high" ? value : "auto";
+  } catch {
+    return "auto";
+  }
+}
+
+export function setPreferredAudioQuality(value: PreferredAudioQuality): void {
+  try { localStorage.setItem(QUALITY_KEY, value); } catch { /* private mode */ }
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(new CustomEvent("kubanfy:audio-quality", { detail: { quality: value } }));
+  }
+}
 
 export function isDataSaverEnabled(): boolean {
   try {

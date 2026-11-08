@@ -34,6 +34,7 @@ from app.models.rights import (
     RoyaltySettlement,
 )
 from app.models.user import User
+from app.models.user_preferences import UserPreferences
 
 __all__ = [
     "AnalyticsDaily",
@@ -79,5 +80,6 @@ __all__ = [
     "Track",
     "TrackArtist",
     "User",
+    "UserPreferences",
     "UserRole",
 ]

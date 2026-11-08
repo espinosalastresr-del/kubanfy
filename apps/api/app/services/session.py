@@ -46,6 +46,10 @@ class SessionService:
         now = datetime.now(UTC)
 
         if existing is not None:
+            if existing.status == DeviceStatus.BLOCKED:
+                raise ForbiddenError("Device is blocked", code="DEVICE_BLOCKED")
+            if existing.status == DeviceStatus.SUSPICIOUS:
+                raise ForbiddenError("Device requires security review", code="DEVICE_SUSPICIOUS")
             # A revoked device may be re-enrolled only after a fresh password
             # login reaches this method. Old refresh sessions remain revoked.
             if existing.status == DeviceStatus.REVOKED:
@@ -249,6 +253,8 @@ class SessionService:
             raise NotFoundError("Device not found")
         device.status = DeviceStatus.REVOKED
         device.revoked_at = datetime.now(UTC)
+        # A revoked browser may establish a fresh identity after a new password login.
+        device.public_key = None
         # Revoke all sessions and offline licenses bound to this device.
         await self.db.execute(
             update(Session)
@@ -276,6 +282,10 @@ class SessionService:
             raise AuthError("Invalid refresh token")
         if sess.status != SessionStatus.ACTIVE:
             raise AuthError("Session has been revoked")
+        if sess.device_id is not None:
+            device = await self.db.get(Device, sess.device_id)
+            if device is None or device.status != DeviceStatus.ACTIVE:
+                raise AuthError("Device is not active", code="DEVICE_NOT_ACTIVE")
         now = datetime.now(UTC)
         expires_at = (
             sess.expires_at
