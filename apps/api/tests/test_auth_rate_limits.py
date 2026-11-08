@@ -2,8 +2,6 @@
 from __future__ import annotations
 
 import hashlib
-from unittest.mock import AsyncMock
-
 import pytest
 from starlette.requests import Request
 
