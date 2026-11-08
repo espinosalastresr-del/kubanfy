@@ -38,6 +38,7 @@ class RightsRoyaltyService:
             artist_id,
             EDIT_ROLES,
             hide_existence=True,
+            require_active_artist=True,
         )
 
     async def set_splits(
