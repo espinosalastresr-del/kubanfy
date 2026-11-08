@@ -14,7 +14,7 @@ function LogoMark() {
   return <div className="logo-mark" aria-hidden="true"><span /><span /><span /></div>;
 }
 
-export function LoginView({ onLogin, onRegister, onForgot, initialEmail }: { onLogin: (email: string, password: string) => Promise<void>; onRegister: () => void; onForgot?: () => void; initialEmail: string }) {
+export function LoginView({ onLogin, onRegister, onForgot, onVerifyEmail, initialEmail }: { onLogin: (email: string, password: string) => Promise<void>; onRegister: () => void; onForgot?: () => void; onVerifyEmail?: () => void; initialEmail: string }) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -22,6 +22,7 @@ export function LoginView({ onLogin, onRegister, onForgot, initialEmail }: { onL
   const [submitted, setSubmitted] = useState(false);
   const [notice, setNotice] = useState("");
   const [authError, setAuthError] = useState("");
+  const [needsVerification, setNeedsVerification] = useState(false);
   const [installAvailable, setInstallAvailable] = useState(isInstallAvailable());
   const [installGuideOpen, setInstallGuideOpen] = useState(false);
   const [installMessage, setInstallMessage] = useState("");
@@ -37,6 +38,7 @@ export function LoginView({ onLogin, onRegister, onForgot, initialEmail }: { onL
     event.preventDefault();
     setSubmitted(true);
     setAuthError("");
+    setNeedsVerification(false);
     if (!email || !password || !email.includes("@")) return;
     setBusy(true);
     try {
@@ -44,7 +46,10 @@ export function LoginView({ onLogin, onRegister, onForgot, initialEmail }: { onL
     } catch (e) {
       const message = e instanceof Error ? e.message : "";
       const status = e instanceof ApiError ? e.status : 0;
-      if (status === 401 && /invalid email or password/i.test(message)) {
+      if (status === 403 && e instanceof ApiError && e.code === "EMAIL_NOT_VERIFIED") {
+        setNeedsVerification(true);
+        setAuthError("Debes verificar tu correo electrónico antes de iniciar sesión.");
+      } else if (status === 401 && /invalid email or password/i.test(message)) {
         setAuthError("El correo o la contraseña no son correctos. Comprueba tus datos e inténtalo de nuevo.");
       } else if (status === 401 && /suspended/i.test(message)) {
         setAuthError("Tu cuenta está suspendida. No puedes iniciar sesión mientras esta restricción esté activa.");
@@ -125,6 +130,7 @@ export function LoginView({ onLogin, onRegister, onForgot, initialEmail }: { onL
           </label>
 
           {authError && <div className="form-status" role="alert">{authError}</div>}
+          {needsVerification && <button className="secondary-button" type="button" onClick={onVerifyEmail}>Verificar mi correo o reenviar el enlace</button>}
           {notice && <div className="form-status is-notice">{notice}</div>}
 
           <div className="form-meta">
