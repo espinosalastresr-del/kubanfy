@@ -66,8 +66,7 @@ async def login(
     session: DbSession,
 ) -> LoginResponse:
     geo = GeoService()
-    ip = request.client.host if request.client else None
-    real_ip = geo.resolve_client_ip(ip, forwarded_for=request.headers.get("x-forwarded-for"))
+    real_ip = _resolve_request_ip(request, geo)
     await AntiAbuseService().check_login(real_ip, body.email)
     service = AuthService(session)
     user_agent = request.headers.get("user-agent")
@@ -105,7 +104,7 @@ async def confirm_email_verification(
     request: Request,
     session: DbSession,
 ) -> dict[str, str]:
-    ip = request.headers.get("cf-connecting-ip") or (request.client.host if request.client else None)
+    ip = _resolve_request_ip(request)
     if ip:
         await AntiAbuseService().enforce_rate_limit(
             f"email-verification-confirm:ip:{ip}", limit=10, window_seconds=900
@@ -128,7 +127,7 @@ async def request_password_reset(
     request: Request,
     session: DbSession,
 ) -> dict[str, str]:
-    ip = request.headers.get("cf-connecting-ip") or (request.client.host if request.client else None)
+    ip = _resolve_request_ip(request)
     if ip:
         await AntiAbuseService().enforce_rate_limit(
             f"password-reset:ip:{ip}", limit=5, window_seconds=900
@@ -145,7 +144,7 @@ async def confirm_password_reset(
     request: Request,
     session: DbSession,
 ) -> dict[str, str]:
-    ip = request.headers.get("cf-connecting-ip") or (request.client.host if request.client else None)
+    ip = _resolve_request_ip(request)
     if ip:
         await AntiAbuseService().enforce_rate_limit(
             f"password-reset-confirm:ip:{ip}", limit=10, window_seconds=900
