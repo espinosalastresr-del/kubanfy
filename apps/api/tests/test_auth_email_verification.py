@@ -31,7 +31,7 @@ async def test_login_rejects_unverified_user_before_creating_session(monkeypatch
         environment="test",
         jwt_secret_key="test-secret-key-with-at-least-32-characters",
     )
-    monkeypatch.setattr("app.services.auth.verify_password", lambda password, hashed: True)
+    monkeypatch.setattr("app.services.auth.verify_password", lambda *_args: True)
     service = AuthService(session, settings)
 
     with pytest.raises(AuthError) as error:
