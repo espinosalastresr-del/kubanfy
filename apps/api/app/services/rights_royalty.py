@@ -15,7 +15,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import ConflictError, NotFoundError, ValidationError
-from app.models.artist_member import ArtistMember, ArtistMemberRole
+from app.models.artist_member import ArtistMemberRole
 from app.models.music import Artist, Release, Track
 from app.models.rights import (
     CollaboratorSplit,
@@ -23,7 +23,7 @@ from app.models.rights import (
     RoyaltyLedgerEntry,
     RoyaltySettlement,
 )
-from app.services.rbac import RbacService
+from app.services.authorization import AuthorizationService
 
 EDIT_ROLES = {ArtistMemberRole.OWNER, ArtistMemberRole.MANAGER}
 
@@ -33,16 +33,12 @@ class RightsRoyaltyService:
         self.session = session
 
     async def _authorized(self, user_id: UUID, artist_id: UUID) -> None:
-        member = await self.session.scalar(
-            select(ArtistMember).where(
-                ArtistMember.artist_id == artist_id, ArtistMember.user_id == user_id
-            )
+        await AuthorizationService(self.session).require_artist_roles(
+            user_id,
+            artist_id,
+            EDIT_ROLES,
+            hide_existence=True,
         )
-        if member is None or member.role not in EDIT_ROLES:
-            raise NotFoundError("Artist not found")
-        artist = await self.session.get(Artist, artist_id)
-        if artist is None or artist.status != "active":
-            raise NotFoundError("Artist not found")
 
     async def set_splits(
         self, *, user_id: UUID, artist_id: UUID, scope_type: str, scope_id: UUID, splits: list[dict]
@@ -176,7 +172,9 @@ class RightsRoyaltyService:
         currency: str = "CUP",
         metadata: dict | None = None,
     ) -> RoyaltyLedgerEntry:
-        if not await RbacService(self.session).user_has_permission(user_id, "royalties.write"):
+        if not await AuthorizationService(self.session).has_all_permissions(
+            user_id, ["royalties.write"]
+        ):
             await self._authorized(user_id, artist_id)
         if direction not in ("credit", "debit"):
             raise ValidationError("Invalid ledger direction")
@@ -268,7 +266,9 @@ class RightsRoyaltyService:
         account = await self.session.get(RoyaltyAccount, settlement.account_id)
         if account is None:
             raise NotFoundError("Royalty account not found")
-        if not await RbacService(self.session).user_has_permission(user_id, "royalties.write"):
+        if not await AuthorizationService(self.session).has_all_permissions(
+            user_id, ["royalties.write"]
+        ):
             await self._authorized(user_id, account.artist_id)
 
     async def approve_settlement(
