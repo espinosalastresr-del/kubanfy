@@ -52,6 +52,7 @@ let fallbackDeviceId: string | null = null;
 
 export function setTokens(tokens: Tokens) {
   tokenVersion += 1;
+  refreshInFlight = null;
   accessToken = tokens.access_token;
   refreshToken = tokens.refresh_token;
   writeSessionValue("kubanfy.refresh", refreshToken);
@@ -59,6 +60,7 @@ export function setTokens(tokens: Tokens) {
 
 export function clearTokens() {
   tokenVersion += 1;
+  refreshInFlight = null;
   accessToken = null;
   refreshToken = null;
   writeSessionValue("kubanfy.refresh", null);
