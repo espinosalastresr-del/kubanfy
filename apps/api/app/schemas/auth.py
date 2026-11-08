@@ -10,14 +10,19 @@ from uuid import UUID
 from pydantic import BaseModel, EmailStr, Field, field_validator
 
 
+def _validate_bcrypt_password_length(value: str) -> str:
+    if len(value.encode("utf-8")) > 72:
+        raise ValueError("Password cannot exceed bcrypt's 72-byte UTF-8 limit")
+    return value
+
+
 def _validate_auth_password(value: str) -> str:
     has_letter = any(char.isalpha() for char in value)
     has_number_or_symbol = any(
         char.isnumeric() or unicodedata.category(char)[0] in {"P", "S"}
         for char in value
     )
-    if len(value.encode("utf-8")) > 72:
-        raise ValueError("Password cannot exceed bcrypt's 72-byte UTF-8 limit")
+    _validate_bcrypt_password_length(value)
     if not has_letter or not has_number_or_symbol:
         raise ValueError(
             "Password must contain at least one letter and one number or symbol"
@@ -53,10 +58,15 @@ class RegisterRequest(BaseModel):
 
 class LoginRequest(BaseModel):
     email: EmailStr
-    password: str
+    password: str = Field(min_length=1, max_length=128)
     device_id: str | None = Field(default=None, max_length=128)
     device_name: str | None = Field(default=None, max_length=120)
     platform: str | None = Field(default=None, max_length=32)
+
+    @field_validator("password")
+    @classmethod
+    def bcrypt_password_length(cls, value: str) -> str:
+        return _validate_bcrypt_password_length(value)
 
 
 class TokenResponse(BaseModel):

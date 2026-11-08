@@ -4,7 +4,7 @@ from __future__ import annotations
 import pytest
 from pydantic import ValidationError
 
-from app.schemas.auth import PasswordResetConfirmRequest, RegisterRequest
+from app.schemas.auth import LoginRequest, PasswordResetConfirmRequest, RegisterRequest
 
 
 @pytest.mark.parametrize("password", ["passwordonly", "123456789", "!!!!!!!!"])
@@ -67,3 +67,15 @@ def test_password_reset_accepts_letters_and_symbols() -> None:
         new_password="Clave!Segura",
     )
     assert request.new_password == "Clave!Segura"
+
+
+
+@pytest.mark.parametrize("password", ["a" * 73, "á" * 37])
+def test_login_rejects_password_over_bcrypt_byte_limit(password: str) -> None:
+    with pytest.raises(ValidationError):
+        LoginRequest(email="person@example.com", password=password)
+
+
+def test_login_accepts_legacy_password_without_reapplying_strength_policy() -> None:
+    request = LoginRequest(email="person@example.com", password="legacy-pass")
+    assert request.password == "legacy-pass"

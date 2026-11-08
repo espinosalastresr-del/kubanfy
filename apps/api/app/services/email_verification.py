@@ -59,9 +59,11 @@ class EmailVerificationService:
         # A delivered message must never point to a token that later rolls back.
         await self.session.commit()
 
+        # Keep bearer tokens in the URL fragment so they are not sent in
+        # HTTP requests, access logs, or referrer headers.
         verify_url = (
             f"{self.settings.frontend_base_url.rstrip('/')}/"
-            f"?verify_token={quote(raw_token, safe='')}"
+            f"#verify_token={quote(raw_token, safe='')}"
         )
         content = email_verification_email(verify_url)
         try:
