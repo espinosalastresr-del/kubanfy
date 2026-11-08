@@ -20,6 +20,7 @@ class DeviceStatus(str, enum.Enum):
     ACTIVE = "active"
     REVOKED = "revoked"
     SUSPICIOUS = "suspicious"
+    BLOCKED = "blocked"
 
 
 class SessionStatus(str, enum.Enum):
@@ -42,6 +43,9 @@ class Device(Base):
     platform: Mapped[str | None] = mapped_column(String(32), nullable=True)  # ios, android, web
     os_version: Mapped[str | None] = mapped_column(String(64), nullable=True)
     app_version: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    public_key: Mapped[str | None] = mapped_column(
+        String(44), nullable=True, comment="Base64-encoded raw Ed25519 public key"
+    )
     status: Mapped[DeviceStatus] = mapped_column(
         Enum(DeviceStatus, name="device_status", values_callable=lambda x: [e.value for e in x]),
         nullable=False,
