@@ -309,7 +309,15 @@ export default function App() {
       <EmailVerificationView
         initialEmail={registeredEmail}
         token={verifyToken}
-        onBack={() => { setVerifyToken(null); setAuthMode("login"); }}
+        onBack={() => {
+          setVerifyToken(null);
+          try {
+            const url = new URL(window.location.href);
+            url.searchParams.delete("verify_token");
+            window.history.replaceState({}, "", url.pathname + url.search + url.hash);
+          } catch { /* ignore */ }
+          setAuthMode("login");
+        }}
         onVerified={() => {
           setVerifyToken(null);
           try {
@@ -345,7 +353,7 @@ export default function App() {
         onLogin={doLogin}
         onRegister={() => setAuthMode("register")}
         onForgot={() => setAuthMode("forgot")}
-        onVerifyEmail={() => setAuthMode("verify")}
+        onVerifyEmail={(email) => { setRegisteredEmail(email); setAuthMode("verify"); }}
         initialEmail={registeredEmail}
       />
     );
