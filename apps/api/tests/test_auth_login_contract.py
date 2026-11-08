@@ -2,10 +2,19 @@
 
 from __future__ import annotations
 
+from types import SimpleNamespace
+from unittest.mock import AsyncMock
+
 import pytest
+from fastapi import Response
+from starlette.requests import Request
+
+from app.api.v1 import auth
+from app.core.config import Settings
+from app.core.exceptions import AuthError
 from pydantic import ValidationError
 
-from app.schemas.auth import BrowserLoginResponse, LoginResponse
+from app.schemas.auth import BrowserLoginResponse, LoginRequest, LoginResponse
 
 
 def test_browser_login_response_never_accepts_or_serializes_refresh_token() -> None:
@@ -59,3 +68,47 @@ def test_browser_login_response_rejects_missing_access_token() -> None:
 
     with pytest.raises(ValidationError):
         BrowserLoginResponse.model_validate(payload)
+
+
+@pytest.mark.asyncio
+async def test_login_rejects_untrusted_origin_before_any_authentication_mutation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    web_origin = "https://kubanfy-web-staging.globumlatinmusic.workers.dev"
+    anti_abuse = SimpleNamespace(check_login=AsyncMock())
+    auth_service = SimpleNamespace(login=AsyncMock())
+    geo = SimpleNamespace(
+        resolve_client_ip=lambda ip, forwarded_for=None: ip,
+        resolve=lambda ip: SimpleNamespace(country="US"),
+    )
+    monkeypatch.setattr(auth, "get_settings", lambda: Settings(
+        environment="staging",
+        cors_origins=web_origin,
+    ))
+    monkeypatch.setattr(auth, "AntiAbuseService", lambda: anti_abuse)
+    monkeypatch.setattr(auth, "AuthService", lambda _session: auth_service)
+    monkeypatch.setattr(auth, "GeoService", lambda: geo)
+
+    request = Request({
+        "type": "http",
+        "http_version": "1.1",
+        "method": "POST",
+        "scheme": "https",
+        "path": "/v1/auth/login",
+        "raw_path": b"/v1/auth/login",
+        "query_string": b"",
+        "headers": [(b"origin", b"https://evil.example")],
+        "client": ("127.0.0.1", 1234),
+        "server": ("testserver", 443),
+    })
+
+    with pytest.raises(AuthError):
+        await auth.login(
+            body=LoginRequest(email="listener@example.com", password="password"),
+            request=request,
+            response=Response(),
+            session=object(),
+        )
+
+    anti_abuse.check_login.assert_not_awaited()
+    auth_service.login.assert_not_awaited()
