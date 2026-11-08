@@ -32,6 +32,19 @@ function QueueIcon() { return <svg viewBox="0 0 24 24" aria-hidden="true"><path 
 function SearchIcon() { return <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.8" cy="10.8" r="6.8" /><path d="m16 16 5 5" /></svg>; }
 function LogoMark() { return <div className="logo-mark" aria-hidden="true"><span /><span /><span /></div>; }
 
+function clearVerificationTokenFromUrl(): void {
+  try {
+    const url = new URL(window.location.href);
+    url.searchParams.delete("verify_token");
+    const hashParams = new URLSearchParams(url.hash.replace(/^#/, ""));
+    hashParams.delete("verify_token");
+    url.hash = hashParams.toString();
+    window.history.replaceState({}, "", url.pathname + url.search + url.hash);
+  } catch {
+    /* Ignore URL cleanup failures; verification state remains server-side. */
+  }
+}
+
 export default function App() {
   const [user, setUser] = useState<any>(null);
   const [authMode, setAuthMode] = useState<"login" | "register" | "forgot" | "verify">("login");
@@ -72,7 +85,11 @@ export default function App() {
 
   const [verifyToken, setVerifyToken] = useState<string | null>(() => {
     try {
-      return new URLSearchParams(window.location.search).get("verify_token");
+      const searchParams = new URLSearchParams(window.location.search);
+      const hashParams = new URLSearchParams(window.location.hash.replace(/^#/, ""));
+      // Prefer the fragment for new links; retain query support for previously
+      // issued verification emails.
+      return hashParams.get("verify_token") || searchParams.get("verify_token");
     } catch {
       return null;
     }
@@ -322,20 +339,12 @@ export default function App() {
         token={verifyToken}
         onBack={() => {
           setVerifyToken(null);
-          try {
-            const url = new URL(window.location.href);
-            url.searchParams.delete("verify_token");
-            window.history.replaceState({}, "", url.pathname + url.search + url.hash);
-          } catch { /* ignore */ }
+          clearVerificationTokenFromUrl();
           setAuthMode("login");
         }}
         onVerified={() => {
           setVerifyToken(null);
-          try {
-            const url = new URL(window.location.href);
-            url.searchParams.delete("verify_token");
-            window.history.replaceState({}, "", url.pathname + url.search + url.hash);
-          } catch { /* ignore */ }
+          clearVerificationTokenFromUrl();
           setAuthMode("login");
         }}
       />
