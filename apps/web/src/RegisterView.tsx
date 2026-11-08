@@ -79,7 +79,7 @@ export function RegisterView({ onBack, onRegistered }: { onBack: () => void; onR
           <label className="field">
             <span>Repetir contraseña</span>
             <input type={showPassword ? "text" : "password"} autoComplete="new-password" value={confirmation} onChange={e => setConfirmation(e.target.value)} placeholder="Repite tu contraseña" maxLength={128} aria-invalid={submitted && password !== confirmation} required />
-            {submitted && password !== confirmation && <small>Las contraseñas no coinciden.</small>}
+            {submitted && (!confirmation || password !== confirmation) && <small>Las contraseñas no coinciden.</small>}
           </label>
           {error && <div className="form-status" role="alert">{error}</div>}
           <button className={`primary-button login-button${busy ? " is-loading" : ""}`} type="submit" disabled={busy} aria-busy={busy}>
