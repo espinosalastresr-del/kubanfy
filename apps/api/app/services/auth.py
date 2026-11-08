@@ -67,16 +67,16 @@ class AuthService:
             logger.warning("login_failed", email=data.email.lower())
             raise AuthError("Invalid email or password")
 
-        if not user.email_verified:
+        if user.status == UserStatus.SUSPENDED:
+            raise AuthError("Account is suspended")
+        if user.status == UserStatus.DELETED:
+            raise AuthError("Account not found")
+        if not user.email_verified or user.status == UserStatus.PENDING_VERIFICATION:
             raise AuthError(
                 "Email verification required",
                 code="EMAIL_NOT_VERIFIED",
                 status_code=403,
             )
-        if user.status == UserStatus.SUSPENDED:
-            raise AuthError("Account is suspended")
-        if user.status == UserStatus.DELETED:
-            raise AuthError("Account not found")
 
         user.last_login_at = datetime.now(UTC)
 
@@ -128,7 +128,7 @@ class AuthService:
         user = await self.session.get(User, sess.user_id)
         if user is None or user.status in (UserStatus.SUSPENDED, UserStatus.DELETED):
             raise AuthError("Account not available")
-        if not user.email_verified:
+        if not user.email_verified or user.status == UserStatus.PENDING_VERIFICATION:
             raise AuthError(
                 "Email verification required",
                 code="EMAIL_NOT_VERIFIED",
