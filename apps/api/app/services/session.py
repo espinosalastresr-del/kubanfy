@@ -46,6 +46,8 @@ class SessionService:
         now = datetime.now(UTC)
 
         if existing is not None:
+            if existing.status == DeviceStatus.BLOCKED:
+                raise ForbiddenError("Device is blocked", code="DEVICE_BLOCKED")
             # A revoked device may be re-enrolled only after a fresh password
             # login reaches this method. Old refresh sessions remain revoked.
             if existing.status == DeviceStatus.REVOKED:
@@ -276,6 +278,10 @@ class SessionService:
             raise AuthError("Invalid refresh token")
         if sess.status != SessionStatus.ACTIVE:
             raise AuthError("Session has been revoked")
+        if sess.device_id is not None:
+            device = await self.db.get(Device, sess.device_id)
+            if device is None or device.status != DeviceStatus.ACTIVE:
+                raise AuthError("Device is not active", code="DEVICE_NOT_ACTIVE")
         now = datetime.now(UTC)
         expires_at = (
             sess.expires_at
