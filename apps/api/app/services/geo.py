@@ -6,6 +6,7 @@ Server determines country from IP. Fallback: user-selected or default CU.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from functools import lru_cache
 from ipaddress import ip_address
 
 from app.core.config import Settings, get_settings
@@ -88,3 +89,9 @@ class GeoService:
                 source="user_selected",
             )
         return self.country_from_ip(ip)
+
+
+@lru_cache(maxsize=1)
+def get_geo_service() -> GeoService:
+    """Reuse the process GeoIP reader instead of reopening it per request."""
+    return GeoService()
