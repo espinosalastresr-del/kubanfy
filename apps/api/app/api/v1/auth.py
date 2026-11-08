@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 from uuid import UUID
 
 from fastapi import APIRouter, Request
@@ -25,8 +26,8 @@ from app.schemas.auth import (
 )
 from app.services.anti_abuse import AntiAbuseService
 from app.services.auth import AuthService
-from app.services.geo import GeoService
 from app.services.email_verification import EmailVerificationService
+from app.services.geo import GeoService
 from app.services.password_reset import PasswordResetService
 from app.services.session import SessionService
 
@@ -73,8 +74,6 @@ async def request_email_verification(
     request: Request,
     session: DbSession,
 ) -> dict[str, str]:
-    import hashlib
-
     ip = request.headers.get("cf-connecting-ip") or (request.client.host if request.client else None)
     limiter = AntiAbuseService()
     if ip:
@@ -94,8 +93,14 @@ async def request_email_verification(
 @router.post("/email-verification/confirm")
 async def confirm_email_verification(
     body: EmailVerificationConfirmRequest,
+    request: Request,
     session: DbSession,
 ) -> dict[str, str]:
+    ip = request.headers.get("cf-connecting-ip") or (request.client.host if request.client else None)
+    if ip:
+        await AntiAbuseService().enforce_rate_limit(
+            f"email-verification-confirm:ip:{ip}", limit=10, window_seconds=900
+        )
     verified = await EmailVerificationService(session).consume(body.token)
     if not verified:
         from app.core.exceptions import AuthError
