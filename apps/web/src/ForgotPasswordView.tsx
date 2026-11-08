@@ -85,7 +85,6 @@ export function ForgotPasswordView({ initialEmail = "", onBack }: Props) {
                   value={email}
                   onChange={(ev) => setEmail(ev.target.value)}
                   maxLength={254}
-                  aria-invalid={!!error}
                   placeholder="tu@email.com"
                   required
                 />
