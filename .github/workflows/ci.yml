@@ -116,3 +116,5 @@ jobs:
         run: pnpm build
       - name: Worker proxy tests
         run: pnpm test:worker
+      - name: Client auth tests
+        run: pnpm test:client
