@@ -271,6 +271,10 @@ class Settings(BaseSettings):
     @property
     def cors_origins_list(self) -> list[str]:
         origins = [o.strip() for o in self.cors_origins.split(",") if o.strip()]
+        if "*" in origins:
+            raise ValueError(
+                "CORS_ORIGINS must list explicit origins when credentialed CORS is enabled"
+            )
         # The staging frontend uses the account-scoped Workers hostname.
         # Keep this explicit allowlist entry even if an older deployment
         # still carries the legacy workers.dev CORS variable.
