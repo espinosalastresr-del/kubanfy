@@ -253,6 +253,8 @@ class SessionService:
             raise NotFoundError("Device not found")
         device.status = DeviceStatus.REVOKED
         device.revoked_at = datetime.now(UTC)
+        # A revoked browser may establish a fresh identity after a new password login.
+        device.public_key = None
         # Revoke all sessions and offline licenses bound to this device.
         await self.db.execute(
             update(Session)
