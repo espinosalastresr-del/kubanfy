@@ -19,6 +19,10 @@ declare namespace Cloudflare {
     FEATURE_MONETIZATION: string;
     FEATURE_GOOGLE_PLAY: string;
     FEATURE_PROVIDER_YOUTUBE: string;
+    EMAIL_PROVIDER: string;
+    EMAIL_FROM: string;
+    RESEND_API_KEY: string;
+    FRONTEND_BASE_URL: string;
     R2_ENDPOINT: string;
     R2_ACCESS_KEY_ID: string;
     R2_SECRET_ACCESS_KEY: string;
