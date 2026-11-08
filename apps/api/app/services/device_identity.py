@@ -108,7 +108,7 @@ class DeviceIdentityService:
             device_id = UUID(payload["device_id"])
             public_key_b64 = payload["public_key"]
             nonce = payload["nonce"]
-        except (ValueError, KeyError, TypeError, json.JSONDecodeError) as exc:
+        except (ValueError, KeyError, TypeError) as exc:
             raise AuthError("Invalid device challenge", code="DEVICE_CHALLENGE_INVALID") from exc
 
         if challenge_user_id != user_id:
