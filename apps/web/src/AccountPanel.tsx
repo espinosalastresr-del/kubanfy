@@ -1,4 +1,4 @@
-import { FormEvent, useCallback, useEffect, useState } from "react";
+import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
 import {
   ApiError,
   clearTokens,
@@ -39,6 +39,11 @@ export function AccountPanel({ user, setUser, setStatus, onLoggedOut }: Props) {
   const [country, setCountry] = useState(String(u.country || "CU"));
   const [language, setLanguage] = useState(String(u.language || "es"));
   const thisDevice = getDeviceId();
+  const onLoggedOutRef = useRef(onLoggedOut);
+
+  useEffect(() => {
+    onLoggedOutRef.current = onLoggedOut;
+  }, [onLoggedOut]);
 
   const refresh = useCallback(async () => {
     try {
@@ -48,12 +53,12 @@ export function AccountPanel({ user, setUser, setStatus, onLoggedOut }: Props) {
     } catch (e) {
       if (e instanceof ApiError && e.status === 401) {
         clearTokens();
-        onLoggedOut();
+        onLoggedOutRef.current();
         return;
       }
       setStatus(e instanceof Error ? e.message : "No se pudo cargar cuenta");
     }
-  }, [onLoggedOut, setStatus]);
+  }, [setStatus]);
 
   useEffect(() => {
     void refresh();
