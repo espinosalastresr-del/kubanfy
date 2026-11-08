@@ -29,6 +29,7 @@ def make_auth_context(*, session_status: SessionStatus = SessionStatus.ACTIVE):
     )
     auth_session = SimpleNamespace(
         access_token_jti=jti,
+        device_id=None,
         status=session_status,
         expires_at=now + timedelta(days=7),
         last_activity_at=now,
