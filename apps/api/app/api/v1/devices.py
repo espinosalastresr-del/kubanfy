@@ -24,7 +24,7 @@ class DeviceChallengeResponse(BaseModel):
     nonce: str
     message: str
     algorithm: str
-    expires_in: str
+    expires_in: int
 
 
 class DeviceChallengeVerifyRequest(BaseModel):
