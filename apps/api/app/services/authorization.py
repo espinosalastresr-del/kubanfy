@@ -72,16 +72,18 @@ class AuthorizationService:
         require_active_artist: bool = False,
         denial_message: str = "Insufficient artist permissions",
     ) -> ArtistMember:
-        """Require an active artist and membership in one of the allowed roles.
+        """Require membership in an allowed role, optionally requiring an active artist.
 
         Artist-scoped checks deliberately do not infer authorization from client
         context or from a global UI role. Callers that need global system access
         must check an explicit system permission separately.
         """
-        artist_is_active = True
         if require_active_artist:
             artist = await self.session.scalar(select(Artist).where(Artist.id == artist_id))
-            artist_is_active = artist is not None and artist.status == "active"
+            if artist is None or artist.status != "active":
+                if hide_existence:
+                    raise NotFoundError("Artist not found")
+                raise ForbiddenError(denial_message)
 
         member = await self.session.scalar(
             select(ArtistMember).where(
@@ -90,7 +92,7 @@ class AuthorizationService:
             )
         )
 
-        if not artist_is_active or member is None or member.role not in allowed_roles:
+        if member is None or member.role not in allowed_roles:
             if hide_existence:
                 raise NotFoundError("Artist not found")
             raise ForbiddenError(denial_message)
