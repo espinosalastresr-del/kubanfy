@@ -22,29 +22,23 @@ export function EmailVerificationView({
     setEmail(initialEmail);
   }, [initialEmail]);
 
-  useEffect(() => {
-    if (!token) return;
-    let active = true;
+  async function confirm() {
+    if (!token || busy) return;
     setBusy(true);
     setError("");
-    void confirmEmailVerification(token)
-      .then((result) => {
-        if (!active) return;
-        setVerified(true);
-        setMessage(result.message);
-      })
-      .catch((cause) => {
-        if (!active) return;
-        const apiError = cause instanceof ApiError ? cause : null;
-        setError(apiError?.code === "EMAIL_VERIFICATION_INVALID"
-          ? "Este enlace ha caducado o ya fue utilizado. Solicita uno nuevo."
-          : "No pudimos verificar el correo. Comprueba tu conexión e inténtalo otra vez.");
-      })
-      .finally(() => {
-        if (active) setBusy(false);
-      });
-    return () => { active = false; };
-  }, [token]);
+    try {
+      const result = await confirmEmailVerification(token);
+      setVerified(true);
+      setMessage(result.message);
+    } catch (cause) {
+      const apiError = cause instanceof ApiError ? cause : null;
+      setError(apiError?.code === "EMAIL_VERIFICATION_INVALID"
+        ? "Este enlace ha caducado o ya fue utilizado. Vuelve al inicio de sesión y solicita uno nuevo."
+        : "No pudimos verificar el correo. Comprueba tu conexión e inténtalo otra vez.");
+    } finally {
+      setBusy(false);
+    }
+  }
 
   async function resend(event: FormEvent) {
     event.preventDefault();
@@ -85,13 +79,18 @@ export function EmailVerificationView({
             </p>
           </div>
 
-          {busy && token ? (
-            <div className="form-status" role="status">Verificando tu enlace…</div>
-          ) : verified ? (
+          {verified ? (
             <>
               <div className="form-status is-notice" role="status">{message}</div>
               <button className="primary-button login-button" type="button" onClick={onVerified}>
                 <span>Ir a iniciar sesión</span><span className="button-arrow">→</span>
+              </button>
+            </>
+          ) : token ? (
+            <>
+              {error && <div className="form-status" role="alert">{error}</div>}
+              <button className="primary-button login-button" type="button" onClick={() => void confirm()} disabled={busy} aria-busy={busy}>
+                {busy ? "Verificando…" : "Confirmar mi correo"}
               </button>
             </>
           ) : (
