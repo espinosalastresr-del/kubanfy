@@ -171,3 +171,46 @@ async def test_browser_logout_revokes_cookie_session_and_expires_cookie(
     assert morsel.value == ""
     assert morsel["max-age"] == "0"
     assert morsel["path"] == "/api/v1/auth"
+
+
+@pytest.mark.asyncio
+async def test_browser_refresh_rejects_json_and_cookie_credentials_together(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    service = type("Service", (), {"refresh": AsyncMock(return_value=issued_tokens())})()
+    monkeypatch.setattr(auth, "AuthService", lambda _session: service)
+    monkeypatch.setattr(auth, "get_settings", settings)
+
+    with pytest.raises(AuthError):
+        await auth.refresh(
+            body=RefreshRequest(refresh_token="ambiguous-json-token"),
+            request=make_request(
+                origin=WEB_ORIGIN,
+                cookie=f"kubanfy_refresh={REFRESH_VALUE}",
+            ),
+            response=Response(),
+            session=object(),
+        )
+
+    service.refresh.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_refresh_rejects_cookie_when_origin_is_missing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    service = type("Service", (), {"refresh": AsyncMock(return_value=issued_tokens())})()
+    monkeypatch.setattr(auth, "AuthService", lambda _session: service)
+
+    with pytest.raises(AuthError):
+        await auth.refresh(
+            body=RefreshRequest(refresh_token="legacy-json-token"),
+            request=make_request(
+                origin=None,
+                cookie=f"kubanfy_refresh={REFRESH_VALUE}",
+            ),
+            response=Response(),
+            session=object(),
+        )
+
+    service.refresh.assert_not_awaited()
