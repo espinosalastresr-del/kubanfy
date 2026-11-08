@@ -118,3 +118,5 @@ jobs:
         run: pnpm test:worker
       - name: Client auth tests
         run: pnpm test:client
+      - name: Validate Worker configuration
+        run: pnpm exec wrangler deploy --dry-run
