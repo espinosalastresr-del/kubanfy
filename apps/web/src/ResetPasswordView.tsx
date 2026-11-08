@@ -1,5 +1,6 @@
 import { FormEvent, useState } from "react";
 import { ApiError, confirmPasswordReset } from "./api";
+import { passwordValidationError } from "./authValidation";
 
 function LogoMark() {
   return (
@@ -26,8 +27,9 @@ export function ResetPasswordView({ token, onDone }: Props) {
   async function submit(e: FormEvent) {
     e.preventDefault();
     setError("");
-    if (password.length < 8) {
-      setError("La contraseña debe tener al menos 8 caracteres.");
+    const passwordError = passwordValidationError(password);
+    if (passwordError) {
+      setError(passwordError);
       return;
     }
     if (password !== confirm) {
@@ -87,6 +89,8 @@ export function ResetPasswordView({ token, onDone }: Props) {
                   onChange={(ev) => setPassword(ev.target.value)}
                   required
                   minLength={8}
+                  maxLength={128}
+                  aria-invalid={!!error}
                 />
               </label>
               <label className="field">
@@ -98,6 +102,8 @@ export function ResetPasswordView({ token, onDone }: Props) {
                   onChange={(ev) => setConfirm(ev.target.value)}
                   required
                   minLength={8}
+                  maxLength={128}
+                  aria-invalid={!!error}
                 />
               </label>
               {error && (
