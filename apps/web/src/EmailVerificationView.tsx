@@ -15,7 +15,7 @@ export function EmailVerificationView({
   const [email, setEmail] = useState(initialEmail);
   const [busy, setBusy] = useState(false);
   const [verified, setVerified] = useState(false);
-  const [message, setMessage] = useState("");
+  const [message, setMessage] = useState(initialEmail ? "Revisa tu bandeja de entrada y la carpeta de correo no deseado. Si no encuentras el enlace, puedes solicitar otro." : "");
   const [error, setError] = useState("");
 
   useEffect(() => {
