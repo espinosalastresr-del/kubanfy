@@ -9,7 +9,7 @@ on:
 
 concurrency:
   group: ci-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.ref != 'refs/heads/staging/canonical' }}
 
 jobs:
   api-tests:
@@ -142,7 +142,18 @@ jobs:
             echo "::error::Missing GitHub Actions secret CLOUDFLARE_API_TOKEN."
             exit 1
           fi
+      - name: Check that this is still the latest staging commit
+        id: freshness
+        run: |
+          git fetch origin staging/canonical
+          if [ "$(git rev-parse HEAD)" = "$(git rev-parse FETCH_HEAD)" ]; then
+            echo "deploy=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::notice::Skipping deployment because a newer staging commit exists."
+            echo "deploy=false" >> "$GITHUB_OUTPUT"
+          fi
       - name: Deploy staging Worker and Container
+        if: steps.freshness.outputs.deploy == 'true'
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: "692849a1e51eea43c2ddbf3cddc42f6f"
