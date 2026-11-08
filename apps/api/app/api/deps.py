@@ -13,7 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
 from app.core.database import get_db
-from app.core.exceptions import AuthError, ForbiddenError
+from app.core.exceptions import AuthError
 from app.core.security import decode_token
 from app.models.device import Session, SessionStatus
 from app.models.user import User, UserStatus
