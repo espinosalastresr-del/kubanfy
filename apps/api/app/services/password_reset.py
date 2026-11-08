@@ -16,6 +16,7 @@ from app.models.device import SessionStatus
 from app.models.password_reset import PasswordResetToken
 from app.models.user import User, UserStatus
 from app.services.email_delivery import EmailDeliveryService
+from app.services.email_templates import password_reset_email
 
 logger = get_logger(__name__)
 
@@ -60,15 +61,13 @@ class PasswordResetService:
         await self.session.flush()
 
         reset_url = f"{self.settings.frontend_base_url.rstrip('/')}/#reset_token={quote(raw_token)}"
+        content = password_reset_email(reset_url)
         try:
             await self.email_delivery.send(
                 user.email,
-                "Restablece tu contrase\u00f1a de KubanFy",
-                "Recibimos una solicitud para cambiar tu contrase\u00f1a. Abre este enlace para continuar: "
-                f"{reset_url}\nSi no lo solicitaste, ignora este correo.",
-                "<p>Recibimos una solicitud para cambiar tu contrase\u00f1a de KubanFy.</p>"
-                f'<p><a href="{reset_url}">Crear una nueva contrase\u00f1a</a></p>'
-                "<p>Si no lo solicitaste, ignora este correo.</p>",
+                content.subject,
+                content.text_body,
+                content.html_body,
             )
         except Exception as exc:
             record.used_at = datetime.now(UTC)

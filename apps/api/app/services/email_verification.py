@@ -4,7 +4,6 @@ from __future__ import annotations
 import hashlib
 import secrets
 from datetime import UTC, datetime, timedelta
-from html import escape
 from urllib.parse import quote
 
 from sqlalchemy import select, update
@@ -15,6 +14,7 @@ from app.core.logging import get_logger
 from app.models.email_verification import EmailVerificationToken
 from app.models.user import User, UserStatus
 from app.services.email_delivery import EmailDeliveryService
+from app.services.email_templates import email_verification_email
 
 logger = get_logger(__name__)
 
@@ -63,24 +63,13 @@ class EmailVerificationService:
             f"{self.settings.frontend_base_url.rstrip('/')}/"
             f"?verify_token={quote(raw_token, safe='')}"
         )
-        safe_url = escape(verify_url, quote=True)
-        text_body = (
-            "Confirma tu correo electrónico para activar tu cuenta de KubanFy. "
-            f"Abre este enlace: {verify_url}\n"
-            "Si no creaste esta cuenta, puedes ignorar este mensaje."
-        )
-        html_body = (
-            "<p>Confirma tu correo electrónico para activar tu cuenta de KubanFy.</p>"
-            f'<p><a href="{safe_url}">Verificar mi correo</a></p>'
-            f"<p>Si el enlace no funciona, copia esta dirección: {safe_url}</p>"
-            "<p>Si no creaste esta cuenta, puedes ignorar este mensaje.</p>"
-        )
+        content = email_verification_email(verify_url)
         try:
             await self.email_delivery.send(
                 user.email,
-                "Confirma tu correo electrónico — KubanFy",
-                text_body,
-                html_body,
+                content.subject,
+                content.text_body,
+                content.html_body,
             )
         except Exception as exc:
             record.used_at = datetime.now(UTC)
