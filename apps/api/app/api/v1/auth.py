@@ -65,7 +65,7 @@ async def login(
     request: Request,
     session: DbSession,
 ) -> LoginResponse:
-    geo = GeoService()
+    geo = get_geo_service()
     real_ip = _resolve_request_ip(request, geo)
     await AntiAbuseService().check_login(real_ip, body.email)
     service = AuthService(session)
