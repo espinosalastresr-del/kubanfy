@@ -68,7 +68,10 @@ async def get_current_user(
     if not isinstance(access_jti, str) or not access_jti:
         raise AuthError("Invalid access token session", code="SESSION_INVALID")
     auth_session = await session.scalar(
-        select(Session).where(Session.access_token_jti == access_jti)
+        select(Session).where(
+            Session.access_token_jti == access_jti,
+            Session.user_id == user_id,
+        )
     )
     if auth_session is None or auth_session.status != SessionStatus.ACTIVE:
         raise AuthError("Session has been revoked", code="SESSION_INVALID")
