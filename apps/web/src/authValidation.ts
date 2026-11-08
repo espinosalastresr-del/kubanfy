@@ -13,6 +13,9 @@ export function passwordValidationError(password: string): string | null {
   const length = [...password].length;
   if (length < 8) return "La contraseña debe tener al menos 8 caracteres.";
   if (length > 128) return "La contraseña no puede superar los 128 caracteres.";
+  if (new TextEncoder().encode(password).length > 72) {
+    return "La contraseña es demasiado larga; reduce su longitud.";
+  }
   if (!/\p{L}/u.test(password)) {
     return "Incluye al menos una letra.";
   }
