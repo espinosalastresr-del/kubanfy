@@ -52,24 +52,24 @@ def _render_action_email(
   <title>{escape(subject)}</title>
   <style>
     :root {{ color-scheme: light dark; }}
-    body {{ margin: 0; padding: 0; background: #f3f5f8; }}
+    body {{ margin: 0; padding: 0; background: #08090d; }}
     .email-shell {{ width: 100%; padding: 36px 12px; background: #f3f5f8; }}
     .email-card {{ width: 100%; max-width: 560px; margin: 0 auto; background: #ffffff;
       border: 1px solid #e5e9ef; border-radius: 18px; overflow: hidden; }}
     .email-header {{ padding: 28px 36px 18px; }}
-    .brand {{ color: #111827; font: 700 22px/1.2 Arial, Helvetica, sans-serif;
+    .brand {{ color: #f7f8fb; font: 700 22px/1.2 Arial, Helvetica, sans-serif;
       letter-spacing: -0.6px; }}
-    .brand-mark {{ color: #0d9488; }}
-    .email-content {{ padding: 16px 36px 34px; color: #263244;
+    .brand-mark {{ color: #d9f45a; }}
+    .email-content {{ padding: 16px 36px 34px; color: #f7f8fb;
       font: 16px/1.65 Arial, Helvetica, sans-serif; }}
-    h1 {{ margin: 0 0 14px; color: #111827; font-size: 25px; line-height: 1.25; }}
+    h1 {{ margin: 0 0 14px; color: #f7f8fb; font-size: 25px; line-height: 1.25; }}
     p {{ margin: 0 0 18px; }}
     .action {{ display: inline-block; margin: 8px 0 22px; padding: 13px 22px;
-      border-radius: 10px; background: #0d9488; color: #ffffff !important;
+      border-radius: 10px; background: #d9f45a; color: #10131a !important;
       font-weight: 700; text-decoration: none; }}
-    .fallback {{ overflow-wrap: anywhere; color: #0f766e; font-size: 13px; }}
+    .fallback {{ overflow-wrap: anywhere; color: #8de1d0; font-size: 13px; }}
     .security {{ margin-top: 24px; padding: 14px 16px; border-radius: 10px;
-      background: #f1f5f9; color: #475569; font-size: 13px; }}
+      background: rgba(255,255,255,.065); color: #a9afbd; font-size: 13px; }}
     .email-footer {{ padding: 20px 36px 26px; border-top: 1px solid #edf0f4;
       color: #64748b; font: 12px/1.6 Arial, Helvetica, sans-serif; }}
     @media (max-width: 480px) {{
@@ -80,12 +80,12 @@ def _render_action_email(
       h1 {{ font-size: 22px !important; }}
     }}
     @media (prefers-color-scheme: dark) {{
-      body, .email-shell {{ background: #0b1220 !important; }}
-      .email-card {{ background: #111827 !important; border-color: #263244 !important; }}
-      .brand, h1, .email-content {{ color: #f8fafc !important; }}
-      .email-content {{ color: #dbe4ef !important; }}
-      .email-footer {{ border-color: #263244 !important; color: #94a3b8 !important; }}
-      .security {{ background: #1e293b !important; color: #cbd5e1 !important; }}
+      body, .email-shell {{ background: #08090d !important; }}
+      .email-card {{ background: #10131a !important; border-color: rgba(255,255,255,.11) !important; }}
+      .brand, h1, .email-content {{ color: #f7f8fb !important; }}
+      .email-content {{ color: #f7f8fb !important; }}
+      .email-footer {{ border-color: rgba(255,255,255,.11) !important; color: #a9afbd !important; }}
+      .security {{ background: rgba(255,255,255,.065) !important; color: #a9afbd !important; }}
     }}
   </style>
 </head>
