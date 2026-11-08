@@ -45,7 +45,9 @@ export function ResetPasswordView({ token, onDone }: Props) {
         setError(
           err.status === 400 || err.status === 404
             ? "El enlace no es válido o ha caducado. Solicita uno nuevo."
-            : err.message || "No se pudo restablecer la contraseña.",
+            : err.status === 422
+              ? "La contraseña no cumple los requisitos de seguridad."
+              : err.message || "No se pudo restablecer la contraseña.",
         );
       } else {
         setError("No se pudo restablecer la contraseña.");
@@ -90,7 +92,7 @@ export function ResetPasswordView({ token, onDone }: Props) {
                   required
                   minLength={8}
                   maxLength={128}
-                  aria-invalid={!!error}
+                  aria-invalid={!!password && !!passwordValidationError(password)}
                 />
               </label>
               <label className="field">
@@ -103,7 +105,7 @@ export function ResetPasswordView({ token, onDone }: Props) {
                   required
                   minLength={8}
                   maxLength={128}
-                  aria-invalid={!!error}
+                  aria-invalid={!!confirm && password !== confirm}
                 />
               </label>
               {error && (
