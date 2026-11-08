@@ -78,8 +78,8 @@ async def test_login_rejects_untrusted_origin_before_any_authentication_mutation
     anti_abuse = SimpleNamespace(check_login=AsyncMock())
     auth_service = SimpleNamespace(login=AsyncMock())
     geo = SimpleNamespace(
-        resolve_client_ip=lambda ip, forwarded_for=None: ip,
-        resolve=lambda ip: SimpleNamespace(country="US"),
+        resolve_client_ip=lambda ip, _forwarded_for=None: ip,
+        resolve=lambda _ip: SimpleNamespace(country="US"),
     )
     monkeypatch.setattr(auth, "get_settings", lambda: Settings(
         environment="staging",
