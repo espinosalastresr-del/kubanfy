@@ -43,7 +43,6 @@ def upgrade() -> None:
         ),
         sa.ForeignKeyConstraint(["user_id"], ["users.id"], ondelete="CASCADE"),
         sa.PrimaryKeyConstraint("id"),
-        sa.UniqueConstraint("user_id", name="uq_user_preferences_user_id"),
     )
     op.create_index(
         "ix_user_preferences_user_id", "user_preferences", ["user_id"], unique=True
