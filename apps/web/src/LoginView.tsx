@@ -1,5 +1,6 @@
 import { FormEvent, useEffect, useState } from "react";
 import { ApiError } from "./api";
+import { isValidEmail, normalizeEmail } from "./authValidation";
 import { isInstallAvailable, isStandaloneDisplay, promptPwaInstall, subscribeInstallAvailable } from "./installPrompt";
 
 function EyeIcon({ hidden }: { hidden: boolean }) {
@@ -39,10 +40,10 @@ export function LoginView({ onLogin, onRegister, onForgot, onVerifyEmail, initia
     setSubmitted(true);
     setAuthError("");
     setNeedsVerification(false);
-    if (!email || !password || !email.includes("@")) return;
+    if (!isValidEmail(email) || !password) return;
     setBusy(true);
     try {
-      await onLogin(email.trim(), password);
+      await onLogin(normalizeEmail(email), password);
     } catch (e) {
       const message = e instanceof Error ? e.message : "";
       const status = e instanceof ApiError ? e.status : 0;
@@ -104,10 +105,11 @@ export function LoginView({ onLogin, onRegister, onForgot, onVerifyEmail, initia
               value={email}
               onChange={e => setEmail(e.target.value)}
               placeholder="tu@email.com"
-              aria-invalid={submitted && (!email || !email.includes("@"))}
+              maxLength={254}
+              aria-invalid={submitted && !isValidEmail(email)}
               required
             />
-            {submitted && (!email || !email.includes("@")) && <small>Introduce un correo electrónico válido.</small>}
+            {submitted && !isValidEmail(email) && <small>Introduce un correo electrónico válido.</small>}
           </label>
 
           <label className="field">
