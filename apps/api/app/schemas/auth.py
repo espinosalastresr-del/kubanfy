@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime
 import re
+import unicodedata
 from uuid import UUID
 
 from pydantic import BaseModel, EmailStr, Field, field_validator
@@ -21,11 +22,15 @@ class RegisterRequest(BaseModel):
     def password_strength(cls, v: str) -> str:
         has_letter = any(char.isalpha() for char in v)
         has_number_or_symbol = any(
-            char.isdigit() or (not char.isalnum() and not char.isspace())
+            char.isnumeric() or unicodedata.category(char)[0] in {"P", "S"}
             for char in v
         )
+        if len(v.encode("utf-8")) > 72:
+            raise ValueError("Password cannot exceed bcrypt's 72-byte UTF-8 limit")
         if not has_letter or not has_number_or_symbol:
-            raise ValueError("Password must contain at least one letter and one number or symbol")
+            raise ValueError(
+                "Password must contain at least one letter and one number or symbol"
+            )
         return v
 
     @field_validator("display_name")
@@ -136,11 +141,15 @@ class PasswordResetConfirmRequest(BaseModel):
     def password_strength(cls, v: str) -> str:
         has_letter = any(char.isalpha() for char in v)
         has_number_or_symbol = any(
-            char.isdigit() or (not char.isalnum() and not char.isspace())
+            char.isnumeric() or unicodedata.category(char)[0] in {"P", "S"}
             for char in v
         )
+        if len(v.encode("utf-8")) > 72:
+            raise ValueError("Password cannot exceed bcrypt's 72-byte UTF-8 limit")
         if not has_letter or not has_number_or_symbol:
-            raise ValueError("Password must contain at least one letter and one number or symbol")
+            raise ValueError(
+                "Password must contain at least one letter and one number or symbol"
+            )
         return v
 
 
