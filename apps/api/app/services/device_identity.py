@@ -48,7 +48,7 @@ class DeviceIdentityService:
     async def create_challenge(
         self, user_id: UUID, device_id: UUID, public_key_b64: str
     ) -> dict[str, str]:
-        public_key = _decode_b64(public_key_b64, expected_length=32)
+        _decode_b64(public_key_b64, expected_length=32)
         device = await self.db.scalar(
             select(Device).where(Device.id == device_id, Device.user_id == user_id)
         )
@@ -87,7 +87,7 @@ class DeviceIdentityService:
             "nonce": nonce,
             "message": message.decode("utf-8"),
             "algorithm": "Ed25519",
-            "expires_in": str(_CHALLENGE_TTL_SECONDS),
+            "expires_in": _CHALLENGE_TTL_SECONDS,
         }
 
     async def verify_challenge(
