@@ -60,13 +60,13 @@ class LoginRequest(BaseModel):
     email: EmailStr
     password: str = Field(min_length=1, max_length=128)
     device_id: str | None = Field(default=None, max_length=128)
+    device_name: str | None = Field(default=None, max_length=120)
+    platform: str | None = Field(default=None, max_length=32)
 
     @field_validator("password")
     @classmethod
     def bcrypt_password_length(cls, value: str) -> str:
         return _validate_bcrypt_password_length(value)
-    device_name: str | None = Field(default=None, max_length=120)
-    platform: str | None = Field(default=None, max_length=32)
 
 
 class TokenResponse(BaseModel):
