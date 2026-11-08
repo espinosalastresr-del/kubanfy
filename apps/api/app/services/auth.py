@@ -89,10 +89,11 @@ class AuthService:
                 platform=data.platform,
             )
 
-        tokens, jti = self._issue_tokens(user, device_id=data.device_id)
+        tokens, jti, access_jti = self._issue_tokens(user, device_id=data.device_id)
         await self.sessions.create_session(
             user.id,
             jti,
+            access_token_jti=access_jti,
             device=device,
             ip_country=ip_country,
             user_agent=user_agent,
@@ -142,10 +143,11 @@ class AuthService:
         bound_device_id = token_device_id or (sess.device.device_id if sess.device else None)
         if device_id and sess.device is not None and device_id != sess.device.device_id:
             raise AuthError("Refresh device mismatch")
-        tokens, new_jti = self._issue_tokens(user, device_id=bound_device_id)
+        tokens, new_jti, access_jti = self._issue_tokens(user, device_id=bound_device_id)
         await self.sessions.create_session(
             user.id,
             new_jti,
+            access_token_jti=access_jti,
             device=sess.device,
             ip_country=sess.ip_country,
             user_agent=sess.user_agent,
@@ -154,7 +156,9 @@ class AuthService:
         logger.info("token_refreshed", user_id=str(user.id))
         return tokens
 
-    def _issue_tokens(self, user: User, device_id: str | None = None) -> tuple[TokenResponse, str]:
+    def _issue_tokens(
+        self, user: User, device_id: str | None = None
+    ) -> tuple[TokenResponse, str, str]:
         access = create_access_token(
             str(user.id),
             extra_claims={
@@ -169,15 +173,17 @@ class AuthService:
             device_id=device_id,
             settings=self.settings,
         )
-        # Extract jti from refresh token
+        # Bind both bearer tokens to the same persisted session.
+        access_payload = decode_token(access, self.settings)
         refresh_payload = decode_token(refresh, self.settings)
+        access_jti = access_payload["jti"]
         jti = refresh_payload["jti"]
         tokens = TokenResponse(
             access_token=access,
             refresh_token=refresh,
             expires_in=self.settings.access_token_expire_minutes * 60,
         )
-        return tokens, jti
+        return tokens, jti, access_jti
 
     async def get_user_by_id(self, user_id: UUID) -> User | None:
         return await self.session.get(User, user_id)
