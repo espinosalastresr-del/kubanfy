@@ -22,6 +22,8 @@ import { AccountPanel } from "./AccountPanel";
 import { EntitlementsPanel } from "./EntitlementsPanel";
 import { planTierFromEntitlements } from "./entitlements";
 import { enrichTrackIds, resolveTrackId } from "./trackMeta";
+import { enrollCurrentBrowserIdentity } from "./deviceIdentity";
+import { getPreferredAudioQuality } from "./dataSaver";
 
 function HeartIcon({ filled }: { filled: boolean }) {
   return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20.8 8.7c0 5.4-8.8 10.3-8.8 10.3S3.2 14.1 3.2 8.7A4.7 4.7 0 0 1 12 6.2a4.7 4.7 0 0 1 8.8 2.5Z" fill={filled ? "currentColor" : "none"} /></svg>;
@@ -129,6 +131,7 @@ export default function App() {
         }
         setPlanTier(tier);
         player.setPlanTier(tier);
+        void ensureBrowserIdentity();
       } catch {
         clearTokens();
         setPlanTier("guest");
@@ -181,6 +184,21 @@ export default function App() {
     player.onPrevious = () => nextTrack(-1);
   });
 
+  async function ensureBrowserIdentity() {
+    try {
+      const result = await enrollCurrentBrowserIdentity();
+      if (result === "unsupported") {
+        setStatus("Este navegador no ofrece almacenamiento criptográfico compatible; la sesión seguirá funcionando con la protección habitual.");
+      } else if (result === "recovery-required") {
+        setStatus("La clave segura de este navegador ya no está disponible. Revoca este dispositivo desde Cuenta y vuelve a iniciar sesión para crear una identidad nueva.");
+      }
+    } catch (error) {
+      setStatus(error instanceof Error
+        ? `La sesión está activa, pero no se pudo verificar la identidad del navegador: ${error.message}`
+        : "La sesión está activa, pero no se pudo verificar la identidad del navegador.");
+    }
+  }
+
   async function doLogin(email: string, password: string) {
     await login(email, password);
     const u = await me();
@@ -194,6 +212,7 @@ export default function App() {
     }
     setPlanTier(tier);
     player.setPlanTier(tier);
+    await ensureBrowserIdentity();
   }
 
   async function play(id: string, requestedQueue?: string[]) {
@@ -236,7 +255,12 @@ export default function App() {
         duration: metadata?.duration ?? null,
         artworkUrl: metadata?.artwork_url || metadata?.artwork || null,
       });
-      const q = resolveStreamingQuality(planTier, isDataSaverEnabled(), "medium");
+      const preferred = getPreferredAudioQuality();
+      const q = resolveStreamingQuality(
+        planTier,
+        isDataSaverEnabled(),
+        preferred === "low" ? "low" : "medium",
+      );
       await player.playTrack(id, q);
       setStatus("");
       setPlayerExpanded(false);
