@@ -46,27 +46,89 @@ function writeSessionValue(key: string, value: string | null): void {
   }
 }
 let refreshToken: string | null = readSessionValue("kubanfy.refresh");
+let refreshInFlight: Promise<boolean> | null = null;
+let tokenVersion = 0;
 let fallbackDeviceId: string | null = null;
 
 export function setTokens(tokens: Tokens) {
+  tokenVersion += 1;
+  refreshInFlight = null;
   accessToken = tokens.access_token;
   refreshToken = tokens.refresh_token;
   writeSessionValue("kubanfy.refresh", refreshToken);
 }
 
 export function clearTokens() {
+  tokenVersion += 1;
+  refreshInFlight = null;
   accessToken = null;
   refreshToken = null;
   writeSessionValue("kubanfy.refresh", null);
 }
 
+async function refreshSessionToken(deviceId: string): Promise<boolean> {
+  if (!refreshToken) return false;
+  if (refreshInFlight) return refreshInFlight;
+
+  const tokenBeingRefreshed = refreshToken;
+  const startingVersion = tokenVersion;
+  const operation = (async (): Promise<boolean> => {
+    let response: Response;
+    try {
+      response = await fetch(`${API}/v1/auth/refresh`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Accept: "application/json" },
+        body: JSON.stringify({ refresh_token: tokenBeingRefreshed, device_id: deviceId }),
+      });
+    } catch {
+      // Preserve the refresh token during transient/offline failures.
+      return tokenVersion !== startingVersion && Boolean(accessToken && refreshToken);
+    }
+
+    // A concurrent login/logout may have changed the credentials while this
+    // request was in flight. Never let a late response overwrite that choice.
+    if (tokenVersion !== startingVersion || refreshToken !== tokenBeingRefreshed) {
+      return Boolean(accessToken && refreshToken);
+    }
+
+    if (!response.ok) {
+      // Only definitive authentication failures invalidate local credentials.
+      if (response.status === 401 || response.status === 403) clearTokens();
+      return false;
+    }
+
+    try {
+      const body = await response.json() as Tokens;
+      if (
+        typeof body?.access_token !== "string" ||
+        typeof body?.refresh_token !== "string"
+      ) return false;
+      if (tokenVersion !== startingVersion || refreshToken !== tokenBeingRefreshed) {
+        return Boolean(accessToken && refreshToken);
+      }
+      setTokens(body);
+      return true;
+    } catch {
+      return false;
+    }
+  })();
+
+  refreshInFlight = operation;
+  try {
+    return await operation;
+  } finally {
+    if (refreshInFlight === operation) refreshInFlight = null;
+  }
+}
+
 async function request<T>(path: string, init: RequestInit = {}, retry = true): Promise<T> {
+  const requestAccessToken = accessToken;
   const headers = new Headers(init.headers);
   headers.set("Accept", "application/json");
   headers.set("X-KubanFy-Platform", "web");
   const device = getDeviceId();
   headers.set("X-Device-ID", device);
-  if (accessToken) headers.set("Authorization", `Bearer ${accessToken}`);
+  if (requestAccessToken) headers.set("Authorization", `Bearer ${requestAccessToken}`);
   const requestUrl = `${API}${path}`;
   const method = (init.method || "GET").toUpperCase();
   let response: Response;
@@ -78,17 +140,14 @@ async function request<T>(path: string, init: RequestInit = {}, retry = true): P
     await new Promise((resolve) => window.setTimeout(resolve, 350));
     response = await fetch(requestUrl, { ...init, headers });
   }
-  if (response.status === 401 && retry && refreshToken) {
-    const refreshed = await fetch(`${API}/v1/auth/refresh`, {
-      method: "POST", headers: { "Content-Type": "application/json", Accept: "application/json" },
-      body: JSON.stringify({ refresh_token: refreshToken, device_id: device }),
-    });
-    if (refreshed.ok) {
-      const body = await refreshed.json();
-      setTokens(body);
+  if (response.status === 401 && retry) {
+    // Another concurrent request may already have rotated the token pair.
+    if (accessToken && accessToken !== requestAccessToken) {
       return request<T>(path, init, false);
     }
-    clearTokens();
+    if (await refreshSessionToken(device)) {
+      return request<T>(path, init, false);
+    }
   }
   if (!response.ok) {
     let detail = response.statusText;

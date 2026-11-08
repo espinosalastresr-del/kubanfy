@@ -74,6 +74,9 @@ class Session(Base):
     refresh_token_jti: Mapped[str] = mapped_column(
         String(64), unique=True, nullable=False, index=True
     )
+    access_token_jti: Mapped[str | None] = mapped_column(
+        String(64), unique=True, nullable=True, index=True
+    )
     status: Mapped[SessionStatus] = mapped_column(
         Enum(SessionStatus, name="session_status", values_callable=lambda x: [e.value for e in x]),
         nullable=False,
