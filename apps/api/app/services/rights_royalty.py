@@ -322,7 +322,9 @@ class RightsRoyaltyService:
         account = await self.session.get(RoyaltyAccount, settlement.account_id)
         if account is None or account.artist_id != artist_id:
             raise NotFoundError("Settlement not found")
-        if not await RbacService(self.session).user_has_permission(user_id, "royalties.write"):
+        if not await AuthorizationService(self.session).has_all_permissions(
+            user_id, ["royalties.write"]
+        ):
             raise NotFoundError("Settlement not found")
         if settlement.status == "paid":
             return settlement
