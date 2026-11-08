@@ -14,7 +14,7 @@ function LogoMark() {
   return <div className="logo-mark" aria-hidden="true"><span /><span /><span /></div>;
 }
 
-export function LoginView({ onLogin, onRegister, onForgot, onVerifyEmail, initialEmail }: { onLogin: (email: string, password: string) => Promise<void>; onRegister: () => void; onForgot?: () => void; onVerifyEmail?: () => void; initialEmail: string }) {
+export function LoginView({ onLogin, onRegister, onForgot, onVerifyEmail, initialEmail }: { onLogin: (email: string, password: string) => Promise<void>; onRegister: () => void; onForgot?: () => void; onVerifyEmail?: (email: string) => void; initialEmail: string }) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -130,7 +130,7 @@ export function LoginView({ onLogin, onRegister, onForgot, onVerifyEmail, initia
           </label>
 
           {authError && <div className="form-status" role="alert">{authError}</div>}
-          {needsVerification && <button className="secondary-button" type="button" onClick={onVerifyEmail}>Verificar mi correo o reenviar el enlace</button>}
+          {needsVerification && <button className="secondary-button" type="button" onClick={() => onVerifyEmail?.(email)}>Verificar mi correo o reenviar el enlace</button>}
           {notice && <div className="form-status is-notice">{notice}</div>}
 
           <div className="form-meta">
