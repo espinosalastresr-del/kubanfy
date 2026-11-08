@@ -4,6 +4,11 @@ const DB_NAME = "kubanfy-secure-identity";
 const STORE_NAME = "keys";
 const DB_VERSION = 1;
 
+type BrowserIdentity = {
+  privateKey: CryptoKey;
+  publicKey: string;
+};
+
 let enrollmentInFlight: Promise<"verified" | "unsupported" | "recovery-required"> | null = null;
 
 function openKeyDatabase(): Promise<IDBDatabase> {
@@ -23,14 +28,22 @@ function openKeyDatabase(): Promise<IDBDatabase> {
   });
 }
 
-async function readPrivateKey(deviceId: string): Promise<CryptoKey | null> {
+async function readIdentity(deviceId: string): Promise<BrowserIdentity | null> {
   const db = await openKeyDatabase();
   try {
     return await new Promise((resolve, reject) => {
       const request = db.transaction(STORE_NAME, "readonly").objectStore(STORE_NAME).get(deviceId);
       request.onsuccess = () => {
-        const key = request.result as CryptoKey | undefined;
-        resolve(key && key.type === "private" && key.algorithm.name === "Ed25519" ? key : null);
+        const value = request.result as BrowserIdentity | undefined;
+        if (
+          value?.privateKey?.type === "private" &&
+          value.privateKey.algorithm.name === "Ed25519" &&
+          typeof value.publicKey === "string"
+        ) {
+          resolve(value);
+        } else {
+          resolve(null);
+        }
       };
       request.onerror = () => reject(request.error || new Error("No se pudo leer la identidad del navegador."));
     });
@@ -39,30 +52,15 @@ async function readPrivateKey(deviceId: string): Promise<CryptoKey | null> {
   }
 }
 
-async function writePrivateKey(deviceId: string, key: CryptoKey): Promise<void> {
+async function writeIdentity(deviceId: string, identity: BrowserIdentity): Promise<void> {
   const db = await openKeyDatabase();
   try {
     await new Promise<void>((resolve, reject) => {
       const transaction = db.transaction(STORE_NAME, "readwrite");
-      transaction.objectStore(STORE_NAME).put(key, deviceId);
+      transaction.objectStore(STORE_NAME).put(identity, deviceId);
       transaction.oncomplete = () => resolve();
       transaction.onerror = () => reject(transaction.error || new Error("No se pudo guardar la identidad del navegador."));
       transaction.onabort = () => reject(transaction.error || new Error("Se canceló el guardado de la identidad."));
-    });
-  } finally {
-    db.close();
-  }
-}
-
-async function writePublicKey(deviceId: string, publicKey: string): Promise<void> {
-  const db = await openKeyDatabase();
-  try {
-    await new Promise<void>((resolve, reject) => {
-      const transaction = db.transaction(STORE_NAME, "readwrite");
-      transaction.objectStore(STORE_NAME).put(publicKey, `${deviceId}:public`);
-      transaction.oncomplete = () => resolve();
-      transaction.onerror = () => reject(transaction.error || new Error("No se pudo guardar la clave pública."));
-      transaction.onabort = () => reject(transaction.error || new Error("Se canceló el guardado de la clave pública."));
     });
   } finally {
     db.close();
@@ -78,7 +76,7 @@ function toBase64(bytes: ArrayBuffer): string {
   return btoa(binary);
 }
 
-async function createNonExtractableIdentity(): Promise<{ privateKey: CryptoKey; publicKey: string }> {
+async function createIdentity(): Promise<BrowserIdentity> {
   // The private key is generated non-extractable. Only the public key can be exported.
   const pair = await crypto.subtle.generateKey(
     { name: "Ed25519" } as Algorithm,
@@ -105,34 +103,21 @@ export async function enrollCurrentBrowserIdentity(): Promise<"verified" | "unsu
       return "unsupported" as const;
     }
 
-    let devices;
-    try {
-      devices = await listDevices();
-    } catch (error) {
-      throw error;
-    }
+    const devices = await listDevices();
     const device = devices.find((item) => item.device_id === getDeviceId() && item.status === "active");
     if (!device) throw new Error("No se encontró el navegador activo en la lista de dispositivos.");
 
-    let privateKey = await readPrivateKey(device.device_id);
-    if (device.identity_verified && !privateKey) return "recovery-required" as const;
+    let identity = await readIdentity(device.device_id);
+    if (device.identity_verified && !identity) return "recovery-required" as const;
 
-    if (!privateKey) {
-      const identity = await createNonExtractableIdentity();
-      privateKey = identity.privateKey;
-      await writePrivateKey(device.device_id, privateKey);
-      await writePublicKey(device.device_id, identity.publicKey);
-      const challenge = await createDeviceChallenge(device.id, identity.publicKey);
-      const signature = await signMessage(privateKey, challenge.message);
-      await verifyDeviceChallenge(challenge.challenge_id, signature);
-      return "verified" as const;
+    if (!identity) {
+      identity = await createIdentity();
+      // Store private CryptoKey and public half atomically before requesting a challenge.
+      await writeIdentity(device.device_id, identity);
     }
 
-    // Re-prove possession when this browser starts a new authenticated session.
-    // The server binds each short-lived challenge to this user, device and public key.
-    const publicKey = await getStoredPublicKey(device.device_id);
-    const challenge = await createDeviceChallenge(device.id, publicKey);
-    const signature = await signMessage(privateKey, challenge.message);
+    const challenge = await createDeviceChallenge(device.id, identity.publicKey);
+    const signature = await signMessage(identity.privateKey, challenge.message);
     await verifyDeviceChallenge(challenge.challenge_id, signature);
     return "verified" as const;
   })();
@@ -144,28 +129,5 @@ export async function enrollCurrentBrowserIdentity(): Promise<"verified" | "unsu
     throw error;
   } finally {
     enrollmentInFlight = null;
-  }
-}
-
-async function getStoredPublicKey(deviceId: string): Promise<string> {
-  // The public half is intentionally stored separately; private CryptoKey remains non-extractable.
-  const db = await openKeyDatabase();
-  try {
-    return await new Promise((resolve, reject) => {
-      const tx = db.transaction(STORE_NAME, "readonly");
-      const request = tx.objectStore(STORE_NAME).get(`${deviceId}:public`);
-      request.onsuccess = () => {
-        if (typeof request.result === "string") {
-          resolve(request.result);
-          return;
-        }
-        // Existing installs from the first enrollment version can recover the public key
-        // from a companion public-key record written during enrollment.
-        reject(new Error("No se encontró la clave pública asociada a este navegador."));
-      };
-      request.onerror = () => reject(request.error || new Error("No se pudo leer la clave pública."));
-    });
-  } finally {
-    db.close();
   }
 }
