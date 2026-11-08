@@ -23,10 +23,14 @@ def upgrade() -> None:
         sa.Column("used_at", sa.DateTime(timezone=True), nullable=True),
         sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
         sa.ForeignKeyConstraint(["user_id"], ["users.id"], ondelete="CASCADE"),
-        sa.UniqueConstraint("token_hash", name="uq_email_verification_tokens_token_hash"),
     )
     op.create_index("ix_email_verification_tokens_user_id", "email_verification_tokens", ["user_id"])
-    op.create_index("ix_email_verification_tokens_token_hash", "email_verification_tokens", ["token_hash"])
+    op.create_index(
+        "ix_email_verification_tokens_token_hash",
+        "email_verification_tokens",
+        ["token_hash"],
+        unique=True,
+    )
     op.create_index("ix_email_verification_tokens_expires_at", "email_verification_tokens", ["expires_at"])
 
 
