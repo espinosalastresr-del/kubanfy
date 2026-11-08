@@ -61,6 +61,10 @@ class Device(Base):
 
     sessions: Mapped[list[Session]] = relationship(back_populates="device", lazy="selectin")
 
+    @property
+    def identity_verified(self) -> bool:
+        return self.public_key is not None
+
     def __repr__(self) -> str:
         return f"<Device {self.device_id} user={self.user_id} status={self.status}>"
 
