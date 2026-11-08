@@ -7,7 +7,7 @@ from pydantic import ValidationError
 from app.schemas.auth import PasswordResetConfirmRequest, RegisterRequest
 
 
-@pytest.mark.parametrize("password", ["passwordonly", "123456789", "!!!!!!!!"])
+@pytest.mark.parametrize("password", ["passwordonly", "123456789", "!!!!!!!!", "a" * 72 + "1"])
 def test_registration_rejects_password_without_letter_and_number_or_symbol(password: str) -> None:
     with pytest.raises(ValidationError):
         RegisterRequest(
@@ -17,7 +17,7 @@ def test_registration_rejects_password_without_letter_and_number_or_symbol(passw
         )
 
 
-@pytest.mark.parametrize("password", ["Password123", "Clave!Segura", "1234567a"])
+@pytest.mark.parametrize("password", ["Password123", "Clave!Segura", "1234567a", "á" * 35 + "1"])
 def test_registration_accepts_password_with_letter_and_number_or_symbol(password: str) -> None:
     request = RegisterRequest(
         email="person@example.com",
@@ -25,6 +25,16 @@ def test_registration_accepts_password_with_letter_and_number_or_symbol(password
         display_name="Person",
     )
     assert request.password == password
+
+
+@pytest.mark.parametrize("password", ["a" * 72 + "1", "á" * 36 + "1"])
+def test_registration_rejects_password_over_bcrypt_byte_limit(password: str) -> None:
+    with pytest.raises(ValidationError):
+        RegisterRequest(
+            email="person@example.com",
+            password=password,
+            display_name="Person",
+        )
 
 
 def test_registration_rejects_blank_display_name() -> None:
