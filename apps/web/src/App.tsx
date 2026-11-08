@@ -80,8 +80,19 @@ export default function App() {
 
   const [resetToken, setResetToken] = useState<string | null>(() => {
     try {
-      const p = new URLSearchParams(window.location.search);
-      return p.get("reset_token") || p.get("token") || null;
+      const searchParams = new URLSearchParams(window.location.search);
+      // Password-reset links intentionally keep the bearer token in the URL
+      // fragment so it is not sent in HTTP requests, access logs, or referrers.
+      // Read both the fragment (current backend format) and query parameters
+      // for compatibility with links already issued by older clients.
+      const hashParams = new URLSearchParams(window.location.hash.replace(/^#/, ""));
+      return (
+        searchParams.get("reset_token") ||
+        searchParams.get("token") ||
+        hashParams.get("reset_token") ||
+        hashParams.get("token") ||
+        null
+      );
     } catch {
       return null;
     }
