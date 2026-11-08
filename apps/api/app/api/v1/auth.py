@@ -61,6 +61,13 @@ async def login(
     response: Response,
     session: DbSession,
 ) -> LoginResponse | BrowserLoginResponse:
+    origin = request.headers.get("origin")
+    settings = None
+    if origin is not None:
+        settings = get_settings()
+        # Reject untrusted browser origins before rate-limit/session state changes.
+        ensure_allowed_web_origin(origin, settings)
+
     geo = GeoService()
     ip = request.client.host if request.client else None
     real_ip = geo.resolve_client_ip(ip, forwarded_for=request.headers.get("x-forwarded-for"))
@@ -71,13 +78,11 @@ async def login(
         body, ip_country=geo.resolve(ip=real_ip).country, user_agent=user_agent
     )
 
-    origin = request.headers.get("origin")
     if origin is None:
         # Native/legacy clients retain the existing JSON refresh-token contract.
         return LoginResponse(user=AuthService.to_response(user), tokens=tokens)
 
-    settings = get_settings()
-    ensure_allowed_web_origin(origin, settings)
+    assert settings is not None
     set_refresh_cookie(response, tokens.refresh_token, settings)
     return BrowserLoginResponse(
         user=AuthService.to_response(user),
