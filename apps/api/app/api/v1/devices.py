@@ -9,6 +9,7 @@ from pydantic import BaseModel, Field
 
 from app.api.deps import CurrentUser, DbSession
 from app.models.device import Device
+from app.services.anti_abuse import AntiAbuseService
 from app.services.device_identity import DeviceIdentityService
 
 router = APIRouter(prefix="/auth/devices", tags=["devices"])
@@ -44,6 +45,9 @@ async def create_device_challenge(
     user: CurrentUser,
     session: DbSession,
 ) -> DeviceChallengeResponse:
+    await AntiAbuseService().enforce_rate_limit(
+        f"device-identity:challenge:user:{user.id}", limit=5, window_seconds=900
+    )
     result = await DeviceIdentityService(session).create_challenge(
         user.id, body.device_id, body.public_key
     )
@@ -56,6 +60,9 @@ async def verify_device_challenge(
     user: CurrentUser,
     session: DbSession,
 ) -> DeviceIdentityResponse:
+    await AntiAbuseService().enforce_rate_limit(
+        f"device-identity:verify:user:{user.id}", limit=10, window_seconds=900
+    )
     device: Device = await DeviceIdentityService(session).verify_challenge(
         user.id, body.challenge_id, body.signature
     )
