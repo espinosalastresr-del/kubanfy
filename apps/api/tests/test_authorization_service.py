@@ -66,6 +66,7 @@ async def test_require_artist_roles_accepts_active_artist_member() -> None:
         user_id,
         artist_id,
         {ArtistMemberRole.OWNER, ArtistMemberRole.MANAGER},
+        require_active_artist=True,
     )
 
     assert result is member
@@ -74,7 +75,7 @@ async def test_require_artist_roles_accepts_active_artist_member() -> None:
 
 @pytest.mark.asyncio
 async def test_require_artist_roles_hides_non_membership_as_not_found() -> None:
-    session = SimpleNamespace(scalar=AsyncMock(side_effect=[SimpleNamespace(status="active"), None]))
+    session = SimpleNamespace(scalar=AsyncMock(return_value=None))
 
     with pytest.raises(NotFoundError):
         await AuthorizationService(session).require_artist_roles(
@@ -88,7 +89,10 @@ async def test_require_artist_roles_rejects_inactive_artist() -> None:
 
     with pytest.raises(NotFoundError):
         await AuthorizationService(session).require_artist_roles(
-            uuid4(), uuid4(), {ArtistMemberRole.OWNER}
+            uuid4(),
+            uuid4(),
+            {ArtistMemberRole.OWNER},
+            require_active_artist=True,
         )
 
     assert session.scalar.await_count == 1
@@ -96,7 +100,7 @@ async def test_require_artist_roles_rejects_inactive_artist() -> None:
 
 @pytest.mark.asyncio
 async def test_artist_authorization_can_return_forbidden_for_upload_policy() -> None:
-    session = SimpleNamespace(scalar=AsyncMock(side_effect=[SimpleNamespace(status="active"), None]))
+    session = SimpleNamespace(scalar=AsyncMock(return_value=None))
 
     with pytest.raises(ForbiddenError):
         await AuthorizationService(session).require_artist_roles(
@@ -105,3 +109,17 @@ async def test_artist_authorization_can_return_forbidden_for_upload_policy() -> 
             {ArtistMemberRole.OWNER, ArtistMemberRole.MANAGER, ArtistMemberRole.EDITOR},
             hide_existence=False,
         )
+
+
+
+@pytest.mark.asyncio
+async def test_require_artist_roles_preserves_membership_only_policy_by_default() -> None:
+    member = SimpleNamespace(role=ArtistMemberRole.EDITOR)
+    session = SimpleNamespace(scalar=AsyncMock(return_value=member))
+
+    result = await AuthorizationService(session).require_artist_roles(
+        uuid4(), uuid4(), {ArtistMemberRole.OWNER, ArtistMemberRole.EDITOR}
+    )
+
+    assert result is member
+    assert session.scalar.await_count == 1
