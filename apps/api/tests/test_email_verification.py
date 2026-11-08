@@ -35,7 +35,7 @@ def build_service(*, user=None, delivery_error=None):
 
 
 @pytest.mark.asyncio
-async def test_send_stores_only_digest_and_sends_query_link():
+async def test_send_stores_only_digest_and_sends_fragment_link():
     user = SimpleNamespace(
         id=uuid4(), email="person@example.com",
         status=UserStatus.PENDING_VERIFICATION, email_verified=False,
@@ -52,7 +52,7 @@ async def test_send_stores_only_digest_and_sends_query_link():
     text_body = delivery.send.await_args.args[2]
     link = next(part for part in text_body.split() if "verify_token=" in part)
     parsed = urlparse(link)
-    raw_token = parse_qs(parsed.query)["verify_token"][0]
+    raw_token = parse_qs(parsed.fragment)["verify_token"][0]
     assert parsed.scheme == "https"
     assert parsed.netloc == "kubanfy.example"
     assert service._digest(raw_token) == record.token_hash
