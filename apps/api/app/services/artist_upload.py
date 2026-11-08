@@ -42,6 +42,7 @@ from app.models.music import (
 )
 from app.models.rights import LicenseRecord, LicenseStatus
 from app.services.audio_validation import AudioValidationService
+from app.services.authorization import AuthorizationService
 from app.services.job import JobService
 from app.services.kby import pack
 from app.services.kby_v2 import pack as pack_v2
@@ -108,15 +109,13 @@ class ArtistUploadService:
         self.jobs = JobService(session)
 
     async def assert_can_edit(self, user_id: UUID, artist_id: UUID) -> ArtistMember:
-        member = await self.session.scalar(
-            select(ArtistMember).where(
-                ArtistMember.artist_id == artist_id,
-                ArtistMember.user_id == user_id,
-            )
+        return await AuthorizationService(self.session).require_artist_roles(
+            user_id,
+            artist_id,
+            EDIT_ROLES,
+            hide_existence=False,
+            denial_message="Not authorized to upload for this artist",
         )
-        if member is None or member.role not in EDIT_ROLES:
-            raise ForbiddenError("Not authorized to upload for this artist")
-        return member
 
     async def upload_track(
         self,

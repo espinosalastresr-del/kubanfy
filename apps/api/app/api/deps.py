@@ -10,15 +10,14 @@ from fastapi import Depends
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
 
 from app.core.config import get_settings
 from app.core.database import get_db
-from app.core.exceptions import AuthError, ForbiddenError
+from app.core.exceptions import AuthError
 from app.core.security import decode_token
 from app.models.device import Session, SessionStatus
-from app.models.rbac import Role, UserRole
 from app.models.user import User, UserStatus
+from app.services.authorization import AuthorizationService
 
 bearer_scheme = HTTPBearer(auto_error=False)
 
@@ -114,18 +113,7 @@ async def get_user_permission_codes(
     session: AsyncSession,
 ) -> set[str]:
     """Load all permission codes granted to a user via their roles."""
-    result = await session.execute(
-        select(UserRole)
-        .where(UserRole.user_id == user_id)
-        .options(selectinload(UserRole.role).selectinload(Role.permissions))
-    )
-    user_roles = result.scalars().all()
-    codes: set[str] = set()
-    for ur in user_roles:
-        if ur.role and ur.role.permissions:
-            for perm in ur.role.permissions:
-                codes.add(perm.code)
-    return codes
+    return await AuthorizationService(session).get_permission_codes(user_id)
 
 
 def require_permissions(*required: str):
@@ -137,13 +125,7 @@ def require_permissions(*required: str):
     ) -> User:
         if not required:
             return user
-        codes = await get_user_permission_codes(user.id, session)
-        missing = [p for p in required if p not in codes]
-        if missing:
-            raise ForbiddenError(
-                "Insufficient permissions",
-                details={"missing": missing},
-            )
+        await AuthorizationService(session).require_all_permissions(user.id, required)
         return user
 
     return _checker
@@ -158,12 +140,7 @@ def require_any_permission(*required: str):
     ) -> User:
         if not required:
             return user
-        codes = await get_user_permission_codes(user.id, session)
-        if not any(p in codes for p in required):
-            raise ForbiddenError(
-                "Insufficient permissions",
-                details={"required_any": list(required)},
-            )
+        await AuthorizationService(session).require_any_permission(user.id, required)
         return user
 
     return _checker
