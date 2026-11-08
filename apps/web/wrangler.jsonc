@@ -1,10 +1,16 @@
 {
   "$schema": "./node_modules/wrangler/config-schema.json",
   "name": "kubanfy-web-staging",
+  "main": "src/worker.ts",
   "compatibility_date": "2026-10-06",
+  "vars": {
+    "API_ORIGIN": "https://kubanfy-api-staging.globumlatinmusic.workers.dev"
+  },
   "assets": {
     "directory": "./dist",
-    "not_found_handling": "single-page-application"
+    "binding": "ASSETS",
+    "not_found_handling": "single-page-application",
+    "run_worker_first": ["/api/*"]
   },
   "observability": {
     "enabled": true

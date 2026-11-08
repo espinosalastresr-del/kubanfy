@@ -142,6 +142,33 @@ class AuthService:
         logger.info("token_refreshed", user_id=str(user.id))
         return tokens
 
+    async def logout(self, refresh_token: str) -> None:
+        """Revoke only the session represented by a browser refresh token.
+
+        Logout is idempotent: malformed, expired, unknown, or already-revoked
+        credentials still result in the caller clearing its browser cookie.
+        """
+        try:
+            payload = decode_token(refresh_token, self.settings)
+        except ValueError:
+            return
+
+        if payload.get("type") != "refresh":
+            return
+
+        jti = payload.get("jti")
+        if not isinstance(jti, str) or not jti:
+            return
+
+        sess = await self.sessions.get_session_by_jti(jti, for_update=True)
+        if sess is None or sess.status != SessionStatus.ACTIVE:
+            return
+
+        sess.status = SessionStatus.REVOKED
+        sess.revoked_at = datetime.now(UTC)
+        await self.session.flush()
+        logger.info("session_logged_out", user_id=str(sess.user_id))
+
     def _issue_tokens(self, user: User, device_id: str | None = None) -> tuple[TokenResponse, str]:
         access = create_access_token(
             str(user.id),

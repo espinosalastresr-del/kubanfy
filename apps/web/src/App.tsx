@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { addFavorite, addTrackToPlaylist, clearTokens, discoveryHome, getTrackDetail, listFavorites, listMyEntitlements, listPlaylists, login, me, removeFavorite, searchTracks } from "./api";
+import { addFavorite, addTrackToPlaylist, discoveryHome, getTrackDetail, listFavorites, listMyEntitlements, listPlaylists, login, logout, me, restoreSession, removeFavorite, searchTracks } from "./api";
 import { KbyPlayer } from "./player";
 import { QueueSheet } from "./QueueSheet";
 import { buildDefaultQueue, mergeQueueMeta, trackArtistsLabel, type QueueTrackMeta } from "./queue";
@@ -33,6 +33,7 @@ function LogoMark() { return <div className="logo-mark" aria-hidden="true"><span
 
 export default function App() {
   const [user, setUser] = useState<any>(null);
+  const [authReady, setAuthReady] = useState(false);
   const [authMode, setAuthMode] = useState<"login" | "register" | "forgot">("login");
   const [registeredEmail, setRegisteredEmail] = useState("");
   const [tab, setTab] = useState<"home" | "search" | "library">("home");
@@ -81,6 +82,13 @@ export default function App() {
   useEffect(() => {
     void (async () => {
       try {
+        const restored = await restoreSession();
+        if (!restored) {
+          setPlanTier("guest");
+          player.setPlanTier("guest");
+          return;
+        }
+
         const u = await me();
         setUser(u);
         let tier = tierFromUser(u);
@@ -93,9 +101,12 @@ export default function App() {
         setPlanTier(tier);
         player.setPlanTier(tier);
       } catch {
-        clearTokens();
+        // A network/5xx failure is not proof that the cookie session is invalid.
+        setStatus("No se pudo comprobar la sesión. Comprueba tu conexión e inténtalo de nuevo.");
         setPlanTier("guest");
         player.setPlanTier("guest");
+      } finally {
+        setAuthReady(true);
       }
     })();
   }, []);
@@ -145,6 +156,7 @@ export default function App() {
   });
 
   async function doLogin(email: string, password: string) {
+    setStatus("");
     await login(email, password);
     const u = await me();
     setUser(u);
@@ -157,6 +169,18 @@ export default function App() {
     }
     setPlanTier(tier);
     player.setPlanTier(tier);
+  }
+
+  async function doLogout() {
+    try {
+      await logout();
+    } catch {
+      setStatus("No se pudo confirmar el cierre de sesión con el servidor.");
+    } finally {
+      setUser(null);
+      setPlanTier("guest");
+      player.setPlanTier("guest");
+    }
   }
 
   async function play(id: string, requestedQueue?: string[]) {
@@ -295,20 +319,27 @@ export default function App() {
     );
   }
 
+  if (!authReady) {
+    return <main className="auth-loading" aria-live="polite">Comprobando sesión…</main>;
+  }
+
   if (!user) {
-    if (authMode === "register") {
-      return <RegisterView onBack={() => setAuthMode("login")} onRegistered={(email) => { setRegisteredEmail(email); setAuthMode("login"); }} />;
-    }
-    if (authMode === "forgot") {
-      return <ForgotPasswordView initialEmail={registeredEmail} onBack={() => setAuthMode("login")} />;
-    }
     return (
-      <LoginView
-        onLogin={doLogin}
-        onRegister={() => setAuthMode("register")}
-        onForgot={() => setAuthMode("forgot")}
-        initialEmail={registeredEmail}
-      />
+      <>
+        {status && <p className="status-banner" role="status">{status}</p>}
+        {authMode === "register" ? (
+          <RegisterView onBack={() => setAuthMode("login")} onRegistered={(email) => { setRegisteredEmail(email); setAuthMode("login"); }} />
+        ) : authMode === "forgot" ? (
+          <ForgotPasswordView initialEmail={registeredEmail} onBack={() => setAuthMode("login")} />
+        ) : (
+          <LoginView
+            onLogin={doLogin}
+            onRegister={() => setAuthMode("register")}
+            onForgot={() => setAuthMode("forgot")}
+            initialEmail={registeredEmail}
+          />
+        )}
+      </>
     );
   }
 
@@ -323,7 +354,7 @@ export default function App() {
           <button className={tab === "search" ? "is-active" : ""} onClick={() => setTab("search")}>Buscar</button>
           <button className={tab === "library" ? "is-active" : ""} onClick={() => setTab("library")}>Biblioteca</button>
         </nav>
-        <button className="icon-button" onClick={() => { clearTokens(); setUser(null); }} aria-label="Salir">⎋</button>
+        <button className="icon-button" onClick={() => { void doLogout(); }} aria-label="Salir">⎋</button>
       </header>
 
       {status && <p className="status-banner">{status}</p>}
@@ -413,8 +444,7 @@ export default function App() {
               setUser={setUser}
               setStatus={setStatus}
               onLoggedOut={() => {
-                clearTokens();
-                setUser(null);
+                void doLogout();
               }}
             />
             <EntitlementsPanel

@@ -17,47 +17,95 @@ export type SearchResult = {
   artwork?: string | null;
 };
 
-type Tokens = { access_token: string; refresh_token: string; expires_in: number };
+type AccessTokens = { access_token: string; token_type?: string; expires_in?: number };
 
 export class ApiError extends Error {
+  status: number;
+  code: string;
+  details: Record<string, unknown>;
+  requestId?: string;
+
   constructor(
-    public status: number,
+    status: number,
     message: string,
-    public code = "HTTP_ERROR",
-    public details: Record<string, unknown> = {},
-    public requestId?: string,
+    code = "HTTP_ERROR",
+    details: Record<string, unknown> = {},
+    requestId?: string,
   ) {
     super(message);
     this.name = "ApiError";
+    this.status = status;
+    this.code = code;
+    this.details = details;
+    this.requestId = requestId;
   }
 }
 
-const API = (import.meta.env.VITE_API_BASE_URL || "https://kubanfy-api-staging.globumlatinmusic.workers.dev").replace(/\/+$/, "");
 let accessToken: string | null = null;
-function readSessionValue(key: string): string | null {
-  try { return window.sessionStorage.getItem(key); } catch { return null; }
+let refreshPromise: Promise<boolean> | null = null;
+try {
+  if (typeof window !== "undefined") window.sessionStorage.removeItem("kubanfy.refresh");
+} catch {
+  // Storage can be unavailable in private/restricted browser contexts.
 }
-function writeSessionValue(key: string, value: string | null): void {
-  try {
-    if (value === null) window.sessionStorage.removeItem(key);
-    else window.sessionStorage.setItem(key, value);
-  } catch {
-    // Storage can be unavailable in private/restricted browser contexts.
-  }
-}
-let refreshToken: string | null = readSessionValue("kubanfy.refresh");
 let fallbackDeviceId: string | null = null;
 
-export function setTokens(tokens: Tokens) {
+export function setTokens(tokens: AccessTokens) {
   accessToken = tokens.access_token;
-  refreshToken = tokens.refresh_token;
-  writeSessionValue("kubanfy.refresh", refreshToken);
 }
 
 export function clearTokens() {
   accessToken = null;
-  refreshToken = null;
-  writeSessionValue("kubanfy.refresh", null);
+}
+
+async function performCookieRefresh(): Promise<boolean> {
+  const response = await fetch("/api/v1/auth/refresh", {
+    method: "POST",
+    headers: { Accept: "application/json" },
+    credentials: "same-origin",
+  });
+
+  if (response.status === 401 || response.status === 403) {
+    clearTokens();
+    return false;
+  }
+  if (!response.ok) {
+    let message = response.statusText || "No se pudo renovar la sesión";
+    try {
+      const body = await response.json();
+      message = body?.error?.message || body?.detail || message;
+    } catch {}
+    throw new ApiError(response.status, message);
+  }
+
+  const tokens = await response.json() as AccessTokens;
+  if (!tokens?.access_token) {
+    throw new ApiError(502, "Respuesta de renovación inválida", "INVALID_REFRESH_RESPONSE");
+  }
+  setTokens(tokens);
+  return true;
+}
+
+async function refreshAccessToken(): Promise<boolean> {
+  if (!refreshPromise) refreshPromise = performCookieRefresh();
+  const current = refreshPromise;
+  try {
+    return await current;
+  } finally {
+    if (refreshPromise === current) refreshPromise = null;
+  }
+}
+
+export function restoreSession(): Promise<boolean> {
+  return refreshAccessToken();
+}
+
+export async function logout(): Promise<void> {
+  try {
+    await request<void>("/v1/auth/logout", { method: "POST" }, false);
+  } finally {
+    clearTokens();
+  }
 }
 
 async function request<T>(path: string, init: RequestInit = {}, retry = true): Promise<T> {
@@ -67,28 +115,20 @@ async function request<T>(path: string, init: RequestInit = {}, retry = true): P
   const device = getDeviceId();
   headers.set("X-Device-ID", device);
   if (accessToken) headers.set("Authorization", `Bearer ${accessToken}`);
-  const requestUrl = `${API}${path}`;
+  const requestUrl = `/api${path}`;
   const method = (init.method || "GET").toUpperCase();
   let response: Response;
   try {
-    response = await fetch(requestUrl, { ...init, headers });
+    response = await fetch(requestUrl, { ...init, headers, credentials: "same-origin" });
   } catch (error) {
     // Retry only safe reads. Never replay login, writes, or other POST requests.
     if (method !== "GET") throw error;
     await new Promise((resolve) => window.setTimeout(resolve, 350));
-    response = await fetch(requestUrl, { ...init, headers });
+    response = await fetch(requestUrl, { ...init, headers, credentials: "same-origin" });
   }
-  if (response.status === 401 && retry && refreshToken) {
-    const refreshed = await fetch(`${API}/v1/auth/refresh`, {
-      method: "POST", headers: { "Content-Type": "application/json", Accept: "application/json" },
-      body: JSON.stringify({ refresh_token: refreshToken, device_id: device }),
-    });
-    if (refreshed.ok) {
-      const body = await refreshed.json();
-      setTokens(body);
-      return request<T>(path, init, false);
-    }
-    clearTokens();
+  if (response.status === 401 && retry) {
+    const refreshed = await refreshAccessToken();
+    if (refreshed) return request<T>(path, init, false);
   }
   if (!response.ok) {
     let detail = response.statusText;
@@ -174,7 +214,7 @@ export async function register(email: string, password: string, displayName: str
 }
 
 export async function login(email: string, password: string) {
-  const body = await request<{ user: unknown; tokens: Tokens }>("/v1/auth/login", {
+  const body = await request<{ user: unknown; tokens: AccessTokens }>("/v1/auth/login", {
     method: "POST", headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ email, password, device_id: getDeviceId(), device_name: "KubanFy Web", platform: "web" }),
   }, false);
