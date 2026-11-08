@@ -34,6 +34,16 @@ from app.services.session import SessionService
 router = APIRouter(prefix="/auth", tags=["auth"])
 
 
+def _resolve_request_ip(request: Request, geo: GeoService | None = None) -> str | None:
+    resolver = geo or GeoService()
+    request_ip = request.client.host if request.client else None
+    return resolver.resolve_client_ip(
+        request_ip,
+        cf_connecting_ip=request.headers.get("cf-connecting-ip"),
+        forwarded_for=request.headers.get("x-forwarded-for"),
+    )
+
+
 @router.post("/register", response_model=UserResponse, status_code=201)
 async def register(
     body: RegisterRequest,
@@ -41,8 +51,7 @@ async def register(
     session: DbSession,
 ) -> UserResponse:
     geo = GeoService()
-    ip = request.client.host if request.client else None
-    real_ip = geo.resolve_client_ip(ip, forwarded_for=request.headers.get("x-forwarded-for"))
+    real_ip = _resolve_request_ip(request, geo)
     await AntiAbuseService().check_register(real_ip)
     service = AuthService(session)
     user = await service.register(body)
@@ -74,7 +83,7 @@ async def request_email_verification(
     request: Request,
     session: DbSession,
 ) -> dict[str, str]:
-    ip = request.headers.get("cf-connecting-ip") or (request.client.host if request.client else None)
+    ip = _resolve_request_ip(request)
     limiter = AntiAbuseService()
     if ip:
         await limiter.enforce_rate_limit(
