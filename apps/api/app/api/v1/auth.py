@@ -137,16 +137,18 @@ async def refresh(
     session: DbSession,
     body: RefreshRequest | None = None,
 ) -> TokenResponse | BrowserTokenResponse:
-    service = AuthService(session)
     origin = request.headers.get("origin")
+    cookie_token = request.cookies.get("kubanfy_refresh")
 
     if origin is not None:
         settings = get_settings()
         ensure_allowed_web_origin(origin, settings)
-        refresh_token = request.cookies.get("kubanfy_refresh")
-        if not refresh_token:
+        if body is not None:
+            raise AuthError("Browser refresh must use the HttpOnly cookie")
+        if not cookie_token:
             raise AuthError("Browser refresh cookie is missing")
-        tokens = await service.refresh(refresh_token, device_id=None)
+        service = AuthService(session)
+        tokens = await service.refresh(cookie_token, device_id=None)
         set_refresh_cookie(response, tokens.refresh_token, settings)
         return BrowserTokenResponse(
             access_token=tokens.access_token,
@@ -154,8 +156,11 @@ async def refresh(
             expires_in=tokens.expires_in,
         )
 
+    if cookie_token:
+        raise AuthError("Origin is required for browser refresh cookie")
     if body is None:
         raise AuthError("Refresh token is required")
+    service = AuthService(session)
     return await service.refresh(body.refresh_token, device_id=body.device_id)
 
 
