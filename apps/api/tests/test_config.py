@@ -32,6 +32,14 @@ def test_cors_origins_list() -> None:
     assert s.cors_origins_list == ["http://a.com", "http://b.com"]
 
 
+def test_cors_origins_reject_wildcard_with_credentials() -> None:
+    import pytest
+
+    settings = Settings(cors_origins="https://kubanfy.example,*")
+    with pytest.raises(ValueError, match="explicit origins"):
+        _ = settings.cors_origins_list
+
+
 def test_production_rejects_insecure_defaults() -> None:
     import pytest
 
