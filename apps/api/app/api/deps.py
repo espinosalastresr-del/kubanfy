@@ -12,6 +12,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from app.core.config import get_settings
 from app.core.database import get_db
 from app.core.exceptions import AuthError, ForbiddenError
 from app.core.security import decode_token
@@ -81,7 +82,7 @@ async def get_current_user(
         last_activity_at = last_activity_at.replace(tzinfo=UTC)
     if expires_at <= now:
         raise AuthError("Session expired", code="SESSION_EXPIRED")
-    if last_activity_at + timedelta(minutes=60) <= now:
+    if last_activity_at + timedelta(minutes=get_settings().session_idle_timeout_minutes) <= now:
         raise AuthError("Session idle timeout", code="SESSION_EXPIRED")
 
     # Avoid a write on every API request while keeping idle-session activity
