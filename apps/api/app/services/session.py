@@ -48,6 +48,8 @@ class SessionService:
         if existing is not None:
             if existing.status == DeviceStatus.BLOCKED:
                 raise ForbiddenError("Device is blocked", code="DEVICE_BLOCKED")
+            if existing.status == DeviceStatus.SUSPICIOUS:
+                raise ForbiddenError("Device requires security review", code="DEVICE_SUSPICIOUS")
             # A revoked device may be re-enrolled only after a fresh password
             # login reaches this method. Old refresh sessions remain revoked.
             if existing.status == DeviceStatus.REVOKED:
