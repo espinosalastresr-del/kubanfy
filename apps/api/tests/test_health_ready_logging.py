@@ -63,6 +63,8 @@ def test_health_ready_source_contains_exception_log() -> None:
     assert 'logger.exception("database_readiness_check_failed")' in source
     assert 'checks["database"] = f"error: {type(exc).__name__}"' in source
 
+
+
 @pytest.mark.asyncio
 async def test_health_ready_returns_503_and_logs_when_redis_times_out() -> None:
     """Redis is a readiness dependency: transient failures must fail readiness."""
