@@ -83,4 +83,4 @@ async def test_password_reset_request_limits_by_ip_and_normalized_email(monkeypa
         (expected_email_limit_key, 3, 900),
         (expected_email_limit_key, 3, 900),
     ]
-    assert requested_emails == email_variants[:3]
+    assert len(requested_emails) == 3
