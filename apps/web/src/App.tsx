@@ -202,7 +202,7 @@ export default function App() {
       if (result === "unsupported") {
         setStatus("Este navegador no ofrece almacenamiento criptográfico compatible; la sesión seguirá funcionando con la protección habitual.");
       } else if (result === "recovery-required") {
-        setStatus("La clave segura de este navegador ya no está disponible. Revoca este dispositivo desde Cuenta y vuelve a iniciar sesión para crear una identidad nueva.");
+        setStatus("La clave segura de este navegador ya no está disponible. Revoca este navegador desde Cuenta y vuelve a iniciar sesión para volver a vincularlo.");
       }
     } catch (error) {
       setStatus(error instanceof Error
