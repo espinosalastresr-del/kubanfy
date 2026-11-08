@@ -55,6 +55,9 @@ class EmailVerificationService:
         )
         self.session.add(record)
         await self.session.flush()
+        # Persist the user/token transaction before calling the external provider.
+        # A delivered message must never point to a token that later rolls back.
+        await self.session.commit()
 
         verify_url = (
             f"{self.settings.frontend_base_url.rstrip('/')}/"
