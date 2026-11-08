@@ -1,4 +1,4 @@
-"""Single-use email verification tokens; only token digests are persisted."""
+""""Single-use email verification tokens; only token digests are persisted."""
 from __future__ import annotations
 
 import uuid
