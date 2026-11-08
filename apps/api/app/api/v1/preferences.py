@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+from uuid import UUID
+
 from fastapi import APIRouter
 from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import CurrentUser, DbSession
 from app.models.user_preferences import UserPreferences
@@ -12,7 +15,7 @@ from app.schemas.preferences import UserPreferencesResponse, UserPreferencesUpda
 router = APIRouter(prefix="/preferences", tags=["preferences"])
 
 
-async def _get_or_create_preferences(session: DbSession, user_id) -> UserPreferences:
+async def _get_or_create_preferences(session: AsyncSession, user_id: UUID) -> UserPreferences:
     preferences = await session.scalar(
         select(UserPreferences).where(UserPreferences.user_id == user_id)
     )
