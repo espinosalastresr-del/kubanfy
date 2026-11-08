@@ -105,7 +105,8 @@ class SessionService:
             if active_count is not None and active_count >= self.settings.max_devices_per_user:
                 raise ForbiddenError(
                     f"Maximum number of devices ({self.settings.max_devices_per_user}) reached. "
-                    "All registered devices have active sessions. Sign out elsewhere or revoke a device in Account > Devices."
+                    "All registered devices have active sessions. Sign out elsewhere or revoke a device in Account > Devices.",
+                    code="DEVICE_LIMIT_REACHED",
                 )
 
         device = Device(

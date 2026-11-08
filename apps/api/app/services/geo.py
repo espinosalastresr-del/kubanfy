@@ -6,6 +6,8 @@ Server determines country from IP. Fallback: user-selected or default CU.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from functools import lru_cache
+from ipaddress import ip_address
 
 from app.core.config import Settings, get_settings
 from app.core.logging import get_logger
@@ -34,15 +36,29 @@ class GeoService:
                 logger.warning("geoip_db_load_failed", error=str(exc))
 
     def resolve_client_ip(
-        self, request_ip: str | None, *, forwarded_for: str | None = None
+        self,
+        request_ip: str | None,
+        *,
+        cf_connecting_ip: str | None = None,
+        forwarded_for: str | None = None,
     ) -> str | None:
-        """Use X-Forwarded-For only from trusted proxies."""
+        """Resolve the edge client IP and trust forwarded hops only from known proxies."""
+        if cf_connecting_ip:
+            try:
+                return str(ip_address(cf_connecting_ip.strip()))
+            except ValueError:
+                logger.warning("invalid_cf_connecting_ip")
+
         trusted = self.settings.trusted_proxy_ip_list
         if forwarded_for and request_ip and request_ip in trusted:
-            # leftmost non-empty hop
-            parts = [p.strip() for p in forwarded_for.split(",") if p.strip()]
-            if parts:
-                return parts[0]
+            for candidate in forwarded_for.split(","):
+                candidate = candidate.strip()
+                if not candidate:
+                    continue
+                try:
+                    return str(ip_address(candidate))
+                except ValueError:
+                    continue
         return request_ip
 
     def country_from_ip(self, ip: str | None) -> GeoResult:
@@ -73,3 +89,9 @@ class GeoService:
                 source="user_selected",
             )
         return self.country_from_ip(ip)
+
+
+@lru_cache(maxsize=1)
+def get_geo_service() -> GeoService:
+    """Reuse the process GeoIP reader instead of reopening it per request."""
+    return GeoService()

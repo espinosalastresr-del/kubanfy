@@ -1,5 +1,6 @@
 import { FormEvent, useState } from "react";
 import { ApiError, confirmPasswordReset } from "./api";
+import { passwordValidationError } from "./authValidation";
 
 function LogoMark() {
   return (
@@ -26,8 +27,9 @@ export function ResetPasswordView({ token, onDone }: Props) {
   async function submit(e: FormEvent) {
     e.preventDefault();
     setError("");
-    if (password.length < 8) {
-      setError("La contraseña debe tener al menos 8 caracteres.");
+    const passwordError = passwordValidationError(password);
+    if (passwordError) {
+      setError(passwordError);
       return;
     }
     if (password !== confirm) {
@@ -43,7 +45,9 @@ export function ResetPasswordView({ token, onDone }: Props) {
         setError(
           err.status === 400 || err.status === 404
             ? "El enlace no es válido o ha caducado. Solicita uno nuevo."
-            : err.message || "No se pudo restablecer la contraseña.",
+            : err.status === 422
+              ? "La contraseña no cumple los requisitos de seguridad."
+              : err.message || "No se pudo restablecer la contraseña.",
         );
       } else {
         setError("No se pudo restablecer la contraseña.");
@@ -87,6 +91,8 @@ export function ResetPasswordView({ token, onDone }: Props) {
                   onChange={(ev) => setPassword(ev.target.value)}
                   required
                   minLength={8}
+                  maxLength={128}
+                  aria-invalid={!!password && !!passwordValidationError(password)}
                 />
               </label>
               <label className="field">
@@ -98,6 +104,8 @@ export function ResetPasswordView({ token, onDone }: Props) {
                   onChange={(ev) => setConfirm(ev.target.value)}
                   required
                   minLength={8}
+                  maxLength={128}
+                  aria-invalid={!!confirm && password !== confirm}
                 />
               </label>
               {error && (

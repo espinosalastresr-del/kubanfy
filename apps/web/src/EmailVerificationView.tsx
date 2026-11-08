@@ -1,5 +1,6 @@
 import { FormEvent, useEffect, useState } from "react";
 import { ApiError, confirmEmailVerification, requestEmailVerification } from "./api";
+import { isValidEmail, normalizeEmail } from "./authValidation";
 
 export function EmailVerificationView({
   initialEmail,
@@ -44,13 +45,13 @@ export function EmailVerificationView({
     event.preventDefault();
     setError("");
     setMessage("");
-    if (!email.trim() || !email.includes("@")) {
+    if (!isValidEmail(email)) {
       setError("Introduce un correo electrónico válido.");
       return;
     }
     setBusy(true);
     try {
-      const result = await requestEmailVerification(email);
+      const result = await requestEmailVerification(normalizeEmail(email));
       setMessage(result.message);
     } catch {
       setError("No pudimos procesar la solicitud. Espera unos minutos e inténtalo de nuevo.");
@@ -103,6 +104,7 @@ export function EmailVerificationView({
                   autoComplete="email"
                   value={email}
                   onChange={(event) => setEmail(event.target.value)}
+                  maxLength={254}
                   placeholder="tu@email.com"
                   required
                 />

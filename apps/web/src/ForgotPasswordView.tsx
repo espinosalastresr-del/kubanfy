@@ -1,5 +1,6 @@
 import { FormEvent, useState } from "react";
 import { ApiError, requestPasswordReset } from "./api";
+import { isValidEmail, normalizeEmail } from "./authValidation";
 
 function LogoMark() {
   return (
@@ -25,13 +26,13 @@ export function ForgotPasswordView({ initialEmail = "", onBack }: Props) {
   async function submit(e: FormEvent) {
     e.preventDefault();
     setError("");
-    if (!email.includes("@")) {
+    if (!isValidEmail(email)) {
       setError("Introduce un correo válido.");
       return;
     }
     setBusy(true);
     try {
-      await requestPasswordReset(email);
+      await requestPasswordReset(normalizeEmail(email));
       setDone(true);
     } catch (err) {
       if (err instanceof ApiError && err.status >= 500) {
@@ -83,6 +84,7 @@ export function ForgotPasswordView({ initialEmail = "", onBack }: Props) {
                   autoComplete="email"
                   value={email}
                   onChange={(ev) => setEmail(ev.target.value)}
+                  maxLength={254}
                   placeholder="tu@email.com"
                   required
                 />
