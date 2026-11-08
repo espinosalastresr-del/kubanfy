@@ -15,7 +15,7 @@ from app.core.config import get_settings
 from app.core.database import get_db
 from app.core.exceptions import AuthError
 from app.core.security import decode_token
-from app.models.device import Session, SessionStatus
+from app.models.device import Device, DeviceStatus, Session, SessionStatus
 from app.models.user import User, UserStatus
 from app.services.authorization import AuthorizationService
 
@@ -74,6 +74,10 @@ async def get_current_user(
     )
     if auth_session is None or auth_session.status != SessionStatus.ACTIVE:
         raise AuthError("Session has been revoked", code="SESSION_INVALID")
+    if auth_session.device_id is not None:
+        device = await session.get(Device, auth_session.device_id)
+        if device is None or device.status != DeviceStatus.ACTIVE:
+            raise AuthError("Device is not active", code="DEVICE_NOT_ACTIVE")
 
     now = datetime.now(UTC)
     expires_at = auth_session.expires_at
