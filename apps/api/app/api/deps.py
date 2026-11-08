@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import UTC, datetime, timedelta
 from typing import Annotated
 from uuid import UUID
 
@@ -14,6 +15,7 @@ from sqlalchemy.orm import selectinload
 from app.core.database import get_db
 from app.core.exceptions import AuthError, ForbiddenError
 from app.core.security import decode_token
+from app.models.device import Session, SessionStatus
 from app.models.rbac import Role, UserRole
 from app.models.user import User, UserStatus
 
@@ -58,6 +60,34 @@ async def get_current_user(
             code="EMAIL_NOT_VERIFIED",
             status_code=403,
         )
+
+    # Access tokens are bound to the persisted session. Revoking a session or
+    # its device therefore invalidates already-issued access tokens immediately.
+    access_jti = payload.get("jti")
+    if not isinstance(access_jti, str) or not access_jti:
+        raise AuthError("Invalid access token session", code="SESSION_INVALID")
+    auth_session = await session.scalar(
+        select(Session).where(Session.access_token_jti == access_jti)
+    )
+    if auth_session is None or auth_session.status != SessionStatus.ACTIVE:
+        raise AuthError("Session has been revoked", code="SESSION_INVALID")
+
+    now = datetime.now(UTC)
+    expires_at = auth_session.expires_at
+    if expires_at.tzinfo is None:
+        expires_at = expires_at.replace(tzinfo=UTC)
+    last_activity_at = auth_session.last_activity_at
+    if last_activity_at.tzinfo is None:
+        last_activity_at = last_activity_at.replace(tzinfo=UTC)
+    if expires_at <= now:
+        raise AuthError("Session expired", code="SESSION_EXPIRED")
+    if last_activity_at + timedelta(minutes=60) <= now:
+        raise AuthError("Session idle timeout", code="SESSION_EXPIRED")
+
+    # Avoid a write on every API request while keeping idle-session activity
+    # accurate enough for the configured 60-minute timeout.
+    if last_activity_at <= now - timedelta(minutes=5):
+        auth_session.last_activity_at = now
 
     return user
 
