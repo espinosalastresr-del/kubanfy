@@ -105,7 +105,6 @@ export function EmailVerificationView({
                   value={email}
                   onChange={(event) => setEmail(event.target.value)}
                   maxLength={254}
-                  aria-invalid={!!error}
                   placeholder="tu@email.com"
                   required
                 />
