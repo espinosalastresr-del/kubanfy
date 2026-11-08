@@ -456,6 +456,7 @@ export type AuthDevice = {
   os_version: string | null;
   app_version: string | null;
   status: string;
+  identity_verified: boolean;
   created_at: string;
   last_seen_at: string;
 };
