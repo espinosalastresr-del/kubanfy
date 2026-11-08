@@ -53,9 +53,9 @@ def _render_action_email(
   <style>
     :root {{ color-scheme: light dark; }}
     body {{ margin: 0; padding: 0; background: #08090d; }}
-    .email-shell {{ width: 100%; padding: 36px 12px; background: #f3f5f8; }}
-    .email-card {{ width: 100%; max-width: 560px; margin: 0 auto; background: #ffffff;
-      border: 1px solid #e5e9ef; border-radius: 18px; overflow: hidden; }}
+    .email-shell {{ width: 100%; padding: 36px 12px; background: #08090d; }}
+    .email-card {{ width: 100%; max-width: 560px; margin: 0 auto; background: #10131a;
+      border: 1px solid rgba(255,255,255,.11); border-radius: 18px; overflow: hidden; }}
     .email-header {{ padding: 28px 36px 18px; }}
     .brand {{ color: #f7f8fb; font: 700 22px/1.2 Arial, Helvetica, sans-serif;
       letter-spacing: -0.6px; }}
@@ -70,8 +70,8 @@ def _render_action_email(
     .fallback {{ overflow-wrap: anywhere; color: #8de1d0; font-size: 13px; }}
     .security {{ margin-top: 24px; padding: 14px 16px; border-radius: 10px;
       background: rgba(255,255,255,.065); color: #a9afbd; font-size: 13px; }}
-    .email-footer {{ padding: 20px 36px 26px; border-top: 1px solid #edf0f4;
-      color: #64748b; font: 12px/1.6 Arial, Helvetica, sans-serif; }}
+    .email-footer {{ padding: 20px 36px 26px; border-top: 1px solid rgba(255,255,255,.11);
+      color: #a9afbd; font: 12px/1.6 Arial, Helvetica, sans-serif; }}
     @media (max-width: 480px) {{
       .email-shell {{ padding: 16px 8px !important; }}
       .email-header {{ padding: 24px 22px 14px !important; }}
