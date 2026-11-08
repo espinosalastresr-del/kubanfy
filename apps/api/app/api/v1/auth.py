@@ -10,6 +10,8 @@ from app.api.deps import CurrentUser, DbSession
 from app.schemas.auth import (
     AuthContextResponse,
     DeviceResponse,
+    EmailVerificationConfirmRequest,
+    EmailVerificationRequest,
     LoginRequest,
     LoginResponse,
     PasswordResetConfirmRequest,
@@ -24,6 +26,7 @@ from app.schemas.auth import (
 from app.services.anti_abuse import AntiAbuseService
 from app.services.auth import AuthService
 from app.services.geo import GeoService
+from app.services.email_verification import EmailVerificationService
 from app.services.password_reset import PasswordResetService
 from app.services.session import SessionService
 
@@ -42,6 +45,7 @@ async def register(
     await AntiAbuseService().check_register(real_ip)
     service = AuthService(session)
     user = await service.register(body)
+    await EmailVerificationService(session).send_for_user(user)
     return AuthService.to_response(user)
 
 
@@ -61,6 +65,47 @@ async def login(
         body, ip_country=geo.resolve(ip=real_ip).country, user_agent=user_agent
     )
     return LoginResponse(user=AuthService.to_response(user), tokens=tokens)
+
+
+@router.post("/email-verification/request", status_code=202)
+async def request_email_verification(
+    body: EmailVerificationRequest,
+    request: Request,
+    session: DbSession,
+) -> dict[str, str]:
+    import hashlib
+
+    ip = request.headers.get("cf-connecting-ip") or (request.client.host if request.client else None)
+    limiter = AntiAbuseService()
+    if ip:
+        await limiter.enforce_rate_limit(
+            f"email-verification:ip:{ip}", limit=10, window_seconds=900
+        )
+    email_key = hashlib.sha256(str(body.email).strip().lower().encode("utf-8")).hexdigest()
+    await limiter.enforce_rate_limit(
+        f"email-verification:email:{email_key}", limit=3, window_seconds=900
+    )
+    await EmailVerificationService(session).request_for_email(str(body.email))
+    return {
+        "message": "Si la cuenta necesita verificación, enviaremos instrucciones al correo indicado."
+    }
+
+
+@router.post("/email-verification/confirm")
+async def confirm_email_verification(
+    body: EmailVerificationConfirmRequest,
+    session: DbSession,
+) -> dict[str, str]:
+    verified = await EmailVerificationService(session).consume(body.token)
+    if not verified:
+        from app.core.exceptions import AuthError
+
+        raise AuthError(
+            "Invalid or expired email verification link",
+            code="EMAIL_VERIFICATION_INVALID",
+            status_code=400,
+        )
+    return {"message": "Correo verificado. Ya puedes iniciar sesión en KubanFy."}
 
 
 @router.post("/password-reset/request", status_code=202)
