@@ -19,9 +19,22 @@ class RegisterRequest(BaseModel):
     @field_validator("password")
     @classmethod
     def password_strength(cls, v: str) -> str:
-        if v.isdigit() or v.isalpha():
-            raise ValueError("Password must contain letters and numbers or symbols")
+        has_letter = any(char.isalpha() for char in v)
+        has_number_or_symbol = any(
+            char.isdigit() or (not char.isalnum() and not char.isspace())
+            for char in v
+        )
+        if not has_letter or not has_number_or_symbol:
+            raise ValueError("Password must contain at least one letter and one number or symbol")
         return v
+
+    @field_validator("display_name")
+    @classmethod
+    def display_name_not_blank(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("Display name cannot be blank")
+        return value
 
     @field_validator("country")
     @classmethod
@@ -121,8 +134,13 @@ class PasswordResetConfirmRequest(BaseModel):
     @field_validator("new_password")
     @classmethod
     def password_strength(cls, v: str) -> str:
-        if v.isdigit() or v.isalpha():
-            raise ValueError("Password must contain letters and numbers or symbols")
+        has_letter = any(char.isalpha() for char in v)
+        has_number_or_symbol = any(
+            char.isdigit() or (not char.isalnum() and not char.isspace())
+            for char in v
+        )
+        if not has_letter or not has_number_or_symbol:
+            raise ValueError("Password must contain at least one letter and one number or symbol")
         return v
 
 
