@@ -485,6 +485,53 @@ export async function listDevices() {
   return request<AuthDevice[]>("/v1/auth/devices");
 }
 
+export type DeviceChallenge = {
+  challenge_id: string;
+  nonce: string;
+  message: string;
+  algorithm: "Ed25519";
+  expires_in: number;
+};
+
+export async function createDeviceChallenge(deviceId: string, publicKey: string) {
+  return request<DeviceChallenge>("/v1/auth/devices/challenge", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ device_id: deviceId, public_key: publicKey }),
+  });
+}
+
+export async function verifyDeviceChallenge(challengeId: string, signature: string) {
+  return request<{ id: string; device_id: string; identity_verified: boolean }>(
+    "/v1/auth/devices/verify",
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ challenge_id: challengeId, signature }),
+    },
+  );
+}
+
+export type UserPreferences = {
+  audio_quality: "auto" | "low" | "medium" | "high";
+  data_saver: boolean;
+  wifi_only_downloads: boolean;
+  theme: "system" | "light" | "dark";
+  local_content_enabled: boolean;
+};
+
+export async function getUserPreferences() {
+  return request<UserPreferences>("/v1/preferences");
+}
+
+export async function updateUserPreferences(patch: Partial<UserPreferences>) {
+  return request<UserPreferences>("/v1/preferences", {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(patch),
+  });
+}
+
 export async function revokeDevice(deviceId: string) {
   return request<void>(`/v1/auth/devices/${deviceId}`, { method: "DELETE" });
 }
