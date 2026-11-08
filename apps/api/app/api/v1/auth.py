@@ -27,7 +27,7 @@ from app.schemas.auth import (
 from app.services.anti_abuse import AntiAbuseService
 from app.services.auth import AuthService
 from app.services.email_verification import EmailVerificationService
-from app.services.geo import GeoService
+from app.services.geo import GeoService, get_geo_service
 from app.services.password_reset import PasswordResetService
 from app.services.session import SessionService
 
@@ -35,7 +35,7 @@ router = APIRouter(prefix="/auth", tags=["auth"])
 
 
 def _resolve_request_ip(request: Request, geo: GeoService | None = None) -> str | None:
-    resolver = geo or GeoService()
+    resolver = geo or get_geo_service()
     request_ip = request.client.host if request.client else None
     return resolver.resolve_client_ip(
         request_ip,
@@ -50,7 +50,7 @@ async def register(
     request: Request,
     session: DbSession,
 ) -> UserResponse:
-    geo = GeoService()
+    geo = get_geo_service()
     real_ip = _resolve_request_ip(request, geo)
     await AntiAbuseService().check_register(real_ip)
     service = AuthService(session)
