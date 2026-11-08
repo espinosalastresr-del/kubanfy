@@ -58,6 +58,7 @@ test("proxy fixes upstream, strips /api, and preserves query, method, headers an
 test("proxy removes hop-by-hop and caller-controlled forwarding headers", async () => {
   const request = new Request("https://web.example/api/v1/ping", {
     headers: {
+      host: "evil.example",
       connection: "keep-alive, x-remove-me",
       "keep-alive": "timeout=5",
       "x-remove-me": "secret",
@@ -75,7 +76,7 @@ test("proxy removes hop-by-hop and caller-controlled forwarding headers", async 
   });
 
   for (const name of [
-    "connection", "keep-alive", "x-remove-me", "x-forwarded-host",
+    "host", "connection", "keep-alive", "x-remove-me", "x-forwarded-host",
     "x-forwarded-proto", "forwarded", "x-kubanfy-internal-user",
   ]) {
     assert.equal(forwardedHeaders.has(name), false, name);
