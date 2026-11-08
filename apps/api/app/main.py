@@ -197,6 +197,7 @@ def create_app() -> FastAPI:
             REDIS_UP.set(1)
         except Exception as exc:
             checks["redis"] = f"error: {type(exc).__name__}"
+            logger.warning("redis_readiness_check_failed", error=type(exc).__name__)
             REDIS_UP.set(0)
             if overall == "ok":
                 overall = "degraded"
@@ -210,7 +211,7 @@ def create_app() -> FastAPI:
         except Exception as exc:
             checks["storage"] = f"error: {type(exc).__name__}"
 
-        status_code = 200 if overall in ("ok", "degraded") else 503
+        status_code = 200 if overall == "ok" else 503
         return JSONResponse(
             status_code=status_code,
             content={"status": overall, "checks": checks},
