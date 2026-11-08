@@ -53,5 +53,13 @@ def downgrade() -> None:
     op.drop_index("ix_user_preferences_user_id", table_name="user_preferences")
     op.drop_table("user_preferences")
     op.drop_column("devices", "public_key")
-    # PostgreSQL enum values cannot be safely removed without recreating the type.
-    # Keep 'blocked' in the enum on downgrade; older application versions ignore it.
+    # Preserve old-client compatibility by converting blocked rows and rebuilding
+    # the enum without the new value. PostgreSQL cannot directly drop enum values.
+    op.execute("UPDATE devices SET status = 'revoked' WHERE status = 'blocked'")
+    op.execute("ALTER TYPE device_status RENAME TO device_status_old")
+    op.execute("CREATE TYPE device_status AS ENUM ('active', 'revoked', 'suspicious')")
+    op.execute(
+        "ALTER TABLE devices ALTER COLUMN status TYPE device_status "
+        "USING status::text::device_status"
+    )
+    op.execute("DROP TYPE device_status_old")
