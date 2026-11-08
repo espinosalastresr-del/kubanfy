@@ -128,10 +128,15 @@ async def request_password_reset(
     session: DbSession,
 ) -> dict[str, str]:
     ip = _resolve_request_ip(request)
+    limiter = AntiAbuseService()
     if ip:
-        await AntiAbuseService().enforce_rate_limit(
+        await limiter.enforce_rate_limit(
             f"password-reset:ip:{ip}", limit=5, window_seconds=900
         )
+    email_key = hashlib.sha256(str(body.email).strip().lower().encode("utf-8")).hexdigest()
+    await limiter.enforce_rate_limit(
+        f"password-reset:email:{email_key}", limit=3, window_seconds=900
+    )
     await PasswordResetService(session).request_reset(str(body.email))
     return {
         "message": "Si existe una cuenta para ese correo, recibirás instrucciones para restablecer la contraseña."
