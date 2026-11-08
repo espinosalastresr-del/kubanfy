@@ -20,6 +20,7 @@ def build_service(*, user=None, delivery_error=None):
     session.scalar = AsyncMock(return_value=user)
     session.execute = AsyncMock()
     session.flush = AsyncMock()
+    session.commit = AsyncMock()
     session.get = AsyncMock()
     delivery = MagicMock()
     delivery.send = AsyncMock(side_effect=delivery_error)
@@ -55,6 +56,7 @@ async def test_send_stores_only_digest_and_sends_query_link():
     assert parsed.scheme == "https"
     assert parsed.netloc == "kubanfy.example"
     assert service._digest(raw_token) == record.token_hash
+    session.commit.assert_awaited_once()
     assert raw_token not in record.token_hash
 
 
