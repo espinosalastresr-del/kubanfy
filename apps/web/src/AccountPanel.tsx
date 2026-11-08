@@ -192,16 +192,15 @@ export function AccountPanel({ user, setUser, setStatus, onLoggedOut }: Props) {
                     {d.status} · visto {fmt(d.last_seen_at)}
                   </span>
                 </div>
-                {!isThis && (
-                  <button
-                    className="icon-button"
-                    disabled={busy}
-                    onClick={() => void removeDevice(d.id)}
-                    aria-label="Revocar dispositivo"
-                  >
-                    ×
-                  </button>
-                )}
+                <button
+                  className="icon-button"
+                  disabled={busy}
+                  onClick={() => void removeDevice(d.id)}
+                  aria-label={isThis ? "Revocar este navegador" : "Revocar dispositivo"}
+                  title={isThis ? "Revocar este navegador" : "Revocar dispositivo"}
+                >
+                  ×
+                </button>
               </article>
             );
           })
