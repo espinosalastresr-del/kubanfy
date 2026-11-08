@@ -56,7 +56,7 @@ export function LoginView({ onLogin, onRegister, onForgot, onVerifyEmail, initia
         setAuthError("Tu cuenta está suspendida. No puedes iniciar sesión mientras esta restricción esté activa.");
       } else if (status === 403 && /suspended/i.test(message)) {
         setAuthError("Tu cuenta está suspendida. Si crees que es un error, contacta con soporte.");
-      } else if (status === 403 && e instanceof ApiError && e.code === "FORBIDDEN" && /maximum number of devices/i.test(message)) {
+      } else if (status === 403 && e instanceof ApiError && e.code === "DEVICE_LIMIT_REACHED") {
         setAuthError("La cuenta alcanzó el límite de dispositivos registrados. Si tienes otra sesión abierta, entra en Biblioteca > Cuenta > Dispositivos y revoca uno que ya no uses. Cambiar de IP, por sí solo, no provoca este bloqueo.");
       } else if (status === 403 && e instanceof ApiError && e.code === "FORBIDDEN") {
         setAuthError("El servidor no pudo autorizar esta sesión. Comprueba los dispositivos registrados o contacta con soporte si el problema continúa.");
