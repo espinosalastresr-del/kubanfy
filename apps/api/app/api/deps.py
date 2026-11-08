@@ -48,16 +48,16 @@ async def get_current_user(
     user = await session.get(User, user_id)
     if user is None:
         raise AuthError("User not found")
-    if not user.email_verified:
+    if user.status == UserStatus.SUSPENDED:
+        raise AuthError("Account is suspended")
+    if user.status == UserStatus.DELETED:
+        raise AuthError("Account not found")
+    if not user.email_verified or user.status == UserStatus.PENDING_VERIFICATION:
         raise AuthError(
             "Email verification required",
             code="EMAIL_NOT_VERIFIED",
             status_code=403,
         )
-    if user.status == UserStatus.SUSPENDED:
-        raise AuthError("Account is suspended")
-    if user.status == UserStatus.DELETED:
-        raise AuthError("Account not found")
 
     return user
 
