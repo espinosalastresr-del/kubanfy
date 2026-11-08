@@ -173,6 +173,22 @@ export async function register(email: string, password: string, displayName: str
   }, false);
 }
 
+export async function requestEmailVerification(email: string) {
+  return request<{ message: string }>("/v1/auth/email-verification/request", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email: email.trim().toLowerCase() }),
+  }, false);
+}
+
+export async function confirmEmailVerification(token: string) {
+  return request<{ message: string }>("/v1/auth/email-verification/confirm", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ token }),
+  }, false);
+}
+
 export async function login(email: string, password: string) {
   const body = await request<{ user: unknown; tokens: Tokens }>("/v1/auth/login", {
     method: "POST", headers: { "Content-Type": "application/json" },
