@@ -7,7 +7,7 @@ from pydantic import ValidationError
 from app.schemas.auth import PasswordResetConfirmRequest, RegisterRequest
 
 
-@pytest.mark.parametrize("password", ["passwordonly", "123456789", "!!!!!!!!", "a" * 72 + "1"])
+@pytest.mark.parametrize("password", ["passwordonly", "123456789", "!!!!!!!!"])
 def test_registration_rejects_password_without_letter_and_number_or_symbol(password: str) -> None:
     with pytest.raises(ValidationError):
         RegisterRequest(
@@ -55,7 +55,7 @@ def test_registration_normalizes_display_name_whitespace() -> None:
     assert request.display_name == "Ray"
 
 
-@pytest.mark.parametrize("password", ["passwordonly", "123456789", "!!!!!!!!"])
+@pytest.mark.parametrize("password", ["passwordonly", "123456789", "!!!!!!!!", "a" * 72 + "1"])
 def test_password_reset_uses_the_same_password_policy(password: str) -> None:
     with pytest.raises(ValidationError):
         PasswordResetConfirmRequest(token="x" * 40, new_password=password)
