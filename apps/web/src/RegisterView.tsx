@@ -1,5 +1,6 @@
 import { FormEvent, useState } from "react";
 import { ApiError, register } from "./api";
+import { isValidEmail, normalizeEmail, passwordValidationError } from "./authValidation";
 
 function EyeIcon({ hidden }: { hidden: boolean }) {
   return hidden ? (
@@ -27,13 +28,19 @@ export function RegisterView({ onBack, onRegistered }: { onBack: () => void; onR
     event.preventDefault();
     setSubmitted(true);
     setError("");
-    if (!name.trim() || !email.includes("@") || password.length < 8 || password !== confirmation) return;
+    if (!name.trim() || !isValidEmail(email) || passwordValidationError(password) || password !== confirmation) return;
     setBusy(true);
     try {
-      await register(email.trim(), password, name.trim());
-      onRegistered(email.trim());
+      await register(normalizeEmail(email), password, name.trim());
+      onRegistered(normalizeEmail(email));
     } catch (e) {
-      setError(e instanceof Error ? e.message : "No pudimos crear la cuenta.");
+      if (e instanceof ApiError && e.status === 409) {
+        setError("Este correo ya está registrado. Inicia sesión o recupera tu contraseña.");
+      } else if (e instanceof ApiError && e.status === 422) {
+        setError("Revisa los datos: usa un correo válido y una contraseña de al menos 8 caracteres con letras y números o símbolos.");
+      } else {
+        setError("No pudimos crear la cuenta. Inténtalo de nuevo.");
+      }
     } finally {
       setBusy(false);
     }
@@ -53,25 +60,25 @@ export function RegisterView({ onBack, onRegistered }: { onBack: () => void; onR
         <form onSubmit={submit} noValidate>
           <label className="field">
             <span>Nombre</span>
-            <input type="text" autoComplete="name" value={name} onChange={e => setName(e.target.value)} placeholder="Tu nombre" required />
+            <input type="text" autoComplete="name" value={name} onChange={e => setName(e.target.value)} placeholder="Tu nombre" maxLength={120} aria-invalid={submitted && !name.trim()} required />
             {submitted && !name.trim() && <small>Introduce tu nombre.</small>}
           </label>
           <label className="field">
             <span>Correo electrónico</span>
-            <input type="email" inputMode="email" autoComplete="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="tu@email.com" required />
-            {submitted && !email.includes("@") && <small>Introduce un correo electrónico válido.</small>}
+            <input type="email" inputMode="email" autoComplete="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="tu@email.com" maxLength={254} aria-invalid={submitted && !isValidEmail(email)} required />
+            {submitted && !isValidEmail(email) && <small>Introduce un correo electrónico válido.</small>}
           </label>
           <label className="field">
             <span>Contraseña</span>
             <div className="password-field">
-              <input type={showPassword ? "text" : "password"} autoComplete="new-password" value={password} onChange={e => setPassword(e.target.value)} placeholder="Mínimo 8 caracteres" required />
+              <input type={showPassword ? "text" : "password"} autoComplete="new-password" value={password} onChange={e => setPassword(e.target.value)} placeholder="Mínimo 8 caracteres" maxLength={128} aria-invalid={submitted && !!passwordValidationError(password)} required />
               <button type="button" className="icon-button" onClick={() => setShowPassword(v => !v)} aria-label={showPassword ? "Ocultar contraseña" : "Mostrar contraseña"}><EyeIcon hidden={showPassword} /></button>
             </div>
-            {submitted && password.length < 8 && <small>La contraseña debe tener al menos 8 caracteres.</small>}
+            {submitted && passwordValidationError(password) && <small>{passwordValidationError(password)}</small>}
           </label>
           <label className="field">
             <span>Repetir contraseña</span>
-            <input type={showPassword ? "text" : "password"} autoComplete="new-password" value={confirmation} onChange={e => setConfirmation(e.target.value)} placeholder="Repite tu contraseña" required />
+            <input type={showPassword ? "text" : "password"} autoComplete="new-password" value={confirmation} onChange={e => setConfirmation(e.target.value)} placeholder="Repite tu contraseña" maxLength={128} aria-invalid={submitted && password !== confirmation} required />
             {submitted && password !== confirmation && <small>Las contraseñas no coinciden.</small>}
           </label>
           {error && <div className="form-status" role="alert">{error}</div>}
