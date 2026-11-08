@@ -25,6 +25,7 @@ from app.models.music import (
     TrackStatus,
 )
 from app.models.rights import LicenseRecord, LicenseStatus
+from app.services.authorization import AuthorizationService
 from app.services.job import JobService
 
 EDIT_ROLES = {
@@ -55,15 +56,12 @@ class ReleaseTrackService:
     async def _member(
         self, user_id: UUID, artist_id: UUID, roles: set[ArtistMemberRole]
     ) -> ArtistMember:
-        member = await self.session.scalar(
-            select(ArtistMember).where(
-                ArtistMember.artist_id == artist_id,
-                ArtistMember.user_id == user_id,
-            )
+        return await AuthorizationService(self.session).require_artist_roles(
+            user_id,
+            artist_id,
+            roles,
+            hide_existence=True,
         )
-        if member is None or member.role not in roles:
-            raise NotFoundError("Artist not found")
-        return member
 
     async def _artist(self, artist_id: UUID) -> Artist:
         artist = await self.session.get(Artist, artist_id)
