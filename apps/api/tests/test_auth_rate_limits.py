@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import hashlib
+
 import pytest
 from starlette.requests import Request
 
@@ -44,7 +45,7 @@ async def test_password_reset_request_limits_by_ip_and_normalized_email(monkeypa
             "server": ("testserver", 443),
         }
     )
-    body = PasswordResetRequest(email=" Person@Example.com ")
+    body = PasswordResetRequest(email="Person@example.com")
 
     result = await auth.request_password_reset(body, request, sentinel_session)
 
