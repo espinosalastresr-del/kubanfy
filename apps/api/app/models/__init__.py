@@ -8,6 +8,7 @@ from app.models.analytics import AnalyticsDaily, AnalyticsEvent, RankingSnapshot
 from app.models.artist_member import ArtistMember
 from app.models.device import Device, Session
 from app.models.engagement import DownloadReceipt, PlaybackSession, ShareLink, ShareOpen
+from app.models.email_verification import EmailVerificationToken
 from app.models.entitlement import Entitlement, Plan, PlanPrice, Subscription
 from app.models.job import Job
 from app.models.music import (
@@ -46,6 +47,7 @@ __all__ = [
     "Device",
     "DownloadReceipt",
     "Entitlement",
+    "EmailVerificationToken",
     "Favorite",
     "FeatureFlag",
     "Job",

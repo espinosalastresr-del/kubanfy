@@ -16,6 +16,7 @@ import { isDataSaverEnabled, resolveStreamingQuality } from "./dataSaver";
 import type { PlanTier } from "./cachePolicy";
 import { ForgotPasswordView } from "./ForgotPasswordView";
 import { ResetPasswordView } from "./ResetPasswordView";
+import { EmailVerificationView } from "./EmailVerificationView";
 import { DiagnosticsPanel } from "./DiagnosticsPanel";
 import { AccountPanel } from "./AccountPanel";
 import { EntitlementsPanel } from "./EntitlementsPanel";
@@ -33,7 +34,7 @@ function LogoMark() { return <div className="logo-mark" aria-hidden="true"><span
 
 export default function App() {
   const [user, setUser] = useState<any>(null);
-  const [authMode, setAuthMode] = useState<"login" | "register" | "forgot">("login");
+  const [authMode, setAuthMode] = useState<"login" | "register" | "forgot" | "verify">("login");
   const [registeredEmail, setRegisteredEmail] = useState("");
   const [tab, setTab] = useState<"home" | "search" | "library">("home");
   const [status, setStatus] = useState("");
@@ -67,6 +68,14 @@ export default function App() {
   ].filter((track: any, index: number, rows: any[]) => {
     const id = String(track?.track_id || track?.id || "");
     return id && rows.findIndex((row) => String(row?.track_id || row?.id || "") === id) === index;
+  });
+
+  const [verifyToken, setVerifyToken] = useState<string | null>(() => {
+    try {
+      return new URLSearchParams(window.location.search).get("verify_token");
+    } catch {
+      return null;
+    }
   });
 
   const [resetToken, setResetToken] = useState<string | null>(() => {
@@ -295,9 +304,46 @@ export default function App() {
     );
   }
 
+  if (verifyToken) {
+    return (
+      <EmailVerificationView
+        initialEmail={registeredEmail}
+        token={verifyToken}
+        onBack={() => {
+          setVerifyToken(null);
+          try {
+            const url = new URL(window.location.href);
+            url.searchParams.delete("verify_token");
+            window.history.replaceState({}, "", url.pathname + url.search + url.hash);
+          } catch { /* ignore */ }
+          setAuthMode("login");
+        }}
+        onVerified={() => {
+          setVerifyToken(null);
+          try {
+            const url = new URL(window.location.href);
+            url.searchParams.delete("verify_token");
+            window.history.replaceState({}, "", url.pathname + url.search + url.hash);
+          } catch { /* ignore */ }
+          setAuthMode("login");
+        }}
+      />
+    );
+  }
+
   if (!user) {
+    if (authMode === "verify") {
+      return (
+        <EmailVerificationView
+          initialEmail={registeredEmail}
+          token={null}
+          onBack={() => setAuthMode("login")}
+          onVerified={() => setAuthMode("login")}
+        />
+      );
+    }
     if (authMode === "register") {
-      return <RegisterView onBack={() => setAuthMode("login")} onRegistered={(email) => { setRegisteredEmail(email); setAuthMode("login"); }} />;
+      return <RegisterView onBack={() => setAuthMode("login")} onRegistered={(email) => { setRegisteredEmail(email); setAuthMode("verify"); }} />;
     }
     if (authMode === "forgot") {
       return <ForgotPasswordView initialEmail={registeredEmail} onBack={() => setAuthMode("login")} />;
@@ -307,6 +353,7 @@ export default function App() {
         onLogin={doLogin}
         onRegister={() => setAuthMode("register")}
         onForgot={() => setAuthMode("forgot")}
+        onVerifyEmail={(email) => { setRegisteredEmail(email); setAuthMode("verify"); }}
         initialEmail={registeredEmail}
       />
     );

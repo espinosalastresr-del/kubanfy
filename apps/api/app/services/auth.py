@@ -71,6 +71,12 @@ class AuthService:
             raise AuthError("Account is suspended")
         if user.status == UserStatus.DELETED:
             raise AuthError("Account not found")
+        if not user.email_verified or user.status == UserStatus.PENDING_VERIFICATION:
+            raise AuthError(
+                "Email verification required",
+                code="EMAIL_NOT_VERIFIED",
+                status_code=403,
+            )
 
         user.last_login_at = datetime.now(UTC)
 
@@ -122,6 +128,12 @@ class AuthService:
         user = await self.session.get(User, sess.user_id)
         if user is None or user.status in (UserStatus.SUSPENDED, UserStatus.DELETED):
             raise AuthError("Account not available")
+        if not user.email_verified or user.status == UserStatus.PENDING_VERIFICATION:
+            raise AuthError(
+                "Email verification required",
+                code="EMAIL_NOT_VERIFIED",
+                status_code=403,
+            )
 
         # Rotate: revoke old session, issue new tokens + session
         sess.status = SessionStatus.REVOKED
