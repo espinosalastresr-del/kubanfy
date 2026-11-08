@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { addFavorite, addTrackToPlaylist, clearTokens, discoveryHome, getTrackDetail, listFavorites, listMyEntitlements, listPlaylists, login, me, removeFavorite, searchTracks } from "./api";
+import { addFavorite, addTrackToPlaylist, clearTokens, discoveryHome, getTrackDetail, getUserPreferences, listFavorites, listMyEntitlements, listPlaylists, login, me, removeFavorite, searchTracks } from "./api";
 import { KbyPlayer } from "./player";
 import { QueueSheet } from "./QueueSheet";
 import { buildDefaultQueue, mergeQueueMeta, trackArtistsLabel, type QueueTrackMeta } from "./queue";
@@ -12,7 +12,7 @@ import { subscribeConnectivity, isOnline } from "./connectivity";
 import { applyServiceWorkerUpdate } from "./swRegister";
 import { tierFromUser } from "./autoCache";
 import { SettingsPanel } from "./SettingsPanel";
-import { isDataSaverEnabled, resolveStreamingQuality } from "./dataSaver";
+import { isDataSaverEnabled, resolveStreamingQuality, setDataSaverEnabled, setPreferredAudioQuality } from "./dataSaver";
 import type { PlanTier } from "./cachePolicy";
 import { ForgotPasswordView } from "./ForgotPasswordView";
 import { ResetPasswordView } from "./ResetPasswordView";
@@ -131,6 +131,7 @@ export default function App() {
         }
         setPlanTier(tier);
         player.setPlanTier(tier);
+        void syncWebPreferences();
         void ensureBrowserIdentity();
       } catch {
         clearTokens();
@@ -184,6 +185,17 @@ export default function App() {
     player.onPrevious = () => nextTrack(-1);
   });
 
+  async function syncWebPreferences() {
+    try {
+      const preferences = await getUserPreferences();
+      setDataSaverEnabled(preferences.data_saver);
+      setPreferredAudioQuality(preferences.audio_quality);
+      document.documentElement.dataset.theme = preferences.theme;
+    } catch {
+      // Keep last known browser preferences when offline or the API is unavailable.
+    }
+  }
+
   async function ensureBrowserIdentity() {
     try {
       const result = await enrollCurrentBrowserIdentity();
@@ -212,6 +224,7 @@ export default function App() {
     }
     setPlanTier(tier);
     player.setPlanTier(tier);
+    await syncWebPreferences();
     await ensureBrowserIdentity();
   }
 
