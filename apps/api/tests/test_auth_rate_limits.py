@@ -29,7 +29,7 @@ async def test_password_reset_request_limits_by_ip_and_normalized_email(monkeypa
             requested_emails.append(email)
 
     sentinel_session = object()
-    monkeypatch.setattr(auth, "_resolve_request_ip", lambda request: "203.0.113.10")
+    monkeypatch.setattr(auth, "_resolve_request_ip", lambda _: "203.0.113.10")
     monkeypatch.setattr(auth, "AntiAbuseService", FakeLimiter)
     monkeypatch.setattr(auth, "PasswordResetService", FakePasswordResetService)
 
