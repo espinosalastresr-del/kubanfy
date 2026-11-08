@@ -158,7 +158,7 @@ def install_login_mocks(monkeypatch: pytest.MonkeyPatch):
     anti_abuse = SimpleNamespace(check_login=AsyncMock())
     geo = SimpleNamespace(
         resolve_client_ip=lambda ip, **_kwargs: ip,
-        resolve=lambda _ip: SimpleNamespace(country="CU"),
+        resolve=lambda **_kwargs: SimpleNamespace(country="CU"),
     )
 
     class FakeAuthService:
