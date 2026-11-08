@@ -21,6 +21,7 @@ const HOP_BY_HOP_HEADERS = new Set([
 ]);
 
 const SPOOFABLE_HEADERS = new Set([
+  "host",
   "forwarded",
   "x-forwarded-for",
   "x-forwarded-host",
