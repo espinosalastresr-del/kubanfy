@@ -420,6 +420,7 @@ export type MusicDownloadResult = {
   download_ticket?: string | null;
   offline_license?: string | null;
   offline_license_expires_at?: string | null;
+  offline_license_public_key?: string | null;
   asset_version?: number | null;
 };
 
@@ -435,6 +436,7 @@ export type OfflineBootstrapItem = {
   asset_version: number;
   offline_license: string;
   offline_license_expires_at: string;
+  offline_license_public_key?: string | null;
 };
 
 export type OfflineLicenseValidation = {
@@ -445,6 +447,7 @@ export type OfflineLicenseValidation = {
   content_hash: string;
   asset_version: number;
   expires_at: string;
+  public_key_pem?: string | null;
 };
 
 export async function downloadTrack(

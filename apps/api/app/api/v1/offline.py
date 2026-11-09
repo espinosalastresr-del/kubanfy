@@ -5,6 +5,7 @@ from __future__ import annotations
 from fastapi import APIRouter
 
 from app.api.deps import CurrentUser, DbSession
+from app.core.config import get_settings
 from app.core.logging import get_logger
 from app.schemas.offline import OfflineLicenseResponse, OfflineLicenseValidateRequest
 from app.services.offline_license import OfflineLicenseService
@@ -47,4 +48,5 @@ async def validate_offline_license(
         content_hash=row.content_hash,
         asset_version=row.asset_version,
         expires_at=row.expires_at.isoformat(),
+        public_key_pem=get_settings().offline_license_public_key,
     )

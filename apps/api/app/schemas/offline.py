@@ -18,3 +18,4 @@ class OfflineLicenseResponse(BaseModel):
     content_hash: str
     asset_version: int
     expires_at: str
+    public_key_pem: str | None = None
