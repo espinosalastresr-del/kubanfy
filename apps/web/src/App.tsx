@@ -155,7 +155,6 @@ export default function App() {
       }
       try {
         const u = await me();
-        setUser(u);
         setOfflineSession(false);
         let tier = tierFromUser(u);
         try {
@@ -164,6 +163,7 @@ export default function App() {
         } catch {
           /* keep tierFromUser fallback */
         }
+        setUser(u);
         setPlanTier(tier);
         player.setPlanTier(tier);
         void cacheOfflineLicensePublicKey().catch(() => {});
@@ -193,13 +193,13 @@ export default function App() {
     void (async () => {
       try {
         const u = await me();
-        setUser(u);
         let tier = tierFromUser(u);
         try {
           tier = planTierFromEntitlements(await listMyEntitlements());
         } catch {
           /* keep cached tier */
         }
+        setUser(u);
         setPlanTier(tier);
         player.setPlanTier(tier);
         setOfflineSession(false);
@@ -308,7 +308,6 @@ export default function App() {
   async function doLogin(email: string, password: string) {
     await login(email, password);
     const u = await me();
-    setUser(u);
     setOfflineSession(false);
     let tier = tierFromUser(u);
     try {
@@ -317,6 +316,7 @@ export default function App() {
     } catch {
       /* fallback */
     }
+    setUser(u);
     setPlanTier(tier);
     player.setPlanTier(tier);
     await syncWebPreferences();
