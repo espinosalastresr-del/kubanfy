@@ -92,6 +92,21 @@ assets. Completed-chunk progress is committed after every chunk. Cancellation or
 transient failure leaves a partial, non-playable record that can be resumed later;
 only a fully verified set of chunks may transition to `ready`.
 
+## 4.2 Persistent offline license validation
+
+Bootstrap and Premium download responses include only the RS256 public key; the
+private signing key never leaves the API. The PWA stores that public key alongside
+the license and verifies the JWT signature locally before persistent offline
+playback. It also checks expiry, device ID, track ID, asset version, quality and
+content hash against the stored asset. Online license validation returns the
+public key so older still-valid licenses can be upgraded without downloading the
+audio again.
+
+The limited automatic cache remains a separate cache policy and does not use a
+persistent offline license. Client-side checks improve expiry and integrity
+enforcement but are not DRM against a user who controls their own browser/runtime;
+the API remains authoritative for license issuance and online validation.
+
 ## 5. Entitlements
 
 Product rules:

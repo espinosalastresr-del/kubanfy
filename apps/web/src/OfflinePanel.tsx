@@ -231,9 +231,11 @@ export function OfflinePanel({ setStatus, onPlayOnline }: Props) {
                   ▶ offline · {t.source} · {t.quality} · v{t.assetVersion} · {t.completedChunks}/{t.totalChunks} chunks
                 </span>
               </button>
-              <button className="icon-button" onClick={() => void validateLicense(t.trackId)} aria-label="Validar licencia">
-                ✓
-              </button>
+              {t.source !== "auto" && (
+                <button className="icon-button" onClick={() => void validateLicense(t.trackId)} aria-label="Validar licencia">
+                  ✓
+                </button>
+              )}
               <button className="icon-button" onClick={() => void remove(t.trackId)} aria-label="Eliminar offline">
                 ×
               </button>
