@@ -27,13 +27,16 @@ function decodeJsonSegment(segment: string): Record<string, unknown> {
   return JSON.parse(new TextDecoder().decode(decodeBase64Url(segment))) as Record<string, unknown>;
 }
 
-function pemToDer(pem: string): Uint8Array {
+function pemToDer(pem: string): ArrayBuffer {
   const body = pem
     .replace(/-----BEGIN PUBLIC KEY-----/g, "")
     .replace(/-----END PUBLIC KEY-----/g, "")
     .replace(/\s+/g, "");
   if (!body || body.length > 8192) throw new Error("Clave pública offline inválida.");
-  return decodeBase64Url(body.replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, ""));
+  const decoded = decodeBase64Url(body.replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, ""));
+  const copy = new Uint8Array(decoded.byteLength);
+  copy.set(decoded);
+  return copy.buffer;
 }
 
 export async function verifyOfflineLicenseToken(
@@ -93,8 +96,12 @@ export async function verifyOfflineLicenseToken(
   }
   if (!keys.length) throw new Error("No hay una clave pública guardada para validar la licencia.");
 
-  const signingInput = new TextEncoder().encode(`${segments[0]}.${segments[1]}`);
-  const signature = decodeBase64Url(segments[2]);
+  const signingBytes = new TextEncoder().encode(`${segments[0]}.${segments[1]}`);
+  const signingInput = new Uint8Array(signingBytes.byteLength);
+  signingInput.set(signingBytes);
+  const signatureBytes = decodeBase64Url(segments[2]);
+  const signature = new Uint8Array(signatureBytes.byteLength);
+  signature.set(signatureBytes);
   for (const entry of keys) {
     if (entry.algorithm !== "RS256") continue;
     try {

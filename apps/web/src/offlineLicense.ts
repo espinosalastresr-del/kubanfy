@@ -25,7 +25,7 @@ function readCachedKeys(): CachedPublicKey[] {
   }
 }
 
-function pemToDer(pem: string): Uint8Array {
+function pemToDer(pem: string): ArrayBuffer {
   const body = pem
     .replace(/-----BEGIN PUBLIC KEY-----/g, "")
     .replace(/-----END PUBLIC KEY-----/g, "")
@@ -34,7 +34,7 @@ function pemToDer(pem: string): Uint8Array {
   const binary = atob(body);
   const bytes = new Uint8Array(binary.length);
   for (let index = 0; index < binary.length; index += 1) bytes[index] = binary.charCodeAt(index);
-  return bytes;
+  return bytes.buffer;
 }
 
 export async function cacheOfflineLicensePublicKey(): Promise<void> {
