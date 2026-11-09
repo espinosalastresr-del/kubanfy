@@ -34,6 +34,14 @@ function QueueIcon() { return <svg viewBox="0 0 24 24" aria-hidden="true"><path 
 function SearchIcon() { return <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.8" cy="10.8" r="6.8" /><path d="m16 16 5 5" /></svg>; }
 function LogoMark() { return <div className="logo-mark" aria-hidden="true"><span /><span /><span /></div>; }
 
+function formatPlaybackTime(seconds: number): string {
+  if (!Number.isFinite(seconds) || seconds < 0) return "0:00";
+  const whole = Math.floor(seconds);
+  const minutes = Math.floor(whole / 60);
+  const remainder = String(whole % 60).padStart(2, "0");
+  return `${minutes}:${remainder}`;
+}
+
 function clearVerificationTokenFromUrl(): void {
   try {
     const url = new URL(window.location.href);
@@ -65,6 +73,9 @@ export default function App() {
   const [activeTrack, setActiveTrack] = useState<any>(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [playerExpanded, setPlayerExpanded] = useState(false);
+  const [playbackPosition, setPlaybackPosition] = useState(0);
+  const [playbackDuration, setPlaybackDuration] = useState(0);
+  const [playbackBufferedEnd, setPlaybackBufferedEnd] = useState(0);
   const [queueIds, setQueueIds] = useState<string[]>([]);
   const [queueMeta, setQueueMeta] = useState<Record<string, QueueTrackMeta>>({});
   const [queueOpen, setQueueOpen] = useState(false);
@@ -180,9 +191,21 @@ export default function App() {
 
   useEffect(() => {
     player.onPlayState = (playing: boolean) => setIsPlaying(playing);
+    player.onProgress = (position: number, duration: number) => {
+      setPlaybackPosition(position);
+      setPlaybackDuration(duration);
+      setPlaybackBufferedEnd(player.getBufferedEnd());
+    };
     player.onEnded = () => nextTrack(1);
     player.onNext = () => nextTrack(1);
     player.onPrevious = () => nextTrack(-1);
+    return () => {
+      player.onPlayState = undefined;
+      player.onProgress = undefined;
+      player.onEnded = undefined;
+      player.onNext = undefined;
+      player.onPrevious = undefined;
+    };
   });
 
   async function syncWebPreferences() {
@@ -550,6 +573,20 @@ export default function App() {
             <button className="icon-button" onClick={() => void shareLink(activeTrack?.title || "KubanFy", `/?track=${encodeURIComponent(activeTrackId)}`)} aria-label="Compartir"><ShareIcon /></button>
             <button className="player-close" onClick={() => { player.stop(); setActiveTrackId(null); setActiveTrack(null); setQueueOpen(false); }} aria-label="Cerrar">×</button>
           </div>
+          <div className="player-progress">
+            <input
+              type="range"
+              min={0}
+              max={Math.max(playbackPosition, playbackBufferedEnd, 0.1)}
+              step={0.1}
+              value={Math.min(playbackPosition, Math.max(playbackPosition, playbackBufferedEnd, 0.1))}
+              disabled={playbackBufferedEnd <= 0.1}
+              onChange={(event) => player.seek(Number(event.target.value))}
+              aria-label="Posición de reproducción"
+              aria-valuetext={`${formatPlaybackTime(playbackPosition)} de ${formatPlaybackTime(playbackDuration)}`}
+              title="Puedes buscar dentro del audio que ya se ha cargado"
+            />
+          </div>
           {playlistMenuTrack === activeTrackId && (
             <div className="playlist-popover player-playlist-popover glass">
               {playlists.length === 0 ? <span>Crea una playlist en Biblioteca.</span> : playlists.map(pl => (
@@ -575,6 +612,10 @@ export default function App() {
               <span>Reproduciendo en KubanFy{dataSaver ? " · Ahorro de datos" : ""}</span>
               <strong>{activeTrack?.title}</strong>
               <span>{activeTrack?.album || "Tu música, a tu manera"}</span>
+              <div className="player-time-row" aria-live="off">
+                <span>{formatPlaybackTime(playbackPosition)}</span>
+                <span>{formatPlaybackTime(playbackDuration)}</span>
+              </div>
             </div>
           )}
         </div>
