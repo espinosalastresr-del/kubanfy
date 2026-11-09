@@ -45,6 +45,12 @@ function decodeJsonSegment<T>(value: string): T {
   return JSON.parse(new TextDecoder().decode(decodeBase64Url(value))) as T;
 }
 
+function toArrayBuffer(bytes: Uint8Array): ArrayBuffer {
+  const copy = new Uint8Array(bytes.byteLength);
+  copy.set(bytes);
+  return copy.buffer;
+}
+
 function decodePublicKeyPem(publicKeyPem: string): Uint8Array {
   const base64 = publicKeyPem
     .replace(/\\n/g, "\n")
@@ -106,7 +112,7 @@ export async function verifyOfflineLicense(
   try {
     publicKey = await crypto.subtle.importKey(
       "spki",
-      decodePublicKeyPem(publicKeyPem),
+      toArrayBuffer(decodePublicKeyPem(publicKeyPem)),
       { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" },
       false,
       ["verify"],
@@ -118,7 +124,7 @@ export async function verifyOfflineLicense(
   const signatureValid = await crypto.subtle.verify(
     "RSASSA-PKCS1-v1_5",
     publicKey,
-    decodeBase64Url(segments[2]),
+    toArrayBuffer(decodeBase64Url(segments[2])),
     new TextEncoder().encode(`${segments[0]}.${segments[1]}`),
   );
   if (!signatureValid) throw new Error("La firma RS256 de la licencia offline no es válida.");
