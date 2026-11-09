@@ -146,10 +146,16 @@ class AuthService:
             device = await self.session.get(Device, sess.device_id)
             if device is None or device.device_id != token_device_id or device.device_id != device_id:
                 raise AuthError("Refresh device mismatch")
+            sess.device = device
             if not challenge_id or not signature:
                 raise AuthError("A signed device proof is required to rotate this refresh token", code="DEVICE_PROOF_REQUIRED")
             await DeviceIdentityService(self.session).verify_refresh_challenge(
                 sess.user_id, sess, jti, device, challenge_id, signature
+            )
+        elif token_device_id or device_id:
+            raise AuthError(
+                "The refresh token references a device that is no longer bound to this session",
+                code="DEVICE_IDENTITY_REQUIRED",
             )
         elif challenge_id or signature:
             raise AuthError("Unexpected device proof for an unbound session")

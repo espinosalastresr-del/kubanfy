@@ -207,6 +207,7 @@ async def test_auth_refresh_verifies_proof_before_rotating_session(monkeypatch) 
         id=device_id, device_id="browser-1", public_key="A" * 44,
         status=DeviceStatus.ACTIVE,
     )
+    auth_session.device = device
     user = SimpleNamespace(
         id=user_id, status=UserStatus.ACTIVE, email_verified=True,
     )
