@@ -15,7 +15,7 @@ export function headerBytesFromB64(b64: string): Uint8Array {
   return out;
 }
 
-export async function loadOfflineTrackMeta(trackId: string, userId: string): Promise<{
+export async function loadOfflineTrackMeta(trackId: string, userId?: string): Promise<{
   track: OfflineTrackRecord;
   header: KbyHeader;
   headerBytes: Uint8Array;
@@ -31,28 +31,33 @@ export async function loadOfflineTrackMeta(trackId: string, userId: string): Pro
   ) {
     throw new Error("Track no disponible offline (incompleto o sin header)");
   }
-  const license = await getLicense(trackId);
-  if (!license) throw new Error("No hay una licencia offline para esta canción.");
-  const deviceId = getDeviceId();
-  if (
-    license.deviceId !== deviceId ||
-    license.trackId !== track.trackId ||
-    license.quality !== track.quality ||
-    license.contentHash !== track.contentHash ||
-    license.assetVersion !== track.assetVersion ||
-    license.source !== track.source
-  ) {
-    throw new Error("La licencia offline no coincide con el dispositivo o el asset guardado.");
+  // Automatic cache is a short-lived playback cache, not a persistent download
+  // entitlement. Bootstrap and Premium downloads always require a signed license.
+  if (track.source !== "auto") {
+    if (!userId) throw new Error("Inicia sesión para verificar la licencia offline.");
+    const license = await getLicense(trackId);
+    if (!license) throw new Error("No hay una licencia offline para esta canción.");
+    const deviceId = getDeviceId();
+    if (
+      license.deviceId !== deviceId ||
+      license.trackId !== track.trackId ||
+      license.quality !== track.quality ||
+      license.contentHash !== track.contentHash ||
+      license.assetVersion !== track.assetVersion ||
+      license.source !== track.source
+    ) {
+      throw new Error("La licencia offline no coincide con el dispositivo o el asset guardado.");
+    }
+    await verifyOfflineLicense(license.token, {
+      userId,
+      deviceId,
+      trackId,
+      quality: track.quality,
+      contentHash: track.contentHash,
+      assetVersion: track.assetVersion,
+      expiresAt: license.expiresAt,
+    });
   }
-  await verifyOfflineLicense(license.token, {
-    userId,
-    deviceId,
-    trackId,
-    quality: track.quality,
-    contentHash: track.contentHash,
-    assetVersion: track.assetVersion,
-    expiresAt: license.expiresAt,
-  });
 
   const headerBytes = headerBytesFromB64(track.headerBytesB64);
   const json = headerBytes;

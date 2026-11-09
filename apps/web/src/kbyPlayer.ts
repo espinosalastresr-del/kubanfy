@@ -223,7 +223,6 @@ export class KbyPlayer {
     this.ensureSessionActions();
     this.onState?.("offline…");
     void touchTrackAccess(trackId).catch(() => {});
-    if (!userId) throw new Error("Inicia sesión para verificar la licencia offline.");
     const { track, header, headerBytes, key } = await loadOfflineTrackMeta(trackId, userId);
     if (!this.isCurrent(operation)) return;
     this.header = header;
