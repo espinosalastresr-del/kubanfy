@@ -67,6 +67,19 @@ export class KbyPlayer {
 
   get element() { return this.audio; }
 
+  /** Furthest currently buffered media time; sequential KBY2 seeks stay within this window. */
+  getBufferedEnd(): number {
+    let end = 0;
+    try {
+      for (let index = 0; index < this.audio.buffered.length; index += 1) {
+        end = Math.max(end, this.audio.buffered.end(index));
+      }
+    } catch {
+      return 0;
+    }
+    return Number.isFinite(end) ? end : 0;
+  }
+
   async playTrack(trackId: string, quality: "low" | "medium" = "low") {
     const operation = this.beginOperation();
     try {

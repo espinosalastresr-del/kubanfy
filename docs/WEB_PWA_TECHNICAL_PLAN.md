@@ -871,3 +871,18 @@ La prioridad queda:
 5. Sólo entonces adaptación de iOS/Android.
 
 La aplicación iOS actual se considera temporal/obsoleta para esta etapa y no debe condicionar el nuevo diseño.
+
+
+## Reproducción: progreso y búsqueda segura
+
+El reproductor muestra progreso y duración en el dock inferior y permite buscar únicamente
+dentro del intervalo de audio que el motor MSE ya tiene disponible. KBY2 mantiene descarga
+secuencial y backpressure; por ello la interfaz no presenta como buscable una zona futura que
+todavía no está cargada. La posición y duración se sincronizan desde los eventos del elemento
+de audio, mientras Media Session continúa proporcionando controles del sistema y pantalla
+bloqueada cuando el navegador/OS lo soporta. El audio permanece montado fuera del árbol visual
+del reproductor para evitar interrupciones al cambiar de pestaña o contraer la interfaz.
+
+La compatibilidad de reproducción en segundo plano depende de Safari/iOS y del ciclo de vida
+de la PWA; Media Session no elimina las restricciones del sistema operativo. La validación de
+comportamiento real en iPhone debe formar parte de la beta en dispositivos físicos.
