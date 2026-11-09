@@ -1,7 +1,9 @@
 /** Offline KBY2 MSE helpers — load encrypted chunks from IndexedDB. */
 
 import { decryptChunk, parseHeader, type KbyHeader } from "./kby2";
-import { getChunk, getTrack, type OfflineTrackRecord } from "./offlineDb";
+import { getChunk, getLicense, getTrack, type OfflineTrackRecord } from "./offlineDb";
+import { getDeviceId } from "./api";
+import { verifyOfflineLicense } from "./offlineLicense";
 import { isTrackReadyOffline } from "./offlineDownload";
 
 export { isTrackReadyOffline };
@@ -13,7 +15,7 @@ export function headerBytesFromB64(b64: string): Uint8Array {
   return out;
 }
 
-export async function loadOfflineTrackMeta(trackId: string): Promise<{
+export async function loadOfflineTrackMeta(trackId: string, userId: string): Promise<{
   track: OfflineTrackRecord;
   header: KbyHeader;
   headerBytes: Uint8Array;
@@ -29,6 +31,29 @@ export async function loadOfflineTrackMeta(trackId: string): Promise<{
   ) {
     throw new Error("Track no disponible offline (incompleto o sin header)");
   }
+  const license = await getLicense(trackId);
+  if (!license) throw new Error("No hay una licencia offline para esta canción.");
+  const deviceId = getDeviceId();
+  if (
+    license.deviceId !== deviceId ||
+    license.trackId !== track.trackId ||
+    license.quality !== track.quality ||
+    license.contentHash !== track.contentHash ||
+    license.assetVersion !== track.assetVersion ||
+    license.source !== track.source
+  ) {
+    throw new Error("La licencia offline no coincide con el dispositivo o el asset guardado.");
+  }
+  await verifyOfflineLicense(license.token, {
+    userId,
+    deviceId,
+    trackId,
+    quality: track.quality,
+    contentHash: track.contentHash,
+    assetVersion: track.assetVersion,
+    expiresAt: license.expiresAt,
+  });
+
   const headerBytes = headerBytesFromB64(track.headerBytesB64);
   const json = headerBytes;
   const len = json.length;

@@ -125,3 +125,43 @@ def test_offline_license_rejects_invalid_asset_version(license_settings: Setting
     )
     with pytest.raises(ValueError, match="Invalid offline license asset version"):
         decode_offline_license_token(token, license_settings)
+
+
+@pytest.mark.asyncio
+async def test_offline_license_public_key_endpoint_exposes_only_verification_key(
+    monkeypatch: pytest.MonkeyPatch,
+    license_settings: Settings,
+) -> None:
+    from fastapi import Response
+
+    from app.api.v1 import offline as offline_api
+
+    monkeypatch.setattr(offline_api, "get_settings", lambda: license_settings)
+    response = Response()
+    payload = await offline_api.offline_license_public_key(response)
+
+    assert payload["algorithm"] == "RS256"
+    assert payload["public_key"] == license_settings.offline_license_public_key
+    assert payload["key_id"] == hashlib.sha256(
+        license_settings.offline_license_public_key.encode("utf-8")
+    ).hexdigest()[:16]
+    assert "PRIVATE KEY" not in payload["public_key"]
+    assert response.headers["Cache-Control"].startswith("public, max-age=3600")
+
+
+@pytest.mark.asyncio
+async def test_offline_license_public_key_endpoint_fails_closed_without_key(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from fastapi import HTTPException, Response
+
+    from app.api.v1 import offline as offline_api
+
+    settings = Settings(
+        environment=Environment.TEST,
+        jwt_secret_key="test-secret-key-with-at-least-32-characters",
+    )
+    monkeypatch.setattr(offline_api, "get_settings", lambda: settings)
+    with pytest.raises(HTTPException) as exc:
+        await offline_api.offline_license_public_key(Response())
+    assert exc.value.status_code == 503

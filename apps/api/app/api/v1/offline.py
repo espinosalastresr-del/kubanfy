@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter
+import hashlib
+
+from fastapi import APIRouter, HTTPException, Response
 
 from app.api.deps import CurrentUser, DbSession
+from app.core.config import get_settings
 from app.core.logging import get_logger
 from app.schemas.offline import OfflineLicenseResponse, OfflineLicenseValidateRequest
 from app.services.offline_license import OfflineLicenseService
@@ -12,6 +15,20 @@ from app.services.offline_license import OfflineLicenseService
 logger = get_logger(__name__)
 
 router = APIRouter(prefix="/offline", tags=["offline"])
+
+
+@router.get("/licenses/public-key")
+async def offline_license_public_key(response: Response) -> dict[str, str]:
+    """Expose only the RS256 verification key required by offline clients."""
+    public_key = get_settings().offline_license_public_key
+    if not public_key:
+        raise HTTPException(status_code=503, detail="Offline license verification is unavailable")
+    response.headers["Cache-Control"] = "public, max-age=3600, stale-while-revalidate=86400"
+    return {
+        "algorithm": "RS256",
+        "key_id": hashlib.sha256(public_key.encode("utf-8")).hexdigest()[:16],
+        "public_key": public_key,
+    }
 
 
 @router.post("/licenses/validate", response_model=OfflineLicenseResponse)

@@ -92,6 +92,16 @@ assets. Completed-chunk progress is committed after every chunk. Cancellation or
 transient failure leaves a partial, non-playable record that can be resumed later;
 only a fully verified set of chunks may transition to `ready`.
 
+Before offline playback, the PWA verifies the device-bound RS256 license locally
+using the public key obtained from `GET /v1/offline/licenses/public-key`. The
+public key is cached in a small retained key ring; the private key never leaves
+the API. The client checks the signature, expiration, user, browser device,
+track, quality, asset version and content hash against the local records. Missing,
+expired, mismatched or unverifiable licenses fail closed. The online validation
+endpoint remains authoritative for revocation and current asset availability;
+while fully offline, revocation cannot be observed until reconnection, so the
+short license expiry bounds that window.
+
 ## 5. Entitlements
 
 Product rules:

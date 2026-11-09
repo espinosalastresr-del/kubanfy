@@ -886,3 +886,19 @@ del reproductor para evitar interrupciones al cambiar de pestaña o contraer la 
 La compatibilidad de reproducción en segundo plano depende de Safari/iOS y del ciclo de vida
 de la PWA; Media Session no elimina las restricciones del sistema operativo. La validación de
 comportamiento real en iPhone debe formar parte de la beta en dispositivos físicos.
+
+
+## Sesión y licencias durante uso offline
+
+La PWA puede restaurar un snapshot local mínimo del perfil y del plan para abrir
+la biblioteca descargada sin red. Ese snapshot no contiene access/refresh tokens
+ni sustituye la autenticación online: se usa solo para identificar la cuenta a la
+que está vinculada la licencia offline. Se conserva con caducidad local y se
+elimina al cerrar sesión o ante un rechazo definitivo de autenticación.
+
+Cada reproducción offline valida localmente la firma RS256 de la licencia,
+expiración, usuario, device ID del navegador, track, calidad, asset version y
+content hash. La clave pública se obtiene online y se conserva para validación
+sin red; nunca se incorpora la clave privada al cliente. La revocación del lado
+servidor solo puede conocerse al reconectar, por lo que la expiración corta de la
+licencia limita el período de uso offline después de una revocación.

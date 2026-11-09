@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { addFavorite, addTrackToPlaylist, clearTokens, discoveryHome, getTrackDetail, getUserPreferences, listFavorites, listMyEntitlements, listPlaylists, login, me, removeFavorite, searchTracks } from "./api";
+import { addFavorite, addTrackToPlaylist, ApiError, clearTokens, discoveryHome, getTrackDetail, getUserPreferences, listFavorites, listMyEntitlements, listPlaylists, login, me, removeFavorite, searchTracks } from "./api";
 import { KbyPlayer } from "./player";
 import { QueueSheet } from "./QueueSheet";
 import { buildDefaultQueue, mergeQueueMeta, trackArtistsLabel, type QueueTrackMeta } from "./queue";
@@ -24,6 +24,8 @@ import { planTierFromEntitlements } from "./entitlements";
 import { enrichTrackIds, resolveTrackId } from "./trackMeta";
 import { enrollCurrentBrowserIdentity } from "./deviceIdentity";
 import { getPreferredAudioQuality } from "./dataSaver";
+import { cacheOfflineLicensePublicKey } from "./offlineLicense";
+import { clearOfflineSessionSnapshot, readOfflineSessionSnapshot, saveOfflineSessionSnapshot } from "./offlineSession";
 
 function HeartIcon({ filled }: { filled: boolean }) {
   return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20.8 8.7c0 5.4-8.8 10.3-8.8 10.3S3.2 14.1 3.2 8.7A4.7 4.7 0 0 1 12 6.2a4.7 4.7 0 0 1 8.8 2.5Z" fill={filled ? "currentColor" : "none"} /></svg>;
@@ -57,6 +59,7 @@ function clearVerificationTokenFromUrl(): void {
 
 export default function App() {
   const [user, setUser] = useState<any>(null);
+  const [offlineSession, setOfflineSession] = useState(false);
   const [authMode, setAuthMode] = useState<"login" | "register" | "forgot" | "verify">("login");
   const [registeredEmail, setRegisteredEmail] = useState("");
   const [tab, setTab] = useState<"home" | "search" | "library">("home");
@@ -129,10 +132,31 @@ export default function App() {
   });
 
   useEffect(() => {
+    const restoreOfflineAccount = () => {
+      const snapshot = readOfflineSessionSnapshot();
+      if (!snapshot) return false;
+      setUser(snapshot.user);
+      setPlanTier(snapshot.planTier);
+      player.setPlanTier(snapshot.planTier);
+      setOfflineSession(true);
+      setTab("library");
+      setStatus("Modo sin conexión: puedes reproducir las canciones descargadas mientras sus licencias sigan vigentes.");
+      return true;
+    };
+
     void (async () => {
+      if (!isOnline()) {
+        if (!restoreOfflineAccount()) {
+          setPlanTier("guest");
+          player.setPlanTier("guest");
+          setStatus("Sin conexión. Conéctate una vez para iniciar sesión y preparar tu biblioteca offline.");
+        }
+        return;
+      }
       try {
         const u = await me();
         setUser(u);
+        setOfflineSession(false);
         let tier = tierFromUser(u);
         try {
           const ents = await listMyEntitlements();
@@ -142,15 +166,58 @@ export default function App() {
         }
         setPlanTier(tier);
         player.setPlanTier(tier);
+        void cacheOfflineLicensePublicKey().catch(() => {});
         void syncWebPreferences();
         void ensureBrowserIdentity();
-      } catch {
+      } catch (error) {
+        const transient = error instanceof TypeError ||
+          (error instanceof ApiError && (error.status === 0 || error.status === 408 || error.status === 429 || error.status >= 500));
+        if (transient) {
+          if (!restoreOfflineAccount()) {
+            setPlanTier("guest");
+            player.setPlanTier("guest");
+            setStatus("No se pudo contactar con KubanFy. Conservamos tu sesión; vuelve a intentarlo cuando haya conexión.");
+          }
+          return;
+        }
         clearTokens();
+        clearOfflineSessionSnapshot();
         setPlanTier("guest");
         player.setPlanTier("guest");
       }
     })();
   }, []);
+
+  useEffect(() => {
+    if (!online || !offlineSession) return;
+    void (async () => {
+      try {
+        const u = await me();
+        setUser(u);
+        let tier = tierFromUser(u);
+        try {
+          tier = planTierFromEntitlements(await listMyEntitlements());
+        } catch {
+          /* keep cached tier */
+        }
+        setPlanTier(tier);
+        player.setPlanTier(tier);
+        setOfflineSession(false);
+        void cacheOfflineLicensePublicKey().catch(() => {});
+        void syncWebPreferences();
+        void ensureBrowserIdentity();
+      } catch (error) {
+        const transient = error instanceof TypeError ||
+          (error instanceof ApiError && (error.status === 0 || error.status === 408 || error.status === 429 || error.status >= 500));
+        if (!transient) {
+          clearTokens();
+          clearOfflineSessionSnapshot();
+          setUser(null);
+          setOfflineSession(false);
+        }
+      }
+    })();
+  }, [online, offlineSession]);
 
   useEffect(() => {
     setOnline(isOnline());
@@ -167,7 +234,11 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    if (!user) return;
+    if (user && !offlineSession) saveOfflineSessionSnapshot(user, planTier);
+  }, [user, planTier, offlineSession]);
+
+  useEffect(() => {
+    if (!user || !online) return;
     void (async () => {
       try {
         setHome(await discoveryHome());
@@ -187,7 +258,7 @@ export default function App() {
         setStatus(e instanceof Error ? e.message : "Error al cargar");
       }
     })();
-  }, [user]);
+  }, [user, online]);
 
   useEffect(() => {
     player.onPlayState = (playing: boolean) => setIsPlaying(playing);
@@ -238,6 +309,7 @@ export default function App() {
     await login(email, password);
     const u = await me();
     setUser(u);
+    setOfflineSession(false);
     let tier = tierFromUser(u);
     try {
       const ents = await listMyEntitlements();
@@ -249,16 +321,22 @@ export default function App() {
     player.setPlanTier(tier);
     await syncWebPreferences();
     await ensureBrowserIdentity();
+    void cacheOfflineLicensePublicKey().catch(() => {});
   }
 
   async function play(id: string, requestedQueue?: string[]) {
     try {
       setStatus("Cargando…");
       let metadata: any = { id, track_id: id, title: "Canción" };
-      try {
-        const detail = await getTrackDetail(id);
-        if (detail) metadata = detail;
-      } catch {
+      if (online) {
+        try {
+          const detail = await getTrackDetail(id);
+          if (detail) metadata = detail;
+        } catch {
+          /* use local metadata when the catalog API is unavailable */
+        }
+      }
+      if (!metadata.title || metadata.title === "Canción") {
         try {
           const offline = await getOfflineTrack(id);
           if (offline) {
@@ -297,7 +375,7 @@ export default function App() {
         isDataSaverEnabled(),
         preferred === "low" ? "low" : "medium",
       );
-      await player.playTrack(id, q);
+      await player.playTrack(id, q, String(user?.id || ""));
       setStatus("");
       setPlayerExpanded(false);
     } catch (e) {
@@ -541,6 +619,8 @@ export default function App() {
               setStatus={setStatus}
               onLoggedOut={() => {
                 clearTokens();
+                clearOfflineSessionSnapshot();
+                setOfflineSession(false);
                 setUser(null);
               }}
             />
