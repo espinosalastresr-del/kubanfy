@@ -62,6 +62,9 @@ class LoginRequest(BaseModel):
     device_id: str | None = Field(default=None, max_length=128)
     device_name: str | None = Field(default=None, max_length=120)
     platform: str | None = Field(default=None, max_length=32)
+    device_public_key: str | None = Field(default=None, min_length=44, max_length=44)
+    identity_challenge_id: str | None = Field(default=None, min_length=32, max_length=32)
+    identity_signature: str | None = Field(default=None, min_length=88, max_length=88)
 
     @field_validator("password")
     @classmethod
@@ -104,9 +107,16 @@ class AuthContextResponse(BaseModel):
     is_admin: bool
 
 
+class RefreshChallengeRequest(BaseModel):
+    refresh_token: str
+    device_id: str = Field(min_length=1, max_length=128)
+
+
 class RefreshRequest(BaseModel):
     refresh_token: str
     device_id: str | None = Field(default=None, max_length=128)
+    challenge_id: str | None = Field(default=None, min_length=32, max_length=32)
+    signature: str | None = Field(default=None, min_length=88, max_length=88)
 
 
 class DeviceResponse(BaseModel):

@@ -1,4 +1,7 @@
-import { createDeviceChallenge, getDeviceId, listDevices, verifyDeviceChallenge } from "./api";
+import {
+  ApiError, createDeviceChallenge, createLoginChallenge, createRefreshChallenge,
+  getDeviceId, listDevices, verifyDeviceChallenge,
+} from "./api";
 
 const DB_NAME = "kubanfy-secure-identity";
 const STORE_NAME = "keys";
@@ -94,6 +97,42 @@ async function signMessage(privateKey: CryptoKey, message: string): Promise<stri
     new TextEncoder().encode(message),
   );
   return toBase64(signature);
+}
+
+
+export async function createLoginProof(deviceId: string): Promise<{
+  device_public_key: string; identity_challenge_id: string; identity_signature: string;
+}> {
+  if (!window.isSecureContext || !globalThis.crypto?.subtle || typeof indexedDB === "undefined") {
+    throw new ApiError(403, "Este navegador no ofrece Ed25519 y almacenamiento seguro; no se puede iniciar una sesión protegida.", "DEVICE_IDENTITY_UNSUPPORTED");
+  }
+  let identity = await readIdentity(deviceId);
+  if (!identity) {
+    try {
+      identity = await createIdentity();
+      await writeIdentity(deviceId, identity);
+    } catch (error) {
+      throw new ApiError(403, error instanceof Error ? error.message : "No se pudo crear la identidad segura del navegador.", "DEVICE_IDENTITY_UNSUPPORTED");
+    }
+  }
+  const challenge = await createLoginChallenge(deviceId, identity.publicKey);
+  return {
+    device_public_key: identity.publicKey,
+    identity_challenge_id: challenge.challenge_id,
+    identity_signature: await signMessage(identity.privateKey, challenge.message),
+  };
+}
+
+export async function createRefreshProof(refreshToken: string, deviceId: string): Promise<{ challenge_id: string; signature: string }> {
+  if (!window.isSecureContext || !globalThis.crypto?.subtle || typeof indexedDB === "undefined") {
+    throw new ApiError(401, "No está disponible la identidad criptográfica de este navegador.", "DEVICE_IDENTITY_REQUIRED");
+  }
+  const identity = await readIdentity(deviceId);
+  if (!identity) {
+    throw new ApiError(401, "La clave segura de este navegador no está disponible. Inicia sesión de nuevo.", "DEVICE_IDENTITY_REQUIRED");
+  }
+  const challenge = await createRefreshChallenge(refreshToken, deviceId);
+  return { challenge_id: challenge.challenge_id, signature: await signMessage(identity.privateKey, challenge.message) };
 }
 
 export async function enrollCurrentBrowserIdentity(): Promise<"verified" | "unsupported" | "recovery-required"> {

@@ -19,10 +19,11 @@ from app.core.security import (
     verify_password,
 )
 from app.models.artist_member import ArtistMember
-from app.models.device import SessionStatus
+from app.models.device import Device, SessionStatus
 from app.models.rbac import Role, UserRole
 from app.models.user import User, UserStatus
 from app.schemas.auth import LoginRequest, RegisterRequest, TokenResponse, UserResponse
+from app.services.device_identity import DeviceIdentityService
 from app.services.session import SessionService
 
 logger = get_logger(__name__)
@@ -82,11 +83,14 @@ class AuthService:
 
         device = None
         if data.device_id:
+            if not all((data.device_public_key, data.identity_challenge_id, data.identity_signature)):
+                raise AuthError("This device must prove its cryptographic identity before login", code="DEVICE_PROOF_REQUIRED")
+            proven_public_key = await DeviceIdentityService(self.session).verify_login_challenge(
+                data.device_id, data.identity_challenge_id, data.identity_signature, data.device_public_key
+            )
             device = await self.sessions.register_or_update_device(
-                user.id,
-                data.device_id,
-                name=data.device_name,
-                platform=data.platform,
+                user.id, data.device_id, name=data.device_name,
+                platform=data.platform, public_key=proven_public_key,
             )
 
         tokens, jti, access_jti = self._issue_tokens(user, device_id=data.device_id)
@@ -102,30 +106,54 @@ class AuthService:
         logger.info("user_logged_in", user_id=str(user.id))
         return user, tokens
 
+    async def create_refresh_challenge(self, refresh_token: str, *, device_id: str) -> dict[str, str]:
+        """Create a proof challenge without extending the session idle timeout."""
+        try:
+            payload = decode_token(refresh_token, self.settings)
+        except ValueError as exc:
+            raise AuthError("Invalid or expired refresh token") from exc
+        if payload.get("type") != "refresh":
+            raise AuthError("Invalid token type")
+        jti = payload.get("jti")
+        if not jti:
+            raise AuthError("Invalid refresh token")
+        sess = await self.sessions.validate_refresh_session(jti, touch_activity=False)
+        if payload.get("sub") != str(sess.user_id) or sess.device_id is None:
+            raise AuthError("Refresh token is not bound to this device", code="DEVICE_IDENTITY_REQUIRED")
+        device = await self.session.get(Device, sess.device_id)
+        if device is None or device.device_id != device_id or payload.get("device_id") != device.device_id:
+            raise AuthError("Refresh device mismatch")
+        return await DeviceIdentityService(self.session).create_refresh_challenge(sess.user_id, sess, jti, device)
+
     async def refresh(
-        self,
-        refresh_token: str,
-        *,
-        device_id: str | None = None,
+        self, refresh_token: str, *, device_id: str | None = None,
+        challenge_id: str | None = None, signature: str | None = None,
     ) -> TokenResponse:
         try:
             payload = decode_token(refresh_token, self.settings)
         except ValueError as exc:
             raise AuthError("Invalid or expired refresh token") from exc
-
         if payload.get("type") != "refresh":
             raise AuthError("Invalid token type")
-
         jti = payload.get("jti")
         if not jti:
             raise AuthError("Invalid refresh token")
-
-        sess = await self.sessions.validate_refresh_session(jti)
+        sess = await self.sessions.validate_refresh_session(jti, touch_activity=False)
+        if payload.get("sub") != str(sess.user_id):
+            raise AuthError("Refresh token subject mismatch")
         token_device_id = payload.get("device_id")
-        if token_device_id and sess.device is not None and sess.device.device_id != token_device_id:
-            raise AuthError("Refresh token device mismatch")
-        if device_id and token_device_id and device_id != token_device_id:
-            raise AuthError("Refresh device mismatch")
+        if sess.device_id is not None:
+            device = await self.session.get(Device, sess.device_id)
+            if device is None or device.device_id != token_device_id or device.device_id != device_id:
+                raise AuthError("Refresh device mismatch")
+            if not challenge_id or not signature:
+                raise AuthError("A signed device proof is required to rotate this refresh token", code="DEVICE_PROOF_REQUIRED")
+            await DeviceIdentityService(self.session).verify_refresh_challenge(
+                sess.user_id, sess, jti, device, challenge_id, signature
+            )
+        elif challenge_id or signature:
+            raise AuthError("Unexpected device proof for an unbound session")
+        sess.last_activity_at = datetime.now(UTC)
         user = await self.session.get(User, sess.user_id)
         if user is None or user.status in (UserStatus.SUSPENDED, UserStatus.DELETED):
             raise AuthError("Account not available")

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Request
 from pydantic import BaseModel, Field
 
 from app.api.deps import CurrentUser, DbSession
@@ -26,6 +26,25 @@ class DeviceChallengeResponse(BaseModel):
     message: str
     algorithm: str
     expires_in: int
+
+
+
+class DeviceLoginChallengeRequest(BaseModel):
+    device_id: str = Field(min_length=1, max_length=128)
+    public_key: str = Field(min_length=44, max_length=44)
+
+
+@router.post("/login-challenge", response_model=DeviceChallengeResponse)
+async def create_login_challenge(body: DeviceLoginChallengeRequest, request: Request) -> DeviceChallengeResponse:
+    limiter = AntiAbuseService()
+    await limiter.enforce_rate_limit(
+        f"device-login-challenge:device:{body.device_id}", limit=10, window_seconds=900
+    )
+    ip = request.headers.get("cf-connecting-ip") or (request.client.host if request.client else None)
+    if ip:
+        await limiter.enforce_rate_limit(f"device-login-challenge:ip:{ip}", limit=30, window_seconds=900)
+    result = await DeviceIdentityService(None).create_login_challenge(body.device_id, body.public_key)
+    return DeviceChallengeResponse(**result)
 
 
 class DeviceChallengeVerifyRequest(BaseModel):

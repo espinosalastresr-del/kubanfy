@@ -32,6 +32,7 @@ class SessionService:
         platform: str | None = None,
         os_version: str | None = None,
         app_version: str | None = None,
+        public_key: str | None = None,
     ) -> Device:
         """Get or create device. Enforce max devices limit."""
         # Serialize per-user device creation so concurrent registrations cannot
@@ -56,6 +57,19 @@ class SessionService:
                 existing.status = DeviceStatus.ACTIVE
                 existing.revoked_at = None
                 logger.info("device_reenrolled_after_password_login", user_id=str(user_id))
+            if public_key is not None and existing.public_key != public_key:
+                # Fresh password login plus a signed challenge permits safe key recovery.
+                await self.db.execute(
+                    update(Session).where(
+                        Session.device_id == existing.id, Session.status == SessionStatus.ACTIVE
+                    ).values(status=SessionStatus.REVOKED, revoked_at=now)
+                )
+                await self.db.execute(
+                    update(OfflineLicense).where(
+                        OfflineLicense.device_id == existing.id, OfflineLicense.revoked.is_(False)
+                    ).values(revoked=True, revoked_at=now)
+                )
+                existing.public_key = public_key
             existing.last_seen_at = now
             if name:
                 existing.name = name
@@ -120,6 +134,7 @@ class SessionService:
             platform=platform,
             os_version=os_version,
             app_version=app_version,
+            public_key=public_key,
             status=DeviceStatus.ACTIVE,
             last_seen_at=now,
         )
@@ -275,7 +290,7 @@ class SessionService:
         await self.db.flush()
         logger.info("device_revoked", device_id=str(device_db_id), user_id=str(user_id))
 
-    async def validate_refresh_session(self, jti: str) -> Session:
+    async def validate_refresh_session(self, jti: str, *, touch_activity: bool = True) -> Session:
         """Validate that a refresh token jti corresponds to an active, non-expired session."""
         sess = await self.get_session_by_jti(jti, for_update=True)
         if sess is None:
@@ -305,6 +320,7 @@ class SessionService:
             sess.status = SessionStatus.EXPIRED
             await self.db.flush()
             raise AuthError("Session idle timeout")
-        sess.last_activity_at = now
-        await self.db.flush()
+        if touch_activity:
+            sess.last_activity_at = now
+            await self.db.flush()
         return sess

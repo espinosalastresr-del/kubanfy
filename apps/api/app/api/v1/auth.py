@@ -18,6 +18,7 @@ from app.schemas.auth import (
     PasswordResetConfirmRequest,
     PasswordResetRequest,
     ProfileUpdateRequest,
+    RefreshChallengeRequest,
     RefreshRequest,
     RegisterRequest,
     SessionResponse,
@@ -162,13 +163,28 @@ async def confirm_password_reset(
     return {"message": "La contraseña se ha actualizado. Inicia sesión con tu nueva contraseña."}
 
 
+@router.post("/refresh/challenge")
+async def refresh_challenge(
+    body: RefreshChallengeRequest, request: Request, session: DbSession
+) -> dict[str, str]:
+    limiter = AntiAbuseService()
+    await limiter.enforce_rate_limit(
+        f"refresh-proof:device:{body.device_id}", limit=30, window_seconds=900
+    )
+    ip = _resolve_request_ip(request)
+    if ip:
+        await limiter.enforce_rate_limit(f"refresh-proof:ip:{ip}", limit=60, window_seconds=900)
+    return await AuthService(session).create_refresh_challenge(
+        body.refresh_token, device_id=body.device_id
+    )
+
+
 @router.post("/refresh", response_model=TokenResponse)
-async def refresh(
-    body: RefreshRequest,
-    session: DbSession,
-) -> TokenResponse:
-    service = AuthService(session)
-    return await service.refresh(body.refresh_token, device_id=body.device_id)
+async def refresh(body: RefreshRequest, session: DbSession) -> TokenResponse:
+    return await AuthService(session).refresh(
+        body.refresh_token, device_id=body.device_id,
+        challenge_id=body.challenge_id, signature=body.signature,
+    )
 
 
 @router.get("/me", response_model=UserResponse)
