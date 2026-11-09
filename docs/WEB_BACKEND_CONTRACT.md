@@ -65,6 +65,18 @@ for the current playback window.
 The API authorization endpoint remains the control plane; it does not proxy
 audio bytes through Render.
 
+The browser must reject a response that ignores Range (HTTP 200), has a mismatched
+Content-Range, or returns fewer bytes than requested. Transient network, 408, 425,
+429 and 5xx failures may be retried a bounded number of times with backoff; malformed
+ranges and authorization failures are not retried. Every active playback operation
+owns an AbortController/generation so changing tracks cancels old network reads and
+prevents stale responses from appending to the new MediaSource.
+
+The MSE producer applies a bounded buffer window (18 seconds high-water, 9 seconds
+low-water) and pauses further Range reads until playback consumes enough buffered
+audio. It never intentionally downloads the entire track ahead of listening. The
+same backpressure applies to offline playback to limit decrypted media in memory.
+
 ## 5. Entitlements
 
 Product rules:
