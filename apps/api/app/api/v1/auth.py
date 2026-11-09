@@ -166,7 +166,7 @@ async def confirm_password_reset(
 @router.post("/refresh/challenge")
 async def refresh_challenge(
     body: RefreshChallengeRequest, request: Request, session: DbSession
-) -> dict[str, str]:
+) -> dict[str, str | int]:
     limiter = AntiAbuseService()
     await limiter.enforce_rate_limit(
         f"refresh-proof:device:{body.device_id}", limit=30, window_seconds=900

@@ -46,7 +46,7 @@ class DeviceIdentityService:
         self.db = session
 
 
-    async def create_login_challenge(self, device_id: str, public_key_b64: str) -> dict[str, str]:
+    async def create_login_challenge(self, device_id: str, public_key_b64: str) -> dict[str, str | int]:
         """Issue a short-lived proof challenge for password login."""
         _decode_b64(public_key_b64, expected_length=32)
         challenge_id = uuid4().hex
@@ -75,7 +75,7 @@ class DeviceIdentityService:
         self._verify_signature(public_key_b64, signature_b64, self._login_message(challenge_id, nonce, device_id, public_key_b64))
         return public_key_b64
 
-    async def create_refresh_challenge(self, user_id: UUID, auth_session: Session, refresh_jti: str, device: Device) -> dict[str, str]:
+    async def create_refresh_challenge(self, user_id: UUID, auth_session: Session, refresh_jti: str, device: Device) -> dict[str, str | int]:
         """Issue a one-time challenge bound to one refresh token and persisted session."""
         if device.status != DeviceStatus.ACTIVE or not device.public_key:
             raise AuthError("Device identity must be enrolled before refreshing", code="DEVICE_IDENTITY_REQUIRED")

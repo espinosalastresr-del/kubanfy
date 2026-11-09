@@ -106,7 +106,7 @@ class AuthService:
         logger.info("user_logged_in", user_id=str(user.id))
         return user, tokens
 
-    async def create_refresh_challenge(self, refresh_token: str, *, device_id: str) -> dict[str, str]:
+    async def create_refresh_challenge(self, refresh_token: str, *, device_id: str) -> dict[str, str | int]:
         """Create a proof challenge without extending the session idle timeout."""
         try:
             payload = decode_token(refresh_token, self.settings)
