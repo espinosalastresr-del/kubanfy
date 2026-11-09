@@ -72,15 +72,20 @@ export async function verifyOfflineLicense(
   if (!publicKeyPem?.trim()) {
     throw new Error("Falta la clave pública de la licencia offline. Conéctate y valida la licencia.");
   }
+  if (license.source !== track.source || license.trackId !== track.trackId) {
+    throw new Error("La licencia local no pertenece a este track.");
+  }
+  if (license.deviceId !== currentDeviceId) {
+    throw new Error("La licencia local está vinculada a otro dispositivo.");
+  }
+  if (license.quality !== track.quality) {
+    throw new Error("La calidad de la licencia no coincide con el audio local.");
+  }
   if (
-    license.source !== track.source ||
-    license.trackId !== track.trackId ||
-    license.deviceId !== currentDeviceId ||
-    license.quality !== track.quality ||
     license.contentHash.toLowerCase() !== track.contentHash.toLowerCase() ||
     license.assetVersion !== track.assetVersion
   ) {
-    throw new Error("Los datos locales de la licencia no coinciden con el dispositivo o asset.");
+    throw new Error("El hash o la versión del asset no coinciden con la licencia local.");
   }
 
   const expiryMs = Date.parse(license.expiresAt);

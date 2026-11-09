@@ -93,8 +93,8 @@ test("accepts a valid RS256 offline license bound to the current device and asse
 test("rejects a modified JWT signature", async () => {
   const value = await fixture();
   const [header, payload, signature] = value.token.split(".");
-  const replacement = signature.endsWith("A") ? "B" : "A";
-  const altered = `${header}.${payload}.${signature.slice(0, -1)}${replacement}`;
+  const replacement = signature[0] === "A" ? "B" : "A";
+  const altered = `${header}.${payload}.${replacement}${signature.slice(1)}`;
   await assert.rejects(
     verifyOfflineLicense({ ...value.license, token: altered }, value.track, DEVICE),
     /firma/i,
