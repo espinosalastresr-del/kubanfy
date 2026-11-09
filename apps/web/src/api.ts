@@ -179,9 +179,12 @@ async function request<T>(path: string, init: RequestInit = {}, retry = true): P
   try {
     response = await fetch(requestUrl, { ...init, headers });
   } catch (error) {
+    // Cancellation is final; do not schedule a retry after the user stops a download.
+    if (init.signal?.aborted) throw error;
     // Retry only safe reads. Never replay login, writes, or other POST requests.
     if (method !== "GET") throw error;
     await new Promise((resolve) => window.setTimeout(resolve, 350));
+    if (init.signal?.aborted) throw error;
     response = await fetch(requestUrl, { ...init, headers });
   }
   if (response.status === 401 && retry) {
@@ -439,17 +442,22 @@ export type OfflineLicenseValidation = {
   expires_at: string;
 };
 
-export async function downloadTrack(trackId: string, quality: "low" | "medium" | "lossless" = "medium") {
+export async function downloadTrack(
+  trackId: string,
+  quality: "low" | "medium" | "lossless" = "medium",
+  signal?: AbortSignal,
+) {
   return request<MusicDownloadResult>("/v1/music/download", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ track_id: trackId, quality, device_id: getDeviceId() }),
+    signal,
   });
 }
 
-export async function offlineBootstrap(limit = 3) {
+export async function offlineBootstrap(limit = 3, signal?: AbortSignal) {
   const q = Math.min(3, Math.max(1, limit));
-  return request<OfflineBootstrapItem[]>(`/v1/music/offline/bootstrap?limit=${q}`);
+  return request<OfflineBootstrapItem[]>(`/v1/music/offline/bootstrap?limit=${q}`, { signal });
 }
 
 export async function validateOfflineLicense(token: string) {

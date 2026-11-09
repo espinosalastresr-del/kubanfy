@@ -77,6 +77,21 @@ low-water) and pauses further Range reads until playback consumes enough buffere
 audio. It never intentionally downloads the entire track ahead of listening. The
 same backpressure applies to offline playback to limit decrypted media in memory.
 
+## 4.1 Offline download integrity and resume
+
+Persistent/bootstrap downloads use the same strict Range reader as playback: HTTP 200
+fallbacks, mismatched Content-Range values and truncated records are rejected.
+Each encrypted KBY2 chunk is checked for its exact record length and AES-GCM
+authentication before it is stored with `verified=true`.
+
+A partial download is resumable only when content hash, asset version, quality,
+chunk count, header boundary, chunk size and serialized KBY2 header all match.
+Existing chunks are re-authenticated before reuse; an asset-generation mismatch
+clears the old track, chunks and license rather than mixing bytes from different
+assets. Completed-chunk progress is committed after every chunk. Cancellation or
+transient failure leaves a partial, non-playable record that can be resumed later;
+only a fully verified set of chunks may transition to `ready`.
+
 ## 5. Entitlements
 
 Product rules:
