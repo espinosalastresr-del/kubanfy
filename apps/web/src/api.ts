@@ -50,6 +50,38 @@ let refreshInFlight: Promise<boolean> | null = null;
 let tokenVersion = 0;
 let fallbackDeviceId: string | null = null;
 
+
+async function postChallenge<T>(path: string, body: Record<string, string>): Promise<T> {
+  let response: Response;
+  try {
+    response = await fetch(`${API}${path}`, {
+      method: "POST", headers: { "Content-Type": "application/json", Accept: "application/json" },
+      body: JSON.stringify(body),
+    });
+  } catch {
+    throw new ApiError(0, "No se pudo conectar para verificar la identidad del navegador.", "NETWORK_ERROR");
+  }
+  if (!response.ok) {
+    let message = response.statusText || "No se pudo verificar el dispositivo.";
+    let code = "DEVICE_PROOF_ERROR";
+    try {
+      const payload = await response.json();
+      message = payload?.error?.message || payload?.detail || message;
+      code = payload?.error?.code || code;
+    } catch {}
+    throw new ApiError(response.status, message, code);
+  }
+  return response.json() as Promise<T>;
+}
+
+export function createLoginChallenge(deviceId: string, publicKey: string) {
+  return postChallenge<DeviceChallenge>("/v1/auth/devices/login-challenge", { device_id: deviceId, public_key: publicKey });
+}
+
+export function createRefreshChallenge(refreshTokenValue: string, deviceId: string) {
+  return postChallenge<DeviceChallenge>("/v1/auth/refresh/challenge", { refresh_token: refreshTokenValue, device_id: deviceId });
+}
+
 export function setTokens(tokens: Tokens) {
   tokenVersion += 1;
   refreshInFlight = null;
@@ -73,12 +105,24 @@ async function refreshSessionToken(deviceId: string): Promise<boolean> {
   const tokenBeingRefreshed = refreshToken;
   const startingVersion = tokenVersion;
   const operation = (async (): Promise<boolean> => {
+    let proof: { challenge_id: string; signature: string };
+    try {
+      const identity = await import("./deviceIdentity");
+      proof = await identity.createRefreshProof(tokenBeingRefreshed, deviceId);
+    } catch (error) {
+      if (error instanceof ApiError && (error.status === 401 || error.status === 403)) clearTokens();
+      return false;
+    }
+
     let response: Response;
     try {
       response = await fetch(`${API}/v1/auth/refresh`, {
         method: "POST",
         headers: { "Content-Type": "application/json", Accept: "application/json" },
-        body: JSON.stringify({ refresh_token: tokenBeingRefreshed, device_id: deviceId }),
+        body: JSON.stringify({
+          refresh_token: tokenBeingRefreshed, device_id: deviceId,
+          challenge_id: proof.challenge_id, signature: proof.signature,
+        }),
       });
     } catch {
       // Preserve the refresh token during transient/offline failures.
@@ -249,9 +293,14 @@ export async function confirmEmailVerification(token: string) {
 }
 
 export async function login(email: string, password: string) {
+  const deviceId = getDeviceId();
+  const identity = await import("./deviceIdentity");
+  const proof = await identity.createLoginProof(deviceId);
   const body = await request<{ user: unknown; tokens: Tokens }>("/v1/auth/login", {
     method: "POST", headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ email, password, device_id: getDeviceId(), device_name: "KubanFy Web", platform: "web" }),
+    body: JSON.stringify({
+      email, password, device_id: deviceId, device_name: "KubanFy Web", platform: "web", ...proof,
+    }),
   }, false);
   setTokens(body.tokens);
   return body.user;
