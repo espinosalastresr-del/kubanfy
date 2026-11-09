@@ -1,6 +1,7 @@
 /** Resumable, integrity-checked KBY2 downloads into IndexedDB. */
 
 import { chunkRange, decryptChunk, parseHeader } from "./kby2";
+import { verifyOfflineLicense } from "./offlineLicense";
 import { fetchRange } from "./rangeTransport";
 import {
   canResumeDownload,
@@ -10,6 +11,7 @@ import {
 } from "./offlineDownloadCore";
 import {
   getChunk,
+  getLicense,
   getTrack,
   headerBytesToB64,
   putChunk,
@@ -18,7 +20,7 @@ import {
   removeOfflineTrack,
   type OfflineTrackRecord,
 } from "./offlineDb";
-import type { MusicDownloadResult, OfflineBootstrapItem } from "./api";
+import { getDeviceId, type MusicDownloadResult, type OfflineBootstrapItem } from "./api";
 
 export type DownloadProgress = {
   trackId: string;
@@ -307,11 +309,21 @@ export async function materializePremiumDownload(
 
 export async function isTrackReadyOffline(trackId: string): Promise<boolean> {
   const track = await getTrack(trackId);
-  return Boolean(
-    track &&
-      track.status === "ready" &&
-      track.totalChunks > 0 &&
-      track.completedChunks === track.totalChunks &&
-      track.headerBytesB64,
-  );
+  if (
+    !track ||
+    track.status !== "ready" ||
+    track.totalChunks <= 0 ||
+    track.completedChunks !== track.totalChunks ||
+    !track.headerBytesB64
+  ) return false;
+  // Automatic cache is a short-lived cache policy, not a persistent licensed download.
+  if (track.source === "auto") return true;
+  const license = await getLicense(trackId);
+  if (!license) return false;
+  try {
+    await verifyOfflineLicense(license, track, getDeviceId());
+    return true;
+  } catch {
+    return false;
+  }
 }

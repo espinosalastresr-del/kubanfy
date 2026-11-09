@@ -7,7 +7,7 @@ import {
   offlineBootstrap,
   validateOfflineLicense,
 } from "./api";
-import { listTracks, removeOfflineTrack, type OfflineTrackRecord } from "./offlineDb";
+import { getLicense, listTracks, putLicense, removeOfflineTrack, type OfflineTrackRecord } from "./offlineDb";
 import {
   materializeBootstrapItem,
   materializePremiumDownload,
@@ -140,13 +140,21 @@ export function OfflinePanel({ setStatus, onPlayOnline }: Props) {
 
   async function validateLicense(trackId: string) {
     try {
-      const { getLicense } = await import("./offlineDb");
       const lic = await getLicense(trackId);
       if (!lic) {
         setStatus("No hay licencia local para este track");
         return;
       }
       const validated = await validateOfflineLicense(lic.token);
+      if (!validated.public_key_pem) {
+        throw new Error("El servidor no entregó la clave pública para validar offline.");
+      }
+      await putLicense({
+        ...lic,
+        expiresAt: validated.expires_at,
+        publicKeyPem: validated.public_key_pem,
+        updatedAt: Date.now(),
+      });
       setStatus(`Licencia OK · expira ${validated.expires_at}`);
     } catch (e) {
       setStatus(e instanceof Error ? e.message : "Validación de licencia falló");
@@ -223,9 +231,11 @@ export function OfflinePanel({ setStatus, onPlayOnline }: Props) {
                   ▶ offline · {t.source} · {t.quality} · v{t.assetVersion} · {t.completedChunks}/{t.totalChunks} chunks
                 </span>
               </button>
-              <button className="icon-button" onClick={() => void validateLicense(t.trackId)} aria-label="Validar licencia">
-                ✓
-              </button>
+              {t.source !== "auto" && (
+                <button className="icon-button" onClick={() => void validateLicense(t.trackId)} aria-label="Validar licencia">
+                  ✓
+                </button>
+              )}
               <button className="icon-button" onClick={() => void remove(t.trackId)} aria-label="Eliminar offline">
                 ×
               </button>

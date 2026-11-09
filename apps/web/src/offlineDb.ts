@@ -46,6 +46,7 @@ export type OfflineLicenseRecord = {
   assetVersion: number;
   deviceId: string;
   source: "bootstrap" | "premium" | "auto";
+  publicKeyPem?: string;
   updatedAt: number;
 };
 

@@ -12,6 +12,7 @@ from fastapi.responses import StreamingResponse
 from sqlalchemy import func, or_, select
 
 from app.api.deps import CurrentUser, DbSession, OptionalUser
+from app.core.config import get_settings
 from app.core.exceptions import AuthError
 from app.core.logging import get_logger
 from app.providers.registry import ProviderManager, create_default_registry
@@ -282,6 +283,7 @@ async def music_download(
 
     offline_license = None
     offline_license_expires_at = None
+    offline_license_asset_version = None
     device_id = body.device_id or request.headers.get("X-Device-ID")
     if device_id is not None:
         authorization = request.headers.get("Authorization", "")
@@ -306,6 +308,7 @@ async def music_download(
             quality=body.quality,
         )
         offline_license_expires_at = license_row.expires_at.isoformat()
+        offline_license_asset_version = license_row.asset_version
 
     return MusicDownloadResponse(
         url=result.signed_url.url if result.signed_url else None,
@@ -320,6 +323,10 @@ async def music_download(
         download_ticket=download_ticket,
         offline_license=offline_license,
         offline_license_expires_at=offline_license_expires_at,
+        offline_license_public_key=(
+            get_settings().offline_license_public_key if offline_license else None
+        ),
+        asset_version=offline_license_asset_version,
     )
 
 
@@ -476,6 +483,7 @@ async def music_offline_bootstrap(
                     asset_version=asset.version,
                     offline_license=offline_license,
                     offline_license_expires_at=license_row.expires_at.isoformat(),
+                    offline_license_public_key=get_settings().offline_license_public_key,
                 )
             )
             logger.info(

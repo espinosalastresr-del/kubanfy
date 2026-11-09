@@ -1,7 +1,9 @@
 /** Offline KBY2 MSE helpers — load encrypted chunks from IndexedDB. */
 
 import { decryptChunk, parseHeader, type KbyHeader } from "./kby2";
-import { getChunk, getTrack, type OfflineTrackRecord } from "./offlineDb";
+import { getChunk, getLicense, getTrack, type OfflineTrackRecord } from "./offlineDb";
+import { getDeviceId } from "./api";
+import { verifyOfflineLicense } from "./offlineLicense";
 import { isTrackReadyOffline } from "./offlineDownload";
 
 export { isTrackReadyOffline };
@@ -28,6 +30,13 @@ export async function loadOfflineTrackMeta(trackId: string): Promise<{
     !track.headerBytesB64
   ) {
     throw new Error("Track no disponible offline (incompleto o sin header)");
+  }
+  if (track.source !== "auto") {
+    const license = await getLicense(trackId);
+    if (!license) {
+      throw new Error("La licencia offline no está disponible. Conéctate y valida la licencia.");
+    }
+    await verifyOfflineLicense(license, track, getDeviceId());
   }
   const headerBytes = headerBytesFromB64(track.headerBytesB64);
   const json = headerBytes;
