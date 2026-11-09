@@ -8,8 +8,10 @@ from app.api.v1.admin import router as admin_router
 from app.api.v1.analytics import router as analytics_router
 from app.api.v1.artists import router as artists_router
 from app.api.v1.auth import router as auth_router
+from app.api.v1.devices import router as devices_router
 from app.api.v1.discovery import router as discovery_router
 from app.api.v1.entitlements import router as entitlements_router
+from app.api.v1.preferences import router as preferences_router
 from app.api.v1.library import router as library_router
 from app.api.v1.music import router as music_router
 from app.api.v1.offline import router as offline_router
@@ -28,6 +30,8 @@ async def api_root() -> dict[str, str]:
 
 
 api_router.include_router(auth_router)
+api_router.include_router(devices_router)
+api_router.include_router(preferences_router)
 api_router.include_router(music_router)
 api_router.include_router(offline_router)
 api_router.include_router(artists_router)

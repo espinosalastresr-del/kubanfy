@@ -78,6 +78,10 @@ jobs:
         run: pytest tests/ -q --tb=short
       - name: Alembic upgrade (smoke)
         run: alembic upgrade head
+      - name: Alembic downgrade/upgrade (rollback smoke)
+        run: |
+          alembic downgrade 018
+          alembic upgrade head
 
   docker-api:
     name: Build API image

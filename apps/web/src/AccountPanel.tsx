@@ -83,9 +83,19 @@ export function AccountPanel({ user, setUser, setStatus, onLoggedOut }: Props) {
   }
 
   async function removeDevice(id: string) {
+    const isCurrentDevice = devices.some((device) => device.id === id && device.device_id === thisDevice);
+    if (!confirm(isCurrentDevice
+      ? "¿Revocar este navegador? Se cerrará esta sesión y tendrás que iniciar sesión de nuevo."
+      : "¿Revocar este dispositivo y cerrar sus sesiones?")) return;
     setBusy(true);
     try {
       await revokeDevice(id);
+      if (isCurrentDevice) {
+        clearTokens();
+        onLoggedOut();
+        setStatus("Este navegador fue revocado. Inicia sesión de nuevo para registrar una identidad nueva.");
+        return;
+      }
       setStatus("Dispositivo revocado");
       await refresh();
     } catch (err) {
@@ -182,16 +192,15 @@ export function AccountPanel({ user, setUser, setStatus, onLoggedOut }: Props) {
                     {d.status} · visto {fmt(d.last_seen_at)}
                   </span>
                 </div>
-                {!isThis && (
-                  <button
-                    className="icon-button"
-                    disabled={busy}
-                    onClick={() => void removeDevice(d.id)}
-                    aria-label="Revocar dispositivo"
-                  >
-                    ×
-                  </button>
-                )}
+                <button
+                  className="icon-button"
+                  disabled={busy}
+                  onClick={() => void removeDevice(d.id)}
+                  aria-label={isThis ? "Revocar este navegador" : "Revocar dispositivo"}
+                  title={isThis ? "Revocar este navegador" : "Revocar dispositivo"}
+                >
+                  ×
+                </button>
               </article>
             );
           })

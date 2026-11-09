@@ -117,6 +117,7 @@ class DeviceResponse(BaseModel):
     os_version: str | None
     app_version: str | None
     status: str
+    identity_verified: bool
     created_at: datetime
     last_seen_at: datetime
 
