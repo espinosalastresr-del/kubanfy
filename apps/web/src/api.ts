@@ -74,8 +74,6 @@ async function postChallenge<T>(path: string, body: Record<string, string>): Pro
   return response.json() as Promise<T>;
 }
 
-export type DeviceChallenge = { challenge_id: string; nonce: string; message: string; algorithm: "Ed25519"; expires_in: number };
-
 export function createLoginChallenge(deviceId: string, publicKey: string) {
   return postChallenge<DeviceChallenge>("/v1/auth/devices/login-challenge", { device_id: deviceId, public_key: publicKey });
 }
