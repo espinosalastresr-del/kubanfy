@@ -465,6 +465,20 @@ export async function offlineBootstrap(limit = 3, signal?: AbortSignal) {
   return request<OfflineBootstrapItem[]>(`/v1/music/offline/bootstrap?limit=${q}`, { signal });
 }
 
+export type OfflineLicensePublicKey = {
+  algorithm: "RS256";
+  key_id: string;
+  public_key: string;
+};
+
+export async function getOfflineLicensePublicKey() {
+  return request<OfflineLicensePublicKey>(
+    "/v1/offline/licenses/public-key",
+    { cache: "no-store" },
+    false,
+  );
+}
+
 export async function validateOfflineLicense(token: string) {
   return request<OfflineLicenseValidation>("/v1/offline/licenses/validate", {
     method: "POST",

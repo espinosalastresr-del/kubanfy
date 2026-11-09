@@ -2,6 +2,7 @@
 
 import { chunkRange, decryptChunk, parseHeader } from "./kby2";
 import { fetchRange } from "./rangeTransport";
+import { cacheOfflineLicensePublicKey } from "./offlineLicense";
 import {
   canResumeDownload,
   kby2HeaderEnd,
@@ -68,6 +69,9 @@ export async function downloadKby2ToOffline(opts: {
     throw new Error("La licencia offline está ausente o vencida.");
   }
 
+  assertNotAborted(signal);
+  // Cache the verification key online before storing a license for later offline use.
+  await cacheOfflineLicensePublicKey();
   assertNotAborted(signal);
   // Read the fixed 9-byte prefix first, then fetch exactly the declared header.
   // A fixed 8 KiB request can legitimately be clamped by the server for very

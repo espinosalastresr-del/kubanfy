@@ -80,22 +80,37 @@ export class KbyPlayer {
     return Number.isFinite(end) ? end : 0;
   }
 
-  async playTrack(trackId: string, quality: "low" | "medium" = "low") {
+  async playTrack(trackId: string, quality: "low" | "medium" = "low", userId?: string) {
     const operation = this.beginOperation();
     try {
       const readyOffline = await isTrackReadyOffline(trackId);
       if (!this.isCurrent(operation)) return;
-      if (readyOffline) await this.loadOffline(trackId, operation);
-      else await this.load(trackId, quality, operation);
+      if (readyOffline) {
+        try {
+          await this.loadOffline(trackId, operation, userId);
+        } catch (offlineError) {
+          if (!this.isCurrent(operation)) return;
+          // An expired or locally unverifiable license must not block normal
+          // online playback when the API is reachable. Offline-only playback
+          // remains fail-closed.
+          if (typeof navigator !== "undefined" && navigator.onLine) {
+            await this.load(trackId, quality, operation);
+          } else {
+            throw offlineError;
+          }
+        }
+      } else {
+        await this.load(trackId, quality, operation);
+      }
     } catch (error) {
       if (this.isCurrent(operation)) throw error;
     }
   }
 
-  async playOffline(trackId: string) {
+  async playOffline(trackId: string, userId?: string) {
     const operation = this.beginOperation();
     try {
-      await this.loadOffline(trackId, operation);
+      await this.loadOffline(trackId, operation, userId);
     } catch (error) {
       if (this.isCurrent(operation)) throw error;
     }
@@ -203,12 +218,12 @@ export class KbyPlayer {
     this.source = media.addSourceBuffer('audio/mp4; codecs="mp4a.40.2"');
   }
 
-  private async loadOffline(trackId: string, operation: PlaybackOperation) {
+  private async loadOffline(trackId: string, operation: PlaybackOperation, userId?: string) {
     this.ensureAudioInDom();
     this.ensureSessionActions();
     this.onState?.("offline…");
     void touchTrackAccess(trackId).catch(() => {});
-    const { track, header, headerBytes, key } = await loadOfflineTrackMeta(trackId);
+    const { track, header, headerBytes, key } = await loadOfflineTrackMeta(trackId, userId);
     if (!this.isCurrent(operation)) return;
     this.header = header;
     this.headerEnd = track.headerEnd;
