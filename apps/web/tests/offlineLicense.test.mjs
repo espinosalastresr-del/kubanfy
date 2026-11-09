@@ -64,6 +64,7 @@ async function fixture(overrides = {}) {
     claims,
     license: {
       token,
+      trackId: TRACK_ID,
       expiresAt,
       quality: QUALITY,
       contentHash: HASH,
