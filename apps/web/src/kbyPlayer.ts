@@ -115,8 +115,19 @@ export class KbyPlayer {
   }
 
   seek(seconds: number) {
-    const d = this.safeDuration();
-    if (d > 0) this.audio.currentTime = Math.max(0, Math.min(seconds, d));
+    const duration = this.safeDuration();
+    if (duration <= 0 || !Number.isFinite(seconds)) return;
+    const target = Math.max(0, Math.min(seconds, duration));
+    const ranges = this.audio.buffered;
+    for (let index = 0; index < ranges.length; index += 1) {
+      if (target >= ranges.start(index) && target <= ranges.end(index)) {
+        this.audio.currentTime = target;
+        return;
+      }
+    }
+    // KBY2 currently streams sequentially; jumping outside the MSE window
+    // would defeat backpressure by forcing every intervening chunk to download.
+    this.onState?.("Ese tramo todavía no está cargado. Avanza dentro del audio disponible.");
   }
 
   setMetadata(track: SessionTrackMeta) {
