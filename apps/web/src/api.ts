@@ -187,6 +187,11 @@ async function request<T>(path: string, init: RequestInit = {}, retry = true): P
     if (init.signal?.aborted) throw error;
     response = await fetch(requestUrl, { ...init, headers });
   }
+  if (init.signal?.aborted) {
+    throw init.signal.reason instanceof Error
+      ? init.signal.reason
+      : new DOMException("Solicitud cancelada", "AbortError");
+  }
   if (response.status === 401 && retry) {
     // Another concurrent request may already have rotated the token pair.
     if (accessToken && accessToken !== requestAccessToken) {
