@@ -93,6 +93,7 @@ class MusicDownloadResponse(BaseModel):
     offline_license: str | None = None
     offline_license_expires_at: str | None = None
     offline_license_public_key: str | None = None
+    asset_version: int | None = None
 
 
 class TrackSearchResult(BaseModel):

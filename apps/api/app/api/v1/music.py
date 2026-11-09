@@ -283,6 +283,7 @@ async def music_download(
 
     offline_license = None
     offline_license_expires_at = None
+    offline_license_asset_version = None
     device_id = body.device_id or request.headers.get("X-Device-ID")
     if device_id is not None:
         authorization = request.headers.get("Authorization", "")
@@ -307,6 +308,7 @@ async def music_download(
             quality=body.quality,
         )
         offline_license_expires_at = license_row.expires_at.isoformat()
+        offline_license_asset_version = license_row.asset_version
 
     return MusicDownloadResponse(
         url=result.signed_url.url if result.signed_url else None,
@@ -324,6 +326,7 @@ async def music_download(
         offline_license_public_key=(
             get_settings().offline_license_public_key if offline_license else None
         ),
+        asset_version=offline_license_asset_version,
     )
 
 
