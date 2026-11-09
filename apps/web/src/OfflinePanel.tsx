@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   ApiError,
   completeDownloadTicket,
@@ -24,6 +24,7 @@ export function OfflinePanel({ setStatus, onPlayOnline }: Props) {
   const [busy, setBusy] = useState(false);
   const [progress, setProgress] = useState<DownloadProgress | null>(null);
   const [premiumTrackId, setPremiumTrackId] = useState("");
+  const downloadController = useRef<AbortController | null>(null);
 
   const refresh = useCallback(async () => {
     const all = await listTracks();
@@ -32,53 +33,80 @@ export function OfflinePanel({ setStatus, onPlayOnline }: Props) {
 
   useEffect(() => {
     void refresh().catch(() => {});
+    return () => downloadController.current?.abort();
   }, [refresh]);
 
-  async function runBootstrap() {
+  function beginDownload(): AbortController {
+    downloadController.current?.abort();
+    const controller = new AbortController();
+    downloadController.current = controller;
+    return controller;
+  }
+
+  function cancelDownload() {
+    downloadController.current?.abort();
+    setStatus("Deteniendo descarga…");
+  }
+
+  async function runBootstrap(targetTrackId?: string) {
+    const controller = beginDownload();
     setBusy(true);
     setProgress(null);
     try {
-      const items = await offlineBootstrap(3);
-      if (!items.length) {
-        setStatus("No hay tracks de bootstrap disponibles ahora");
+      const items = await offlineBootstrap(3, controller.signal);
+      const selected = targetTrackId
+        ? items.filter((item) => String(item.track_id) === targetTrackId)
+        : items;
+      if (!selected.length) {
+        setStatus(targetTrackId
+          ? "Ese track ya no pertenece al conjunto de bootstrap disponible"
+          : "No hay tracks de bootstrap disponibles ahora");
         return;
       }
       const deviceId = getDeviceId();
-      for (const item of items) {
-        await materializeBootstrapItem(item, deviceId, setProgress);
+      for (const item of selected) {
+        await materializeBootstrapItem(item, deviceId, setProgress, controller.signal);
       }
-      setStatus(`Bootstrap offline: ${items.length} canción(es) listas`);
-      await refresh();
-    } catch (e) {
-      const msg =
-        e instanceof ApiError
-          ? e.message
-          : e instanceof Error
-            ? e.message
-            : "Bootstrap offline falló";
-      setStatus(msg);
+      setStatus(`Bootstrap offline: ${selected.length} canción(es) listas`);
+    } catch (error) {
+      if (controller.signal.aborted) {
+        setStatus("Descarga detenida. Puedes reanudarla sin perder los fragmentos verificados.");
+      } else {
+        const msg =
+          error instanceof ApiError
+            ? error.message
+            : error instanceof Error
+              ? error.message
+              : "Bootstrap offline falló";
+        setStatus(msg);
+      }
     } finally {
+      if (downloadController.current === controller) downloadController.current = null;
       setBusy(false);
       setProgress(null);
+      await refresh().catch(() => {});
     }
   }
 
-  async function runPremiumDownload() {
-    const trackId = premiumTrackId.trim();
+  async function runPremiumDownload(trackIdOverride?: string) {
+    const trackId = (trackIdOverride ?? premiumTrackId).trim();
     if (!trackId) {
       setStatus("Indica un track_id para descarga Premium");
       return;
     }
+    const controller = beginDownload();
     setBusy(true);
     setProgress(null);
     try {
-      const result = await downloadTrack(trackId, "medium");
+      const result = await downloadTrack(trackId, "medium", controller.signal);
       if (!result.offline_license) {
         setStatus("Sin licencia offline (¿falta X-Device-ID o entitlement?)");
         return;
       }
       const deviceId = getDeviceId();
-      await materializePremiumDownload(trackId, trackId, result, deviceId, setProgress);
+      await materializePremiumDownload(
+        trackId, trackId, result, deviceId, setProgress, controller.signal,
+      );
       if (result.download_ticket) {
         try {
           await completeDownloadTicket(result.download_ticket, result.size_bytes ?? undefined);
@@ -88,20 +116,25 @@ export function OfflinePanel({ setStatus, onPlayOnline }: Props) {
       }
       setStatus("Descarga Premium almacenada offline");
       setPremiumTrackId("");
-      await refresh();
-    } catch (e) {
-      const msg =
-        e instanceof ApiError
-          ? e.status === 403
-            ? "Se requiere plan Premium para descargas persistentes"
-            : e.message
-          : e instanceof Error
-            ? e.message
-            : "Descarga falló";
-      setStatus(msg);
+    } catch (error) {
+      if (controller.signal.aborted) {
+        setStatus("Descarga detenida. Puedes reanudarla sin perder los fragmentos verificados.");
+      } else {
+        const msg =
+          error instanceof ApiError
+            ? error.status === 403
+              ? "Se requiere plan Premium para descargas persistentes"
+              : error.message
+            : error instanceof Error
+              ? error.message
+              : "Descarga falló";
+        setStatus(msg);
+      }
     } finally {
+      if (downloadController.current === controller) downloadController.current = null;
       setBusy(false);
       setProgress(null);
+      await refresh().catch(() => {});
     }
   }
 
@@ -161,10 +194,17 @@ export function OfflinePanel({ setStatus, onPlayOnline }: Props) {
         </button>
       </div>
 
-      {progress && (
-        <p className="status-banner" style={{ background: "rgba(141,225,208,.12)", color: "var(--accent-2)" }}>
-          {progress.trackId.slice(0, 8)}… {progress.completedChunks}/{progress.totalChunks} ({progress.status})
-        </p>
+      {busy && (
+        <div className="offline-download-progress">
+          {progress && (
+            <p className="status-banner" style={{ background: "rgba(141,225,208,.12)", color: "var(--accent-2)" }}>
+              {progress.trackId.slice(0, 8)}… {progress.completedChunks}/{progress.totalChunks} ({progress.status})
+            </p>
+          )}
+          <button className="secondary-button" onClick={cancelDownload}>
+            Cancelar descarga
+          </button>
+        </div>
       )}
 
       <h3>Listas ({ready.length})</h3>
@@ -206,7 +246,20 @@ export function OfflinePanel({ setStatus, onPlayOnline }: Props) {
                     {t.status} · {t.completedChunks}/{t.totalChunks}
                   </span>
                 </div>
-                <button className="icon-button" onClick={() => void remove(t.trackId)} aria-label="Eliminar">
+                {t.source !== "auto" ? (
+                  <button
+                    className="secondary-button"
+                    disabled={busy}
+                    onClick={() => void (t.source === "bootstrap"
+                      ? runBootstrap(t.trackId)
+                      : runPremiumDownload(t.trackId))}
+                  >
+                    Reanudar
+                  </button>
+                ) : (
+                  <span className="empty-state">Se completa al reproducir</span>
+                )}
+                <button className="icon-button" disabled={busy} onClick={() => void remove(t.trackId)} aria-label="Eliminar">
                   ×
                 </button>
               </article>
