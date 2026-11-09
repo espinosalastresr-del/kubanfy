@@ -238,7 +238,7 @@ export default function App() {
   }, [user, planTier, offlineSession]);
 
   useEffect(() => {
-    if (!user || !online) return;
+    if (!user || !online || offlineSession) return;
     void (async () => {
       try {
         setHome(await discoveryHome());
@@ -258,7 +258,7 @@ export default function App() {
         setStatus(e instanceof Error ? e.message : "Error al cargar");
       }
     })();
-  }, [user, online]);
+  }, [user, online, offlineSession]);
 
   useEffect(() => {
     player.onPlayState = (playing: boolean) => setIsPlaying(playing);

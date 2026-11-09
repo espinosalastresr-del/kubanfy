@@ -472,7 +472,11 @@ export type OfflineLicensePublicKey = {
 };
 
 export async function getOfflineLicensePublicKey() {
-  return request<OfflineLicensePublicKey>("/v1/offline/licenses/public-key", {}, false);
+  return request<OfflineLicensePublicKey>(
+    "/v1/offline/licenses/public-key",
+    { cache: "no-store" },
+    false,
+  );
 }
 
 export async function validateOfflineLicense(token: string) {

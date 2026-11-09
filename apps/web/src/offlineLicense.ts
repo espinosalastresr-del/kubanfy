@@ -27,6 +27,7 @@ function readCachedKeys(): CachedPublicKey[] {
 
 function pemToDer(pem: string): ArrayBuffer {
   const body = pem
+    .replace(/\\n/g, "\n")
     .replace(/-----BEGIN PUBLIC KEY-----/g, "")
     .replace(/-----END PUBLIC KEY-----/g, "")
     .replace(/\s+/g, "");
