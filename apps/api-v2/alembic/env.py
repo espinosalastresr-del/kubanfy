@@ -4,14 +4,16 @@ from logging.config import fileConfig
 from alembic import context
 from sqlalchemy import engine_from_config, pool
 
-from app.core.config import settings
+from app.core.config import normalize_sync_database_url, settings
 from app.models import Base, User, UserSession  # noqa: F401
 
 config = context.config
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
-database_url = os.getenv("DATABASE_URL_SYNC") or settings.database_url_sync
+database_url = normalize_sync_database_url(
+    os.getenv("DATABASE_URL_SYNC") or settings.database_url_sync
+)
 config.set_main_option("sqlalchemy.url", database_url.replace("%", "%%"))
 target_metadata = Base.metadata
 VERSION_TABLE = "auth_v2_alembic_version"
