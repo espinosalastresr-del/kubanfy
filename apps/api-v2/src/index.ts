@@ -32,6 +32,7 @@ export default {
     }
     const container = getContainer(env.AUTH_CONTAINER, "kubanfy-auth-v2");
     const headers = new Headers(request.headers);
+    headers.delete("CF-IPCountry");
     const country = request.cf?.country;
     if (typeof country === "string") headers.set("CF-IPCountry", country);
     return container.fetch(new Request(request, { headers }));
