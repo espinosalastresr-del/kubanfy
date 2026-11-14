@@ -278,7 +278,7 @@ async def get_catalog(
             select(Track, Artist)
             .join(TrackArtist, TrackArtist.track_id == Track.id)
             .join(Artist, Artist.id == TrackArtist.artist_id)
-            .order_by(Track.created_at.desc())
+            .order_by(Track.created_at.desc(), TrackArtist.display_order.asc())
             .limit(500)
         )
     ).all()
@@ -301,8 +301,12 @@ async def get_catalog(
             "title": track.title,
             "status": track.status.value,
             "duration": track.duration,
+            "isrc": track.isrc,
             "explicit": track.explicit,
             "language": track.language,
+            "release_date": track.release_date.isoformat() if track.release_date else None,
+            "artwork_url": track.artwork_url,
+            "release_id": str(track.release_id) if track.release_id else None,
             "created_at": track.created_at.isoformat() if track.created_at else None,
             "artists": [],
             "artist_ids": [],
