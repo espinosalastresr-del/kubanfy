@@ -537,20 +537,36 @@ class ArtistUploadService:
 
         # Publication is allowed only after the offline-friendly playback
         # derivatives are actually present and verified.
-        derivative_qualities = await self.session.scalars(
-            select(AudioAsset.quality).where(
-                AudioAsset.track_id == track_id,
-                AudioAsset.is_active.is_(True),
-                AudioAsset.source_type == SourceType.DERIVATIVE,
-                AudioAsset.quality.in_([AudioQuality.LOW, AudioQuality.MEDIUM]),
-                AudioAsset.content_hash.is_not(None),
-                AudioAsset.storage_key != "",
-            )
+        derivative_assets = list(
+            (
+                await self.session.scalars(
+                    select(AudioAsset).where(
+                        AudioAsset.track_id == track_id,
+                        AudioAsset.is_active.is_(True),
+                        AudioAsset.source_type == SourceType.DERIVATIVE,
+                        AudioAsset.quality.in_([AudioQuality.LOW, AudioQuality.MEDIUM]),
+                        AudioAsset.quality_confidence == QualityConfidence.VERIFIED,
+                        AudioAsset.content_hash.is_not(None),
+                        AudioAsset.storage_key != "",
+                    )
+                )
+            ).all()
         )
-        if set(derivative_qualities.all()) != {AudioQuality.LOW, AudioQuality.MEDIUM}:
+        if {asset.quality for asset in derivative_assets} != {
+            AudioQuality.LOW,
+            AudioQuality.MEDIUM,
+        }:
             raise ValidationError(
                 "LOW and MEDIUM verified derivatives are required before publication"
             )
+        for derivative in derivative_assets:
+            if not derivative.storage_key.endswith(".kby"):
+                raise ValidationError("Derivative must use protected KBY storage")
+            kby2_key = derivative.storage_key.rsplit(".kby", 1)[0] + ".kby2"
+            if not await self.storage.exists(kby2_key, bucket=StorageBucket.PERMANENT):
+                raise ValidationError(
+                    "KBY v2 streaming derivative is missing; finish audio processing before publication"
+                )
 
         license_rec = await self.session.scalar(
             select(LicenseRecord).where(
