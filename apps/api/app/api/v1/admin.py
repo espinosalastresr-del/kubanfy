@@ -2,17 +2,26 @@
 
 from __future__ import annotations
 
+import re
+import unicodedata
 from typing import Annotated, Any
 from uuid import UUID
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, File, Form, UploadFile
 from pydantic import BaseModel, Field
+from sqlalchemy import select
 
 from app.api.deps import DbSession, require_permissions
+from app.core.exceptions import ConflictError, NotFoundError, ValidationError
 from app.models.admin import ModerationReportType, ModerationStatus
+from app.models.artist_member import ArtistMember, ArtistMemberRole
+from app.models.music import Artist, AudioAsset, Track, TrackArtist, TrackStatus
 from app.models.user import User
+from app.schemas.catalog import TrackUpdateRequest
 from app.services.admin import AdminService
+from app.services.artist_upload import ArtistUploadService
 from app.services.rbac import RbacService
+from app.services.release_track import ReleaseTrackService
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 
