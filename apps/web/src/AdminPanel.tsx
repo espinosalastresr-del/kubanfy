@@ -246,7 +246,11 @@ export function AdminPanel({ setStatus }: Props) {
         {loading ? <div className="empty-state">Cargando catálogo…</div> : catalog.tracks.length === 0 ? (
           <div className="empty-state">Todavía no hay canciones registradas.</div>
         ) : catalog.tracks.map((track) => {
-          const qualities = new Set(track.assets.map((asset) => asset.quality));
+          const qualities = new Set(
+            track.assets
+              .filter((asset) => asset.source_type === "derivative")
+              .map((asset) => asset.quality),
+          );
           const ready = qualities.has("low") && qualities.has("medium");
           return (
             <article className="glass admin-track" key={track.id}>
