@@ -68,6 +68,9 @@ async def handle_generic(job: Job, session: Any) -> dict[str, Any] | None:
         .where(
             AudioAsset.is_active.is_(True),
             AudioAsset.storage_key.like("%.kby"),
+            AudioAsset.source_type == SourceType.DERIVATIVE,
+            AudioAsset.quality.in_([AudioQuality.LOW, AudioQuality.MEDIUM]),
+            AudioAsset.quality_confidence == QualityConfidence.VERIFIED,
             AudioAsset.content_hash.is_not(None),
         )
         .order_by(AudioAsset.id.asc())
