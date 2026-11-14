@@ -330,11 +330,14 @@ async def create_catalog_artist(
     session: DbSession,
     user: Annotated[User, Depends(require_permissions("artists.write"))],
 ) -> dict[str, Any]:
-    slug = _catalog_slug(body.name)
+    name = body.name.strip()
+    if not name:
+        raise ValidationError("Artist name cannot be blank")
+    slug = _catalog_slug(name)
     if await session.scalar(select(Artist.id).where(Artist.slug == slug)):
         raise ConflictError("Artist slug already exists")
     artist = Artist(
-        name=body.name.strip(),
+        name=name,
         slug=slug,
         country=body.country.upper(),
         bio=body.bio,
