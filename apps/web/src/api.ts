@@ -628,3 +628,103 @@ export type EntitlementItem = {
 export async function listMyEntitlements() {
   return request<EntitlementItem[]>("/v1/entitlements/me");
 }
+
+
+export type AdminCatalogArtist = {
+  id: string;
+  name: string;
+  country: string;
+  status: string;
+  verified: boolean;
+};
+export type AdminCatalogTrack = {
+  id: string;
+  title: string;
+  status: string;
+  duration: number | null;
+  explicit: boolean;
+  language: string | null;
+  isrc: string | null;
+  release_date: string | null;
+  artwork_url: string | null;
+  release_id: string | null;
+  artists: string[];
+  artist_ids: string[];
+  assets: { quality: string; source_type: string; quality_confidence: string }[];
+  created_at: string | null;
+};
+export type AdminCatalog = { artists: AdminCatalogArtist[]; tracks: AdminCatalogTrack[] };
+
+export async function getAdminCatalog() {
+  return request<AdminCatalog>("/v1/admin/catalog");
+}
+export async function createAdminArtist(body: { name: string; country: string; bio?: string }) {
+  return request<AdminCatalogArtist>("/v1/admin/catalog/artists", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+}
+export async function uploadAdminTrack(
+  artistId: string,
+  body: { title: string; file: File; explicit: boolean; language: string },
+) {
+  const form = new FormData();
+  form.set("title", body.title);
+  form.set("accept_license", "true");
+  form.set("explicit", String(body.explicit));
+  form.set("language", body.language);
+  form.set("file", body.file);
+  return request<{ track_id: string; status: string; duration: number | null; job_id: string | null }>(
+    `/v1/admin/catalog/artists/${artistId}/tracks`,
+    { method: "POST", body: form },
+  );
+}
+export async function publishAdminTrack(artistId: string, trackId: string) {
+  return request<{ track_id: string; status: string }>(
+    `/v1/admin/catalog/artists/${artistId}/tracks/${trackId}/publish`,
+    { method: "POST" },
+  );
+}
+export async function setAdminTrackStatus(
+  artistId: string,
+  trackId: string,
+  status: "draft" | "hidden" | "takedown" | "deleted",
+) {
+  return request<{ track_id: string; status: string }>(
+    `/v1/admin/catalog/artists/${artistId}/tracks/${trackId}/status`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status }),
+    },
+  );
+}
+export async function updateAdminTrack(
+  trackId: string,
+  body: {
+    title: string;
+    isrc: string | null;
+    explicit: boolean;
+    language: string | null;
+    release_date: string | null;
+    artwork_url: string | null;
+    release_id: string | null;
+  },
+) {
+  return request<{ track_id: string; title: string; status: string }>(
+    `/v1/admin/catalog/tracks/${trackId}`,
+    {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    },
+  );
+}
+
+
+export async function startKby2Backfill() {
+  return request<{ job_id: string; status: string }>("/v1/admin/catalog/backfill-kby2", {
+    method: "POST",
+  });
+}

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import struct
 import tempfile
 from datetime import UTC, datetime
 from pathlib import Path
@@ -10,6 +11,7 @@ from uuid import UUID
 
 from sqlalchemy import select
 
+from app.core.config import get_settings
 from app.core.logging import get_logger
 from app.models.job import Job, JobType
 from app.models.music import (
@@ -25,16 +27,136 @@ from app.services.cache import CacheService
 from app.services.transcoding import TranscodingService
 from app.services.kby import derive_key, pack, unpack
 from app.services.kby_v2 import pack as pack_v2
+from app.services.job import JobService
 from app.storage import StorageBucket, get_storage
 from app.workers.runner import register_handler
 
 logger = get_logger(__name__)
 
 
+def _is_fragmented_mp4(data: bytes) -> bool:
+    boxes: set[str] = set()
+    offset = 0
+    while offset + 8 <= len(data):
+        size = struct.unpack(">I", data[offset : offset + 4])[0]
+        kind = data[offset + 4 : offset + 8].decode("ascii", "replace")
+        header_size = 8
+        if size == 1:
+            if offset + 16 > len(data):
+                return False
+            size = struct.unpack(">Q", data[offset + 8 : offset + 16])[0]
+            header_size = 16
+        elif size == 0:
+            size = len(data) - offset
+        if size < header_size or offset + size > len(data):
+            return False
+        boxes.add(kind)
+        offset += size
+    return {"ftyp", "moov", "moof", "mdat"}.issubset(boxes)
+
+
 @register_handler(JobType.GENERIC)
 async def handle_generic(job: Job, session: Any) -> dict[str, Any] | None:
-    logger.info("generic_job_executed", job_id=str(job.id), payload=job.payload)
-    return {"ok": True}
+    if job.payload.get("action") != "backfill_kby2":
+        logger.info("generic_job_executed", job_id=str(job.id), payload=job.payload)
+        return {"ok": True}
+
+    cursor = job.payload.get("cursor")
+    batch_size = max(1, min(int(job.payload.get("batch_size", 20)), 50))
+    stmt = (
+        select(AudioAsset)
+        .where(
+            AudioAsset.is_active.is_(True),
+            AudioAsset.storage_key.like("%.kby"),
+            AudioAsset.source_type == SourceType.DERIVATIVE,
+            AudioAsset.quality.in_([AudioQuality.LOW, AudioQuality.MEDIUM]),
+            AudioAsset.quality_confidence == QualityConfidence.VERIFIED,
+            AudioAsset.content_hash.is_not(None),
+        )
+        .order_by(AudioAsset.id.asc())
+        .limit(batch_size)
+    )
+    if cursor:
+        stmt = stmt.where(AudioAsset.id > UUID(cursor))
+    assets = list((await session.scalars(stmt)).all())
+    if not assets:
+        return {"action": "backfill_kby2", "complete": True, "created": 0, "failed": 0}
+
+    settings = get_settings()
+    storage = get_storage()
+    created = skipped = failed = 0
+    for asset in assets:
+        source_key = asset.storage_key
+        target_key = source_key.rsplit(".kby", 1)[0] + ".kby2"
+        if await storage.exists(target_key, bucket=StorageBucket.PERMANENT):
+            skipped += 1
+            continue
+        container = await storage.get(source_key, bucket=StorageBucket.PERMANENT)
+        encryption_key = derive_key(asset.content_hash, settings=settings)
+        try:
+            header, plaintext = unpack(
+                container,
+                key=encryption_key,
+                expected_content_hash=asset.content_hash,
+            )
+            if header.quality != asset.quality.value:
+                raise ValueError(
+                    f"quality mismatch: container={header.quality} db={asset.quality.value}"
+                )
+            if asset.quality.value in {"low", "medium"} and not _is_fragmented_mp4(plaintext):
+                raise ValueError("LOW/MEDIUM asset is not fragmented MP4")
+        except Exception as exc:
+            failed += 1
+            logger.exception(
+                "kby2_backfill_asset_invalid",
+                asset_id=str(asset.id),
+                track_id=str(asset.track_id),
+                error_type=type(exc).__name__,
+            )
+            continue
+
+        body = pack_v2(
+            plaintext,
+            content_hash=asset.content_hash,
+            quality=asset.quality.value,
+            content_type=header.content_type,
+            settings=settings,
+        )
+        await storage.put(
+            target_key,
+            body,
+            bucket=StorageBucket.PERMANENT,
+            content_type="application/vnd.kubanfy.kby2",
+        )
+        created += 1
+
+    next_cursor = str(assets[-1].id)
+    complete = len(assets) < batch_size
+    if not complete:
+        await JobService(session).enqueue(
+            JobType.GENERIC,
+            {
+                "action": "backfill_kby2",
+                "cursor": next_cursor,
+                "batch_size": batch_size,
+                "failed_total": int(job.payload.get("failed_total", 0)) + failed,
+                "run_id": job.payload.get("run_id"),
+            },
+            correlation_id=job.correlation_id,
+            idempotency_key=f"kby2-backfill:{job.payload.get('run_id', job.id)}:{next_cursor}",
+        )
+    result = {
+        "action": "backfill_kby2",
+        "complete": complete,
+        "cursor": next_cursor,
+        "processed": len(assets),
+        "created": created,
+        "skipped": skipped,
+        "failed": failed,
+        "failed_total": int(job.payload.get("failed_total", 0)) + failed,
+    }
+    logger.info("kby2_backfill_batch_done", **result)
+    return result
 
 
 @register_handler(JobType.NOTIFICATION)
