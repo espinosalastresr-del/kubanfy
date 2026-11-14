@@ -112,7 +112,7 @@ async def get_setting(
 async def create_report(
     body: ReportCreate,
     session: DbSession,
-    user: Annotated[User, Depends(require_permissions("tracks.read", "tracks.write", "artists.write", "tracks.publish", "tracks.takedown"))],
+    user: Annotated[User, Depends(require_permissions("tracks.read"))],
 ) -> dict[str, Any]:
     # Authenticated users can report; permission is light. Public report can use separate endpoint.
     report = await AdminService(session).create_report(
@@ -270,7 +270,7 @@ async def _ensure_admin_artist_membership(session: DbSession, user_id: UUID, art
 @router.get("/catalog")
 async def get_catalog(
     session: DbSession,
-    user: Annotated[User, Depends(require_permissions("tracks.read"))],
+    user: Annotated[User, Depends(require_permissions("tracks.read", "tracks.write", "artists.write", "tracks.publish", "tracks.takedown"))],
 ) -> dict[str, Any]:
     artists = list((await session.scalars(select(Artist).order_by(Artist.name))).all())
     rows = (
