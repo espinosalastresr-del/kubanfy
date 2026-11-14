@@ -1,0 +1,12 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "kubanfy-auth-v2",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-11-14",
+  "compatibility_flags": ["nodejs_compat"],
+  "workers_dev": true,
+  "observability": { "enabled": true },
+  "containers": [{ "class_name": "KubanFyAuthContainer", "image": "./Dockerfile", "max_instances": 3 }],
+  "durable_objects": { "bindings": [{ "name": "AUTH_CONTAINER", "class_name": "KubanFyAuthContainer" }] },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["KubanFyAuthContainer"] }]
+}

@@ -1,0 +1,13 @@
+{
+  "name": "kubanfy-auth-v2-worker",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": { "typecheck": "tsc --noEmit", "deploy": "wrangler deploy" },
+  "dependencies": { "@cloudflare/containers": "0.3.7" },
+  "devDependencies": {
+    "@cloudflare/workers-types": "4.20260402.1",
+    "typescript": "^5.8.3",
+    "wrangler": "^4.35.0"
+  }
+}
