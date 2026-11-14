@@ -1,10 +1,12 @@
 import { Container, getContainer } from "@cloudflare/containers";
 import { DurableObject, env } from "cloudflare:workers";
 
-type WorkerEnv = typeof env & {
-  KUBANFY_JOB_RUNNER: {
-    getByName(name: string): { run(): Promise<void> };
-  };
+type WorkerEnv = Omit<
+  typeof env,
+  "KUBANFY_API_CONTAINER" | "KUBANFY_JOB_RUNNER"
+> & {
+  KUBANFY_API_CONTAINER: DurableObjectNamespace<KubanFyApiContainer>;
+  KUBANFY_JOB_RUNNER: DurableObjectNamespace<KubanFyJobRunner>;
 };
 
 export class KubanFyApiContainer extends Container {
@@ -99,7 +101,7 @@ export class KubanFyJobRunner extends DurableObject {
 }
 
 export default {
-  async fetch(request: Request, workerEnv: typeof env) {
+  async fetch(request: Request, workerEnv: WorkerEnv) {
     const container = getContainer(workerEnv.KUBANFY_API_CONTAINER, "staging-api");
     await container.start();
     return container.fetch(request);
