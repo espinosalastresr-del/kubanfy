@@ -296,10 +296,12 @@ async def get_catalog(
             "language": track.language,
             "created_at": track.created_at.isoformat() if track.created_at else None,
             "artists": [],
+            "artist_ids": [],
             "assets": asset_map.get(track.id, []),
         })
         if artist.name not in item["artists"]:
             item["artists"].append(artist.name)
+            item["artist_ids"].append(str(artist.id))
     return {
         "artists": [{
             "id": str(a.id), "name": a.name, "country": a.country,
