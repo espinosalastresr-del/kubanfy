@@ -3,15 +3,16 @@ name: KubanFy 2 Auth CI/CD
 on:
   push:
     branches: [KubanFy-definitive]
-    paths: ["apps/api-v2/**", ".github/workflows/auth-v2.yml"]
   pull_request:
     branches: [KubanFy-definitive]
-    paths: ["apps/api-v2/**", ".github/workflows/auth-v2.yml"]
   workflow_dispatch:
 
 concurrency:
   group: kubanfy-auth-v2-${{ github.ref }}
   cancel-in-progress: true
+
+permissions:
+  contents: read
 
 jobs:
   validate:

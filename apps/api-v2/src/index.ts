@@ -27,6 +27,9 @@ export class KubanFyAuthContainer extends Container {
 
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
+    if (!env.DATABASE_URL) {
+      return new Response("Authentication service is not configured.", { status: 503 });
+    }
     const container = getContainer(env.AUTH_CONTAINER, "kubanfy-auth-v2");
     const headers = new Headers(request.headers);
     const country = request.cf?.country;
