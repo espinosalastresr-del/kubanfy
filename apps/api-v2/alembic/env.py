@@ -14,6 +14,7 @@ if config.config_file_name is not None:
 database_url = os.getenv("DATABASE_URL_SYNC") or settings.database_url_sync
 config.set_main_option("sqlalchemy.url", database_url.replace("%", "%%"))
 target_metadata = Base.metadata
+VERSION_TABLE = "auth_v2_alembic_version"
 
 
 def run_migrations_offline() -> None:
@@ -24,6 +25,7 @@ def run_migrations_offline() -> None:
         dialect_opts={"paramstyle": "named"},
         include_schemas=True,
         compare_type=True,
+        version_table=VERSION_TABLE,
     )
     with context.begin_transaction():
         context.run_migrations()
@@ -41,6 +43,7 @@ def run_migrations_online() -> None:
             target_metadata=target_metadata,
             include_schemas=True,
             compare_type=True,
+            version_table=VERSION_TABLE,
         )
         with context.begin_transaction():
             context.run_migrations()
