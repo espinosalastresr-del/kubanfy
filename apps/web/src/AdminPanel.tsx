@@ -135,9 +135,12 @@ export function AdminPanel({ setStatus }: Props) {
     try {
       await updateAdminTrack(track.id, {
         title: nextTitle,
-        isrc: null,
+        isrc: track.isrc,
         explicit: track.explicit,
         language: track.language,
+        release_date: track.release_date,
+        artwork_url: track.artwork_url,
+        release_id: track.release_id,
       });
       setEditingTitles((current) => {
         const next = { ...current };
