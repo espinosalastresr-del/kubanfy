@@ -92,8 +92,8 @@ async def handle_generic(job: Job, session: Any) -> dict[str, Any] | None:
             skipped += 1
             continue
         container = await storage.get(source_key, bucket=StorageBucket.PERMANENT)
+        encryption_key = derive_key(asset.content_hash, settings=settings)
         try:
-            encryption_key = derive_key(asset.content_hash, settings=settings)
             header, plaintext = unpack(
                 container,
                 key=encryption_key,
