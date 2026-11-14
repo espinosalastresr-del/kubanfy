@@ -650,7 +650,7 @@ export type AdminCatalogTrack = {
   release_id: string | null;
   artists: string[];
   artist_ids: string[];
-  assets: { quality: string; source_type: string }[];
+  assets: { quality: string; source_type: string; quality_confidence: string }[];
   created_at: string | null;
 };
 export type AdminCatalog = { artists: AdminCatalogArtist[]; tracks: AdminCatalogTrack[] };
