@@ -5,7 +5,7 @@ from __future__ import annotations
 import re
 import unicodedata
 from typing import Annotated, Any
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Depends, File, Form, UploadFile
 from pydantic import BaseModel, Field
@@ -15,11 +15,13 @@ from app.api.deps import DbSession, require_permissions
 from app.core.exceptions import ConflictError, NotFoundError, ValidationError
 from app.models.admin import ModerationReportType, ModerationStatus
 from app.models.artist_member import ArtistMember, ArtistMemberRole
+from app.models.job import Job, JobStatus, JobType
 from app.models.music import Artist, AudioAsset, Track, TrackArtist, TrackStatus
 from app.models.user import User
 from app.schemas.catalog import TrackUpdateRequest
 from app.services.admin import AdminService
 from app.services.artist_upload import ArtistUploadService
+from app.services.job import JobService
 from app.services.rbac import RbacService
 from app.services.release_track import ReleaseTrackService
 
@@ -474,3 +476,39 @@ async def set_catalog_track_status(
         after={"status": track.status.value},
     )
     return {"track_id": str(track.id), "status": track.status.value}
+
+
+@router.post("/catalog/backfill-kby2", status_code=202)
+async def start_catalog_kby2_backfill(
+    session: DbSession,
+    user: Annotated[User, Depends(require_permissions("tracks.read", "tracks.write"))],
+) -> dict[str, str]:
+    active_statuses = (JobStatus.PENDING, JobStatus.RUNNING, JobStatus.RETRYING)
+    existing = await session.scalar(
+        select(Job)
+        .where(
+            Job.type == JobType.GENERIC,
+            Job.status.in_(active_statuses),
+            Job.payload.contains({"action": "backfill_kby2"}),
+        )
+        .order_by(Job.created_at.desc())
+        .limit(1)
+    )
+    if existing is not None:
+        return {"job_id": str(existing.id), "status": existing.status.value}
+
+    run_id = str(uuid4())
+    job = await JobService(session).enqueue(
+        JobType.GENERIC,
+        {"action": "backfill_kby2", "cursor": None, "batch_size": 20, "run_id": run_id},
+        correlation_id=run_id,
+        idempotency_key=f"kby2-backfill:{run_id}:start",
+    )
+    await AdminService(session).audit(
+        actor_id=user.id,
+        action="catalog.kby2_backfill_started",
+        target_type="job",
+        target_id=str(job.id),
+        after={"run_id": run_id},
+    )
+    return {"job_id": str(job.id), "status": job.status.value}
