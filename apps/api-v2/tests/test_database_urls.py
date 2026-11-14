@@ -3,7 +3,7 @@ from app.core.config import normalize_async_database_url, normalize_sync_databas
 
 def test_async_neon_url_normalizes_driver_and_ssl_parameter():
     result = normalize_async_database_url(
-        "postgresql://user:pass@ep-example.neon.tech/neondb?sslmode=require"
+        "postgresql://user:pass@ep-example.neon.tech/neondb?sslmode=require&channel_binding=require"
     )
     assert result == "postgresql+asyncpg://user:pass@ep-example.neon.tech/neondb?ssl=require"
 

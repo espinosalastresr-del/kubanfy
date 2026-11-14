@@ -32,10 +32,11 @@ def normalize_async_database_url(url: str) -> str:
         url = "postgresql+asyncpg://" + url.removeprefix("postgresql+psycopg://")
 
     parsed = urlsplit(url)
-    query = [
-        ("ssl" if key == "sslmode" else key, value)
-        for key, value in parse_qsl(parsed.query, keep_blank_values=True)
-    ]
+    query = []
+    for key, value in parse_qsl(parsed.query, keep_blank_values=True):
+        if key == "channel_binding":
+            continue
+        query.append(("ssl" if key == "sslmode" else key, value))
     return urlunsplit((parsed.scheme, parsed.netloc, parsed.path, urlencode(query), parsed.fragment))
 
 
