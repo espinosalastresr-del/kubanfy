@@ -248,7 +248,7 @@ export function AdminPanel({ setStatus }: Props) {
         ) : catalog.tracks.map((track) => {
           const qualities = new Set(
             track.assets
-              .filter((asset) => asset.source_type === "derivative")
+              .filter((asset) => asset.source_type === "derivative" && asset.quality_confidence === "verified")
               .map((asset) => asset.quality),
           );
           const ready = qualities.has("low") && qualities.has("medium");
