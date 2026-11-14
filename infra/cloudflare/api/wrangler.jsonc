@@ -2,7 +2,10 @@
   "$schema": "./node_modules/wrangler/config-schema.json",
   "name": "kubanfy-api-staging",
   "main": "./src/index.ts",
-  "compatibility_date": "2026-10-06",
+  "compatibility_date": "2026-11-14",
+  "triggers": {
+    "crons": ["*/2 * * * *"]
+  },
   "observability": {
     "enabled": true
   },
@@ -12,6 +15,15 @@
       "image": "../../../apps/api/Dockerfile",
       "instance_type": "standard-1",
       "max_instances": 3
+    },
+    {
+      "class_name": "KubanFyJobRunner",
+      "scheduling_policy": "durable_object",
+      "images": {
+        "base": {
+          "dockerfile": "../../../apps/api/Dockerfile"
+        }
+      }
     }
   ],
   "durable_objects": {
@@ -19,11 +31,19 @@
       {
         "name": "KUBANFY_API_CONTAINER",
         "class_name": "KubanFyApiContainer"
+      },
+      {
+        "name": "KUBANFY_JOB_RUNNER",
+        "class_name": "KubanFyJobRunner"
       }
     ]
   },
   "exports": {
     "KubanFyApiContainer": {
+      "type": "durable-object",
+      "storage": "sqlite"
+    },
+    "KubanFyJobRunner": {
       "type": "durable-object",
       "storage": "sqlite"
     }
