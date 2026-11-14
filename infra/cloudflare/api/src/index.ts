@@ -1,5 +1,11 @@
 import { Container, getContainer } from "@cloudflare/containers";
-import { env } from "cloudflare:workers";
+import { DurableObject, env } from "cloudflare:workers";
+
+type WorkerEnv = typeof env & {
+  KUBANFY_JOB_RUNNER: {
+    getByName(name: string): { run(): Promise<void> };
+  };
+};
 
 export class KubanFyApiContainer extends Container {
   defaultPort = 8000;
@@ -43,10 +49,64 @@ export class KubanFyApiContainer extends Container {
   };
 }
 
+/**
+ * Dedicated, singleton job runner. It uses the same API image but overrides
+ * the main process with a bounded Python batch that claims at most one job.
+ * The Durable Object serializes scheduled invocations and awaits container
+ * exit so a second cron tick cannot run the same batch concurrently.
+ */
+export class KubanFyJobRunner extends DurableObject {
+  private currentRun: Promise<void> | undefined;
+
+  run(): Promise<void> {
+    this.currentRun ??= this.runOnce().finally(() => {
+      this.currentRun = undefined;
+    });
+    return this.currentRun;
+  }
+
+  private async runOnce(): Promise<void> {
+    const container = this.ctx.container;
+    if (!container) {
+      throw new Error("KubanFy job runner has no configured Container binding");
+    }
+
+    if (!container.running) {
+      container.start({
+        image: container.images.base,
+        instance: "standard-1",
+        enableInternet: true,
+        entrypoint: ["python", "-m", "app.workers.batch"],
+        env: {
+          ENVIRONMENT: env.ENVIRONMENT ?? "staging",
+          DATABASE_URL: env.DATABASE_URL,
+          REDIS_URL: env.REDIS_URL,
+          KBY_MASTER_KEY: env.KBY_MASTER_KEY,
+          R2_ENDPOINT: env.R2_ENDPOINT,
+          R2_ACCESS_KEY_ID: env.R2_ACCESS_KEY_ID,
+          R2_SECRET_ACCESS_KEY: env.R2_SECRET_ACCESS_KEY,
+          R2_CACHE_BUCKET: env.R2_CACHE_BUCKET ?? "kubanfy-cache-staging",
+          R2_PERMANENT_BUCKET: env.R2_PERMANENT_BUCKET ?? "kubanfy-permanent-staging",
+          R2_REGION: env.R2_REGION ?? "auto",
+          LOG_LEVEL: env.LOG_LEVEL ?? "INFO",
+          LOG_FORMAT: env.LOG_FORMAT ?? "json",
+        },
+      });
+    }
+
+    await container.monitor();
+  }
+}
+
 export default {
   async fetch(request: Request, workerEnv: typeof env) {
     const container = getContainer(workerEnv.KUBANFY_API_CONTAINER, "staging-api");
     await container.start();
     return container.fetch(request);
+  },
+
+  async scheduled(_controller: ScheduledController, workerEnv: WorkerEnv) {
+    const runner = workerEnv.KUBANFY_JOB_RUNNER.getByName("music-catalog-worker");
+    await runner.run();
   },
 };
