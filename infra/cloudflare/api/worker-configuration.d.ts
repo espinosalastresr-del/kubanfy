@@ -1,6 +1,7 @@
 declare namespace Cloudflare {
   interface Env {
     KUBANFY_API_CONTAINER: DurableObjectNamespace;
+    KUBANFY_JOB_RUNNER: DurableObjectNamespace;
     ENVIRONMENT: string;
     DEBUG: string;
     DATABASE_URL: string;
@@ -10,6 +11,7 @@ declare namespace Cloudflare {
     KBY_MASTER_KEY: string;
     OFFLINE_LICENSE_PRIVATE_KEY: string;
     OFFLINE_LICENSE_PUBLIC_KEY: string;
+    OFFLINE_LICENSE_ALGORITHM: string;
     SUPER_ADMIN_EMAIL: string;
     SUPER_ADMIN_PASSWORD: string;
     DEFAULT_COUNTRY: string;

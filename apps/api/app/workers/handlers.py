@@ -24,6 +24,7 @@ from app.models.music import (
 from app.services.cache import CacheService
 from app.services.transcoding import TranscodingService
 from app.services.kby import derive_key, pack, unpack
+from app.services.kby_v2 import pack as pack_v2
 from app.storage import StorageBucket, get_storage
 from app.workers.runner import register_handler
 
@@ -198,6 +199,19 @@ async def handle_transcode(job: Job, session: Any) -> dict[str, Any] | None:
                 kby_body,
                 bucket=StorageBucket.PERMANENT,
                 content_type="application/vnd.kubanfy.kby",
+            )
+            kby2_body = pack_v2(
+                body,
+                content_hash=out.probe.content_hash,
+                quality=quality.value,
+                content_type="audio/mp4",
+            )
+            dest_key_v2 = dest_key.rsplit(".kby", 1)[0] + ".kby2"
+            await storage.put(
+                dest_key_v2,
+                kby2_body,
+                bucket=StorageBucket.PERMANENT,
+                content_type="application/vnd.kubanfy.kby2",
             )
             asset = AudioAsset(
                 track_id=track_id,
