@@ -91,8 +91,8 @@ async def handle_generic(job: Job, session: Any) -> dict[str, Any] | None:
         if await storage.exists(target_key, bucket=StorageBucket.PERMANENT):
             skipped += 1
             continue
+        container = await storage.get(source_key, bucket=StorageBucket.PERMANENT)
         try:
-            container = await storage.get(source_key, bucket=StorageBucket.PERMANENT)
             encryption_key = derive_key(asset.content_hash, settings=settings)
             header, plaintext = unpack(
                 container,
@@ -105,28 +105,30 @@ async def handle_generic(job: Job, session: Any) -> dict[str, Any] | None:
                 )
             if asset.quality.value in {"low", "medium"} and not _is_fragmented_mp4(plaintext):
                 raise ValueError("LOW/MEDIUM asset is not fragmented MP4")
-            body = pack_v2(
-                plaintext,
-                content_hash=asset.content_hash,
-                quality=asset.quality.value,
-                content_type=header.content_type,
-                settings=settings,
-            )
-            await storage.put(
-                target_key,
-                body,
-                bucket=StorageBucket.PERMANENT,
-                content_type="application/vnd.kubanfy.kby2",
-            )
-            created += 1
         except Exception as exc:
             failed += 1
             logger.exception(
-                "kby2_backfill_asset_failed",
+                "kby2_backfill_asset_invalid",
                 asset_id=str(asset.id),
                 track_id=str(asset.track_id),
                 error_type=type(exc).__name__,
             )
+            continue
+
+        body = pack_v2(
+            plaintext,
+            content_hash=asset.content_hash,
+            quality=asset.quality.value,
+            content_type=header.content_type,
+            settings=settings,
+        )
+        await storage.put(
+            target_key,
+            body,
+            bucket=StorageBucket.PERMANENT,
+            content_type="application/vnd.kubanfy.kby2",
+        )
+        created += 1
 
     next_cursor = str(assets[-1].id)
     complete = len(assets) < batch_size
