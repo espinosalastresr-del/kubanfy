@@ -232,8 +232,8 @@ class CatalogTrackStatus(BaseModel):
 
 def _catalog_slug(name: str) -> str:
     value = unicodedata.normalize("NFKD", name).encode("ascii", "ignore").decode("ascii")
-    value = re.sub(r"[^\\w\\s-]", "", value.lower())
-    return re.sub(r"[-\\s]+", "-", value).strip("-")[:200] or "artist"
+    value = re.sub(r"[^\w\s-]", "", value.lower())
+    return re.sub(r"[-\s]+", "-", value).strip("-")[:200] or "artist"
 
 
 async def _ensure_admin_artist_membership(session: DbSession, user_id: UUID, artist_id: UUID) -> None:
