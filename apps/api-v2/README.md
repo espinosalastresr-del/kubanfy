@@ -7,12 +7,13 @@ This service is isolated from the previous implementation at apps/api. It owns i
 - Email/password login.
 - Persistent, revocable server-side sessions using an opaque HttpOnly cookie.
 - Current-session inspection and logout.
+- Country/IP context refresh from trusted Cloudflare headers on authenticated requests.
 - Liveness and database-readiness endpoints.
 
 Music, subscriptions, device limits, account recovery, artist, and administrator features are intentionally out of scope.
 
 ## Database isolation
-All tables live in PostgreSQL schema auth_v2. The isolated Neon branch is kubanfy-definitive-auth; production remains untouched. Use the direct Neon connection for Alembic and a pooled connection for application traffic where available.
+All tables live in PostgreSQL schema auth_v2. The isolated Neon branch is kubanfy-definitive-auth; production remains untouched. Alembic uses a direct Neon URL. The running API uses the pooled Neon URL to avoid holding unnecessary direct connections.
 
 ## Local development
 1. Copy .env.example to .env and configure PostgreSQL.
@@ -37,7 +38,8 @@ The legal licence is not defined yet. Registration records explicit consent to t
 ## Required GitHub Actions secrets for deployment
 - CLOUDFLARE_API_TOKEN
 - CLOUDFLARE_ACCOUNT_ID
-- NEON_DATABASE_URL (direct URL for the isolated Neon branch, never production)
-- Optional CORS_ORIGINS (comma-separated frontend origins)
+- NEON_DATABASE_URL — direct URL for Alembic migrations on the isolated Neon branch, never production.
+- NEON_DATABASE_URL_POOLED — pooled URL for the runtime API, on the same isolated branch.
+- Optional CORS_ORIGINS — comma-separated frontend origins.
 
 The deployment job skips Cloudflare until required secrets exist. Never commit .env or credentials.

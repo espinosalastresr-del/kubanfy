@@ -82,6 +82,7 @@ jobs:
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
       NEON_DATABASE_URL: ${{ secrets.NEON_DATABASE_URL }}
+      NEON_DATABASE_URL_POOLED: ${{ secrets.NEON_DATABASE_URL_POOLED }}
       CORS_ORIGINS: ${{ secrets.CORS_ORIGINS }}
     steps:
       - uses: actions/checkout@v4
@@ -89,30 +90,30 @@ jobs:
         with:
           python-version: "3.12"
       - name: Skip deployment until required secrets are configured
-        if: env.CLOUDFLARE_API_TOKEN == '' || env.CLOUDFLARE_ACCOUNT_ID == '' || env.NEON_DATABASE_URL == ''
-        run: echo "::notice::CI passed. Configure CLOUDFLARE_API_TOKEN, CLOUDFLARE_ACCOUNT_ID, and NEON_DATABASE_URL repository secrets to enable deployment."
+        if: env.CLOUDFLARE_API_TOKEN == '' || env.CLOUDFLARE_ACCOUNT_ID == '' || env.NEON_DATABASE_URL == '' || env.NEON_DATABASE_URL_POOLED == ''
+        run: echo "::notice::CI passed. Configure Cloudflare credentials and both Neon URLs to enable deployment."
       - name: Install migration dependencies
-        if: env.CLOUDFLARE_API_TOKEN != '' && env.CLOUDFLARE_ACCOUNT_ID != '' && env.NEON_DATABASE_URL != ''
+        if: env.CLOUDFLARE_API_TOKEN != '' && env.CLOUDFLARE_ACCOUNT_ID != '' && env.NEON_DATABASE_URL != '' && env.NEON_DATABASE_URL_POOLED != ''
         run: |
           python -m pip install --upgrade pip
           pip install .
       - name: Apply migrations to the isolated Neon branch
-        if: env.CLOUDFLARE_API_TOKEN != '' && env.CLOUDFLARE_ACCOUNT_ID != '' && env.NEON_DATABASE_URL != ''
+        if: env.CLOUDFLARE_API_TOKEN != '' && env.CLOUDFLARE_ACCOUNT_ID != '' && env.NEON_DATABASE_URL != '' && env.NEON_DATABASE_URL_POOLED != ''
         env:
           DATABASE_URL_SYNC: ${{ secrets.NEON_DATABASE_URL }}
         run: alembic upgrade head
       - uses: actions/setup-node@v4
-        if: env.CLOUDFLARE_API_TOKEN != '' && env.CLOUDFLARE_ACCOUNT_ID != '' && env.NEON_DATABASE_URL != ''
+        if: env.CLOUDFLARE_API_TOKEN != '' && env.CLOUDFLARE_ACCOUNT_ID != '' && env.NEON_DATABASE_URL != '' && env.NEON_DATABASE_URL_POOLED != ''
         with:
           node-version: "22"
       - name: Install Worker dependencies
-        if: env.CLOUDFLARE_API_TOKEN != '' && env.CLOUDFLARE_ACCOUNT_ID != '' && env.NEON_DATABASE_URL != ''
+        if: env.CLOUDFLARE_API_TOKEN != '' && env.CLOUDFLARE_ACCOUNT_ID != '' && env.NEON_DATABASE_URL != '' && env.NEON_DATABASE_URL_POOLED != ''
         run: npm install --no-audit --no-fund
       - name: Deploy Worker and Container
-        if: env.CLOUDFLARE_API_TOKEN != '' && env.CLOUDFLARE_ACCOUNT_ID != '' && env.NEON_DATABASE_URL != ''
+        if: env.CLOUDFLARE_API_TOKEN != '' && env.CLOUDFLARE_ACCOUNT_ID != '' && env.NEON_DATABASE_URL != '' && env.NEON_DATABASE_URL_POOLED != ''
         run: |
           npx wrangler deploy
-          printf '%s' "$NEON_DATABASE_URL" | npx wrangler secret put DATABASE_URL
+          printf '%s' "$NEON_DATABASE_URL_POOLED" | npx wrangler secret put DATABASE_URL
           if [ -n "$CORS_ORIGINS" ]; then
             printf '%s' "$CORS_ORIGINS" | npx wrangler secret put CORS_ORIGINS
           fi

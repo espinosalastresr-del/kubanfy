@@ -19,7 +19,7 @@ export class KubanFyAuthContainer extends Container {
       ENVIRONMENT: "production",
       COOKIE_SECURE: "true",
       TRUST_CLOUDFLARE_HEADERS: "true",
-      CORS_ORIGINS: env.CORS_ORIGINS ?? "",
+      CORS_ORIGINS: env.CORS_ORIGINS ?? "http://localhost:5173",
       TERMS_VERSION: env.TERMS_VERSION ?? "draft-pending-v1"
     };
   }

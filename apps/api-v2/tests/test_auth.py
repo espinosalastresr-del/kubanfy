@@ -1,5 +1,7 @@
 import pytest
 
+from app.core.config import settings
+
 
 @pytest.mark.asyncio
 async def test_register_creates_account_and_persistent_session(client):
@@ -72,3 +74,33 @@ async def test_invalid_credentials_are_rejected(client):
         json={"email": "missing@example.com", "password": "not-the-password", "remember_me": False},
     )
     assert response.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_country_is_refreshed_from_trusted_cloudflare_context(client):
+    previous = settings.trust_cloudflare_headers
+    settings.trust_cloudflare_headers = True
+    try:
+        response = await client.post(
+            "/api/v1/auth/register",
+            headers={"CF-IPCountry": "US", "CF-Connecting-IP": "203.0.113.10"},
+            json={
+                "full_name": "Traveling User",
+                "age": 28,
+                "email": "traveler@example.com",
+                "password": "A-Strong-Password-2026",
+                "password_confirmation": "A-Strong-Password-2026",
+                "country_of_origin": "CU",
+                "accept_terms": True,
+            },
+        )
+        assert response.status_code == 201
+        current = await client.get(
+            "/api/v1/auth/me",
+            headers={"CF-IPCountry": "CU", "CF-Connecting-IP": "198.51.100.20"},
+        )
+        assert current.status_code == 200
+        assert current.json()["session"]["detected_country"] == "CU"
+        assert current.json()["session"]["content_country"] == "CU"
+    finally:
+        settings.trust_cloudflare_headers = previous
