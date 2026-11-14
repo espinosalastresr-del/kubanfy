@@ -135,9 +135,10 @@ async def handle_generic(job: Job, session: Any) -> dict[str, Any] | None:
                 "cursor": next_cursor,
                 "batch_size": batch_size,
                 "failed_total": int(job.payload.get("failed_total", 0)) + failed,
+                "run_id": job.payload.get("run_id"),
             },
             correlation_id=job.correlation_id,
-            idempotency_key=f"kby2-backfill:{next_cursor}",
+            idempotency_key=f"kby2-backfill:{job.payload.get('run_id', job.id)}:{next_cursor}",
         )
     result = {
         "action": "backfill_kby2",
