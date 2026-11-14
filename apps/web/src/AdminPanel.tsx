@@ -4,6 +4,7 @@ import {
   getAdminCatalog,
   publishAdminTrack,
   setAdminTrackStatus,
+  startKby2Backfill,
   updateAdminTrack,
   uploadAdminTrack,
   type AdminCatalog,
@@ -22,6 +23,7 @@ export function AdminPanel({ setStatus }: Props) {
   const [catalog, setCatalog] = useState<AdminCatalog>({ artists: [], tracks: [] });
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
+  const [backfillBusy, setBackfillBusy] = useState(false);
   const [selectedArtist, setSelectedArtist] = useState("");
   const [artistName, setArtistName] = useState("");
   const [artistCountry, setArtistCountry] = useState("CU");
@@ -47,6 +49,18 @@ export function AdminPanel({ setStatus }: Props) {
       .catch((error) => setStatus(error instanceof Error ? error.message : "No se pudo cargar el catálogo"))
       .finally(() => setLoading(false));
   }, []);
+
+  async function runBackfill() {
+    setBackfillBusy(true);
+    try {
+      const result = await startKby2Backfill();
+      setStatus(`Compatibilidad KBY2 en cola (${result.job_id.slice(0, 8)}). El worker procesará los archivos por lotes.`);
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "No se pudo iniciar la comprobación KBY2");
+    } finally {
+      setBackfillBusy(false);
+    }
+  }
 
   async function addArtist(event: FormEvent) {
     event.preventDefault();
@@ -240,8 +254,13 @@ export function AdminPanel({ setStatus }: Props) {
 
       <div className="admin-catalog-list">
         <div className="admin-list-heading">
-          <h3>Canciones ({catalog.tracks.length})</h3>
-          <span className="admin-muted">Estado y derivados de audio</span>
+          <div>
+            <h3>Canciones ({catalog.tracks.length})</h3>
+            <span className="admin-muted">Estado y derivados de audio</span>
+          </div>
+          <button className="secondary-button" onClick={() => void runBackfill()} disabled={backfillBusy || busy}>
+            {backfillBusy ? "Encolando…" : "Revisar compatibilidad de audio"}
+          </button>
         </div>
         {loading ? <div className="empty-state">Cargando catálogo…</div> : catalog.tracks.length === 0 ? (
           <div className="empty-state">Todavía no hay canciones registradas.</div>
