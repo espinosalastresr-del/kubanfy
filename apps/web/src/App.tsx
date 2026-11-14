@@ -24,6 +24,8 @@ import { planTierFromEntitlements } from "./entitlements";
 import { enrichTrackIds, resolveTrackId } from "./trackMeta";
 import { enrollCurrentBrowserIdentity } from "./deviceIdentity";
 import { getPreferredAudioQuality } from "./dataSaver";
+import { getAdminCatalog } from "./api";
+import { AdminPanel } from "./AdminPanel";
 
 function HeartIcon({ filled }: { filled: boolean }) {
   return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20.8 8.7c0 5.4-8.8 10.3-8.8 10.3S3.2 14.1 3.2 8.7A4.7 4.7 0 0 1 12 6.2a4.7 4.7 0 0 1 8.8 2.5Z" fill={filled ? "currentColor" : "none"} /></svg>;
@@ -57,9 +59,10 @@ function clearVerificationTokenFromUrl(): void {
 
 export default function App() {
   const [user, setUser] = useState<any>(null);
+  const [adminAccess, setAdminAccess] = useState(false);
   const [authMode, setAuthMode] = useState<"login" | "register" | "forgot" | "verify">("login");
   const [registeredEmail, setRegisteredEmail] = useState("");
-  const [tab, setTab] = useState<"home" | "search" | "library">("home");
+  const [tab, setTab] = useState<"home" | "search" | "library" | "admin">("home");
   const [status, setStatus] = useState("");
   const [online, setOnline] = useState(isOnline());
   const [swUpdate, setSwUpdate] = useState(false);
@@ -165,6 +168,19 @@ export default function App() {
       window.removeEventListener("kubanfy:data-saver", onSaver);
     };
   }, []);
+
+  useEffect(() => {
+    if (!user) {
+      setAdminAccess(false);
+      if (tab === "admin") setTab("home");
+      return;
+    }
+    let active = true;
+    void getAdminCatalog()
+      .then(() => { if (active) setAdminAccess(true); })
+      .catch(() => { if (active) setAdminAccess(false); });
+    return () => { active = false; };
+  }, [user]);
 
   useEffect(() => {
     if (!user) return;
@@ -449,8 +465,9 @@ export default function App() {
           <button className={tab === "home" ? "is-active" : ""} onClick={() => setTab("home")}>Inicio</button>
           <button className={tab === "search" ? "is-active" : ""} onClick={() => setTab("search")}>Buscar</button>
           <button className={tab === "library" ? "is-active" : ""} onClick={() => setTab("library")}>Biblioteca</button>
+          {adminAccess && <button className={tab === "admin" ? "is-active" : ""} onClick={() => setTab("admin")}>Administración</button>}
         </nav>
-        <button className="icon-button" onClick={() => { clearTokens(); setUser(null); }} aria-label="Salir">⎋</button>
+        <button className="icon-button" onClick={() => { clearTokens(); setUser(null); setAdminAccess(false); setTab("home"); }} aria-label="Salir">⎋</button>
       </header>
 
       {status && <p className="status-banner">{status}</p>}
@@ -520,6 +537,8 @@ export default function App() {
             </div>
           </section>
         )}
+
+        {tab === "admin" && adminAccess && <AdminPanel setStatus={setStatus} />}
 
         {tab === "library" && (
           <>
