@@ -1,7 +1,7 @@
 import { Container, getContainer } from "@cloudflare/containers";
 
 interface Env {
-  AUTH_CONTAINER: DurableObjectNamespace;
+  AUTH_CONTAINER: DurableObjectNamespace<KubanFyAuthContainer>;
   DATABASE_URL: string;
   CORS_ORIGINS?: string;
   TERMS_VERSION?: string;
@@ -12,7 +12,7 @@ export class KubanFyAuthContainer extends Container {
   sleepAfter = "10m";
   pingEndpoint = "localhost/health/live";
 
-  constructor(ctx: DurableObjectState, env: Env) {
+  constructor(ctx: DurableObjectState<{}>, env: Env) {
     super(ctx, env);
     this.envVars = {
       DATABASE_URL: env.DATABASE_URL,
@@ -30,7 +30,7 @@ export default {
     const container = getContainer(env.AUTH_CONTAINER, "kubanfy-auth-v2");
     const headers = new Headers(request.headers);
     const country = request.cf?.country;
-    if (country) headers.set("CF-IPCountry", country);
+    if (typeof country === "string") headers.set("CF-IPCountry", country);
     return container.fetch(new Request(request, { headers }));
   }
 };
