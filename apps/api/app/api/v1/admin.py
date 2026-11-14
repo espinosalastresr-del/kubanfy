@@ -284,15 +284,16 @@ async def get_catalog(
     ).all()
     assets = (
         await session.execute(
-            select(AudioAsset.track_id, AudioAsset.quality, AudioAsset.source_type)
+            select(AudioAsset.track_id, AudioAsset.quality, AudioAsset.source_type, AudioAsset.quality_confidence)
             .where(AudioAsset.is_active.is_(True))
         )
     ).all()
     asset_map: dict[UUID, list[dict[str, str]]] = {}
-    for track_id, quality, source_type in assets:
+    for track_id, quality, source_type, confidence in assets:
         asset_map.setdefault(track_id, []).append({
             "quality": quality.value,
             "source_type": source_type.value,
+            "quality_confidence": confidence.value,
         })
     tracks_by_id: dict[UUID, dict[str, Any]] = {}
     for track, artist in rows:
