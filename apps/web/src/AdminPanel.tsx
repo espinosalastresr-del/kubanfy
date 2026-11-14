@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import {
   createAdminArtist,
   getAdminCatalog,
@@ -48,7 +48,7 @@ export function AdminPanel({ setStatus }: Props) {
       .finally(() => setLoading(false));
   }, []);
 
-  async function addArtist(event: React.FormEvent) {
+  async function addArtist(event: FormEvent) {
     event.preventDefault();
     if (!artistName.trim()) return;
     setBusy(true);
