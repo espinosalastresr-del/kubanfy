@@ -721,3 +721,10 @@ export async function updateAdminTrack(
     },
   );
 }
+
+
+export async function startKby2Backfill() {
+  return request<{ job_id: string; status: string }>("/v1/admin/catalog/backfill-kby2", {
+    method: "POST",
+  });
+}
