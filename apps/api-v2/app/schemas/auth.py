@@ -1,5 +1,6 @@
 import re
 from datetime import datetime
+from typing import Self
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator, model_validator
@@ -38,7 +39,7 @@ class RegisterRequest(BaseModel):
         return value
 
     @model_validator(mode="after")
-    def passwords_must_match(self) -> RegisterRequest:
+    def passwords_must_match(self) -> Self:
         if self.password != self.password_confirmation:
             raise ValueError("Las contraseñas no coinciden.")
         return self

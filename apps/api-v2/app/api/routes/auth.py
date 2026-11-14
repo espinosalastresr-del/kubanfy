@@ -7,7 +7,14 @@ from app.api.deps import CurrentIdentity, DbSession
 from app.core.config import settings
 from app.core.security import hash_session_token
 from app.models import UserSession
-from app.schemas.auth import AuthResponse, LoginRequest, MeResponse, RegisterRequest, SessionRead, UserRead
+from app.schemas.auth import (
+    AuthResponse,
+    LoginRequest,
+    MeResponse,
+    RegisterRequest,
+    SessionRead,
+    UserRead,
+)
 from app.services.auth import authenticate_user, register_user
 
 router = APIRouter(prefix="/auth", tags=["authentication"])
@@ -27,7 +34,9 @@ def attach_session_cookie(response: Response, token: str, expires_at: datetime) 
 
 
 @router.post("/register", response_model=AuthResponse, status_code=status.HTTP_201_CREATED)
-async def register(payload: RegisterRequest, request: Request, response: Response, db: DbSession) -> AuthResponse:
+async def register(
+    payload: RegisterRequest, request: Request, response: Response, db: DbSession
+) -> AuthResponse:
     user, session, token = await register_user(db, payload, request)
     attach_session_cookie(response, token, session.expires_at)
     return AuthResponse(
@@ -39,10 +48,15 @@ async def register(payload: RegisterRequest, request: Request, response: Respons
 
 
 @router.post("/login", response_model=AuthResponse)
-async def login(payload: LoginRequest, request: Request, response: Response, db: DbSession) -> AuthResponse:
+async def login(
+    payload: LoginRequest, request: Request, response: Response, db: DbSession
+) -> AuthResponse:
     user, session, token = await authenticate_user(db, payload, request)
     attach_session_cookie(response, token, session.expires_at)
-    return AuthResponse(message="Sesión iniciada correctamente.", user=UserRead.model_validate(user))
+    return AuthResponse(
+        message="Sesión iniciada correctamente.",
+        user=UserRead.model_validate(user),
+    )
 
 
 @router.post("/logout", status_code=status.HTTP_204_NO_CONTENT)

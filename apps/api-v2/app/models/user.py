@@ -2,12 +2,16 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
+from typing import TYPE_CHECKING
 
 from sqlalchemy import Boolean, DateTime, Index, SmallInteger, String, UniqueConstraint, func
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import Base
+
+if TYPE_CHECKING:
+    from app.models.session import UserSession
 
 
 class User(Base):
@@ -27,8 +31,14 @@ class User(Base):
     content_country_mode: Mapped[str] = mapped_column(String(10), nullable=False, default="auto")
     accepted_terms_version: Mapped[str] = mapped_column(String(80), nullable=False)
     accepted_terms_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
-    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, server_default="true")
+    is_active: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=True, server_default="true"
+    )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
-    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
 
-    sessions: Mapped[list[UserSession]] = relationship(back_populates="user", cascade="all, delete-orphan")
+    sessions: Mapped[list[UserSession]] = relationship(
+        back_populates="user", cascade="all, delete-orphan"
+    )
