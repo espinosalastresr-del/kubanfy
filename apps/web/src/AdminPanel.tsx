@@ -270,7 +270,7 @@ export function AdminPanel({ setStatus }: Props) {
                 </span>
               </div>
               <div className="admin-track-actions">
-                {track.status !== "published" && ready && (
+                {track.status !== "published" && track.status !== "takedown" && track.status !== "deleted" && ready && (
                   <button className="secondary-button" onClick={() => void publish(track)} disabled={busy}>Publicar</button>
                 )}
                 {track.status === "published" && (
