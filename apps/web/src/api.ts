@@ -644,6 +644,10 @@ export type AdminCatalogTrack = {
   duration: number | null;
   explicit: boolean;
   language: string | null;
+  isrc: string | null;
+  release_date: string | null;
+  artwork_url: string | null;
+  release_id: string | null;
   artists: string[];
   artist_ids: string[];
   assets: { quality: string; source_type: string }[];
@@ -698,14 +702,22 @@ export async function setAdminTrackStatus(
 }
 export async function updateAdminTrack(
   trackId: string,
-  body: { title: string; isrc: string | null; explicit: boolean; language: string | null },
+  body: {
+    title: string;
+    isrc: string | null;
+    explicit: boolean;
+    language: string | null;
+    release_date: string | null;
+    artwork_url: string | null;
+    release_id: string | null;
+  },
 ) {
   return request<{ track_id: string; title: string; status: string }>(
     `/v1/admin/catalog/tracks/${trackId}`,
     {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ ...body, release_date: null, artwork_url: null, release_id: null }),
+      body: JSON.stringify(body),
     },
   );
 }
