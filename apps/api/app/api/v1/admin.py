@@ -112,7 +112,7 @@ async def get_setting(
 async def create_report(
     body: ReportCreate,
     session: DbSession,
-    user: Annotated[User, Depends(require_permissions("tracks.read"))],
+    user: Annotated[User, Depends(require_permissions("tracks.read", "tracks.write", "artists.write", "tracks.publish", "tracks.takedown"))],
 ) -> dict[str, Any]:
     # Authenticated users can report; permission is light. Public report can use separate endpoint.
     report = await AdminService(session).create_report(
