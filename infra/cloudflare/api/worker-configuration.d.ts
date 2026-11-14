@@ -1,6 +1,7 @@
 declare namespace Cloudflare {
   interface Env {
     KUBANFY_API_CONTAINER: DurableObjectNamespace;
+    KUBANFY_JOB_RUNNER: DurableObjectNamespace;
     ENVIRONMENT: string;
     DEBUG: string;
     DATABASE_URL: string;
