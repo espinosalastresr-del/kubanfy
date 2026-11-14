@@ -361,7 +361,14 @@ async def create_catalog_artist(
         after={"name": artist.name, "slug": artist.slug},
     )
     await session.flush()
-    return {"id": str(artist.id), "name": artist.name, "slug": artist.slug, "country": artist.country}
+    return {
+        "id": str(artist.id),
+        "name": artist.name,
+        "slug": artist.slug,
+        "country": artist.country,
+        "status": artist.status,
+        "verified": artist.verified,
+    }
 
 
 @router.post("/catalog/artists/{artist_id}/tracks", status_code=201)
