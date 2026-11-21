@@ -118,6 +118,6 @@ jobs:
           printf '%s' "$NEON_DATABASE_URL_POOLED" | npx wrangler secret put DATABASE_URL
           printf '%s' "false" | npx wrangler secret put REGISTRATION_ENABLED
           printf '%s' "disabled" | npx wrangler secret put EMAIL_PROVIDER
-          CORS_ORIGINS="${CORS_ORIGINS:+${CORS_ORIGINS},}https://kubanfy-auth-web.kubanfy.workers.dev"
+          CORS_ORIGINS="${CORS_ORIGINS:+${CORS_ORIGINS},}https://kubanfy-auth-web.globumlatinmusic.workers.dev"
           printf '%s' "$CORS_ORIGINS" | npx wrangler secret put CORS_ORIGINS
           npx wrangler deploy
