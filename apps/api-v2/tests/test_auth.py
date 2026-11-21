@@ -134,3 +134,24 @@ async def test_password_reset_rejects_unknown_or_expired_token(client):
         },
     )
     assert response.status_code == 400
+
+@pytest.mark.asyncio
+async def test_public_registration_can_be_closed_until_terms_are_approved(client):
+    previous = settings.registration_enabled
+    settings.registration_enabled = False
+    try:
+        response = await client.post(
+            "/api/v1/auth/register",
+            json={
+                "full_name": "Closed Registration",
+                "age": 22,
+                "email": "closed@example.com",
+                "password": "A-Strong-Password-2026",
+                "password_confirmation": "A-Strong-Password-2026",
+                "country_of_origin": "CU",
+                "accept_terms": True,
+            },
+        )
+        assert response.status_code == 403
+    finally:
+        settings.registration_enabled = previous
