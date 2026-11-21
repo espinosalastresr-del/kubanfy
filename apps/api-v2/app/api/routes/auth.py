@@ -19,7 +19,11 @@ from app.schemas.auth import (
     UserRead,
 )
 from app.services.auth import authenticate_user, register_user
-from app.services.password_recovery import (\n    RECOVERY_MESSAGE,\n    request_password_reset,\n    reset_user_password,\n)
+from app.services.password_recovery import (
+    RECOVERY_MESSAGE,
+    request_password_reset,
+    reset_user_password,
+)
 
 router = APIRouter(prefix="/auth", tags=["authentication"])
 
