@@ -1,0 +1,33 @@
+name: Auth Web CI
+
+on:
+  push:
+    branches: [KubanFy-auth-recovery, KubanFy-definitive]
+    paths:
+      - "apps/auth-web/**"
+      - ".github/workflows/auth-web.yml"
+  pull_request:
+    paths:
+      - "apps/auth-web/**"
+      - ".github/workflows/auth-web.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/auth-web
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: apps/auth-web/package-lock.json
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund
+      - name: Typecheck and production build
+        run: npm run build
