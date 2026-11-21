@@ -22,7 +22,7 @@ RECOVERY_MESSAGE = (
 
 def recovery_email_is_configured() -> bool:
     return bool(
-        settings.email_provider_api_key.strip()
+        settings.email_provider == "resend"\n        and settings.email_provider_api_key.strip()
         and settings.email_from.strip()
         and settings.auth_web_url.strip()
     )
