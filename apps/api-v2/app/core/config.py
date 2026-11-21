@@ -18,6 +18,7 @@ class Settings(BaseSettings):
     trust_cloudflare_headers: bool = False
     terms_version: str = "draft-pending-v1"
     registration_enabled: bool = False
+    email_provider: str = "disabled"
     email_provider_api_key: str = ""
     email_from: str = ""
     auth_web_url: str = ""
