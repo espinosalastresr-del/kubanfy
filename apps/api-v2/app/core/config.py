@@ -17,6 +17,12 @@ class Settings(BaseSettings):
     session_short_hours: int = 12
     trust_cloudflare_headers: bool = False
     terms_version: str = "draft-pending-v1"
+    registration_enabled: bool = False
+    email_provider: str = "disabled"
+    email_provider_api_key: str = ""
+    email_from: str = ""
+    auth_web_url: str = ""
+    password_reset_minutes: int = 30
 
     @property
     def cors_origin_list(self) -> list[str]:

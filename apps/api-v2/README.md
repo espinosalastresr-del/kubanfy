@@ -43,3 +43,9 @@ The legal licence is not defined yet. Registration records explicit consent to t
 - Optional CORS_ORIGINS — comma-separated frontend origins.
 
 The deployment job skips Cloudflare until required secrets exist. Never commit .env or credentials.
+
+## Password recovery (provider remains disabled by default)
+- `POST /api/v1/auth/password/forgot` always returns a generic 202 response to reduce account enumeration.
+- `POST /api/v1/auth/password/reset` accepts a single-use token and a new password; tokens are stored only as SHA-256 hashes, expire after the configured interval, and password changes invalidate all sessions.
+- Migration `0002_password_reset` creates isolated token storage in `auth_v2`.
+- Transactional email settings (`EMAIL_PROVIDER_API_KEY`, `EMAIL_FROM`, `AUTH_WEB_URL`) are intentionally blank. No recovery mail is sent until a provider is selected and configured. The current optional adapter uses Resend only when credentials and sender/origin are supplied; the provider decision remains pending.

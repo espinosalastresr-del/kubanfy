@@ -104,3 +104,54 @@ async def test_country_is_refreshed_from_trusted_cloudflare_context(client):
         assert current.json()["session"]["content_country"] == "CU"
     finally:
         settings.trust_cloudflare_headers = previous
+
+@pytest.mark.asyncio
+async def test_password_forgot_is_generic_and_accepted_when_mail_provider_is_unconfigured(client):
+    from app.core.config import settings
+
+    settings.email_provider_api_key = ""
+    settings.email_from = ""
+    settings.auth_web_url = ""
+    known = await client.post(
+        "/api/v1/auth/password/forgot", json={"email": "no-account@example.com"}
+    )
+    unknown = await client.post(
+        "/api/v1/auth/password/forgot", json={"email": "unknown@example.com"}
+    )
+    assert known.status_code == unknown.status_code == 202
+    assert known.json() == unknown.json()
+    assert "correo" in known.json()["message"].lower()
+
+
+@pytest.mark.asyncio
+async def test_password_reset_rejects_unknown_or_expired_token(client):
+    response = await client.post(
+        "/api/v1/auth/password/reset",
+        json={
+            "token": "a" * 48,
+            "password": "Another-Strong-Password-2026",
+            "password_confirmation": "Another-Strong-Password-2026",
+        },
+    )
+    assert response.status_code == 400
+
+@pytest.mark.asyncio
+async def test_public_registration_can_be_closed_until_terms_are_approved(client):
+    previous = settings.registration_enabled
+    settings.registration_enabled = False
+    try:
+        response = await client.post(
+            "/api/v1/auth/register",
+            json={
+                "full_name": "Closed Registration",
+                "age": 22,
+                "email": "closed@example.com",
+                "password": "A-Strong-Password-2026",
+                "password_confirmation": "A-Strong-Password-2026",
+                "country_of_origin": "CU",
+                "accept_terms": True,
+            },
+        )
+        assert response.status_code == 403
+    finally:
+        settings.registration_enabled = previous

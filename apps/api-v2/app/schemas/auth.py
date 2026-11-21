@@ -81,3 +81,22 @@ class SessionRead(BaseModel):
 class MeResponse(BaseModel):
     user: UserRead
     session: SessionRead
+
+class PasswordForgotRequest(BaseModel):
+    email: EmailStr
+
+
+class PasswordResetRequest(BaseModel):
+    token: str = Field(min_length=32, max_length=256)
+    password: str = Field(min_length=12, max_length=128)
+    password_confirmation: str = Field(min_length=12, max_length=128)
+
+    @model_validator(mode="after")
+    def passwords_must_match(self) -> Self:
+        if self.password != self.password_confirmation:
+            raise ValueError("Las contraseñas no coinciden.")
+        return self
+
+
+class PasswordRecoveryAccepted(BaseModel):
+    message: str

@@ -42,6 +42,7 @@ jobs:
       COOKIE_SECURE: "false"
       TRUST_CLOUDFLARE_HEADERS: "false"
       TERMS_VERSION: ci-test-v1
+      REGISTRATION_ENABLED: "true"
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -115,7 +116,8 @@ jobs:
         run: |
           npx wrangler deploy
           printf '%s' "$NEON_DATABASE_URL_POOLED" | npx wrangler secret put DATABASE_URL
-          if [ -n "$CORS_ORIGINS" ]; then
-            printf '%s' "$CORS_ORIGINS" | npx wrangler secret put CORS_ORIGINS
-          fi
+          printf '%s' "false" | npx wrangler secret put REGISTRATION_ENABLED
+          printf '%s' "disabled" | npx wrangler secret put EMAIL_PROVIDER
+          CORS_ORIGINS="${CORS_ORIGINS:+${CORS_ORIGINS},}https://kubanfy-auth-web.kubanfy.workers.dev"
+          printf '%s' "$CORS_ORIGINS" | npx wrangler secret put CORS_ORIGINS
           npx wrangler deploy

@@ -1,6 +1,6 @@
 from datetime import UTC, datetime
 
-from fastapi import APIRouter, Request, Response, status
+from fastapi import APIRouter, HTTPException, Request, Response, status
 from sqlalchemy import select
 
 from app.api.deps import CurrentIdentity, DbSession
@@ -11,11 +11,19 @@ from app.schemas.auth import (
     AuthResponse,
     LoginRequest,
     MeResponse,
+    PasswordForgotRequest,
+    PasswordRecoveryAccepted,
+    PasswordResetRequest,
     RegisterRequest,
     SessionRead,
     UserRead,
 )
 from app.services.auth import authenticate_user, register_user
+from app.services.password_recovery import (
+    RECOVERY_MESSAGE,
+    request_password_reset,
+    reset_user_password,
+)
 
 router = APIRouter(prefix="/auth", tags=["authentication"])
 
@@ -37,6 +45,11 @@ def attach_session_cookie(response: Response, token: str, expires_at: datetime) 
 async def register(
     payload: RegisterRequest, request: Request, response: Response, db: DbSession
 ) -> AuthResponse:
+    if not settings.registration_enabled:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail='El registro público aún no está habilitado.',
+        )
     user, session, token = await register_user(db, payload, request)
     attach_session_cookie(response, token, session.expires_at)
     return AuthResponse(
@@ -100,3 +113,20 @@ async def me(identity: CurrentIdentity) -> MeResponse:
             content_country=content_country,
         ),
     )
+
+@router.post(
+    "/password/forgot",
+    response_model=PasswordRecoveryAccepted,
+    status_code=status.HTTP_202_ACCEPTED,
+)
+async def forgot_password(payload: PasswordForgotRequest, db: DbSession) -> PasswordRecoveryAccepted:
+    await request_password_reset(db, str(payload.email))
+    return PasswordRecoveryAccepted(message=RECOVERY_MESSAGE)
+
+
+@router.post("/password/reset", response_model=PasswordRecoveryAccepted)
+async def reset_password(
+    payload: PasswordResetRequest, db: DbSession
+) -> PasswordRecoveryAccepted:
+    await reset_user_password(db, payload)
+    return PasswordRecoveryAccepted(message="La contraseña se actualizó. Inicia sesión de nuevo.")
