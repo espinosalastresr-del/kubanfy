@@ -10,12 +10,16 @@ from app.models import UserSession
 from app.schemas.auth import (
     AuthResponse,
     LoginRequest,
-    MeResponse,\n    PasswordForgotRequest,\n    PasswordRecoveryAccepted,\n    PasswordResetRequest,
+    MeResponse,
+    PasswordForgotRequest,
+    PasswordRecoveryAccepted,
+    PasswordResetRequest,
     RegisterRequest,
     SessionRead,
     UserRead,
 )
-from app.services.auth import authenticate_user, register_user\nfrom app.services.password_recovery import RECOVERY_MESSAGE, request_password_reset, reset_user_password
+from app.services.auth import authenticate_user, register_user
+from app.services.password_recovery import RECOVERY_MESSAGE, request_password_reset, reset_user_password
 
 router = APIRouter(prefix="/auth", tags=["authentication"])
 
