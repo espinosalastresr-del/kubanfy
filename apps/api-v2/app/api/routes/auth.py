@@ -10,12 +10,12 @@ from app.models import UserSession
 from app.schemas.auth import (
     AuthResponse,
     LoginRequest,
-    MeResponse,
+    MeResponse,\n    PasswordForgotRequest,\n    PasswordRecoveryAccepted,\n    PasswordResetRequest,
     RegisterRequest,
     SessionRead,
     UserRead,
 )
-from app.services.auth import authenticate_user, register_user
+from app.services.auth import authenticate_user, register_user\nfrom app.services.password_recovery import RECOVERY_MESSAGE, request_password_reset, reset_user_password
 
 router = APIRouter(prefix="/auth", tags=["authentication"])
 
@@ -100,3 +100,20 @@ async def me(identity: CurrentIdentity) -> MeResponse:
             content_country=content_country,
         ),
     )
+
+@router.post(
+    "/password/forgot",
+    response_model=PasswordRecoveryAccepted,
+    status_code=status.HTTP_202_ACCEPTED,
+)
+async def forgot_password(payload: PasswordForgotRequest, db: DbSession) -> PasswordRecoveryAccepted:
+    await request_password_reset(db, str(payload.email))
+    return PasswordRecoveryAccepted(message=RECOVERY_MESSAGE)
+
+
+@router.post("/password/reset", response_model=PasswordRecoveryAccepted)
+async def reset_password(
+    payload: PasswordResetRequest, db: DbSession
+) -> PasswordRecoveryAccepted:
+    await reset_user_password(db, payload)
+    return PasswordRecoveryAccepted(message="La contraseña se actualizó. Inicia sesión de nuevo.")
