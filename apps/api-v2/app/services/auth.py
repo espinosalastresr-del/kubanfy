@@ -10,21 +10,31 @@ from app.schemas.auth import LoginRequest, RegisterRequest
 from app.utils.request_context import client_ip, detected_country
 
 async def register_user(db: AsyncSession, payload: RegisterRequest, request: Request) -> tuple[User, UserSession, str]:
+    free_role = await db.scalar(select(Role).where(Role.name == "free"))
+    if free_role is None:
+        raise RuntimeError("RBAC seed is missing: free role must exist before registration.")
+
     user = User(
-        full_name=payload.full_name, age=payload.age, email=str(payload.email).strip().lower(),
-        password_hash=hash_password(payload.password), country_of_origin=payload.country_of_origin,
-        accepted_terms_version=settings.terms_version, accepted_terms_at=datetime.now(UTC),
+        full_name=payload.full_name,
+        age=payload.age,
+        email=str(payload.email).strip().lower(),
+        password_hash=hash_password(payload.password),
+        country_of_origin=payload.country_of_origin,
+        accepted_terms_version=settings.terms_version,
+        accepted_terms_at=datetime.now(UTC),
+        # Initialize the collection while the instance is transient; accessing an
+        # unloaded relationship after flush triggers async lazy-loading (MissingGreenlet).
+        role_assignments=[UserRole(role=free_role)],
     )
     db.add(user)
     try:
         await db.flush()
-        free_role = await db.scalar(select(Role).where(Role.name == "free"))
-        if free_role is None:
-            raise RuntimeError("RBAC seed is missing: free role must exist before registration.")
-        user.role_assignments.append(UserRole(role=free_role))
     except IntegrityError as exc:
         await db.rollback()
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Ya existe una cuenta con ese correo electrónico.") from exc
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Ya existe una cuenta con ese correo electrónico.",
+        ) from exc
     return await create_session(db, user, request, remember_me=True)
 
 async def authenticate_user(db: AsyncSession, payload: LoginRequest, request: Request) -> tuple[User, UserSession, str]:
