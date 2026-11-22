@@ -72,8 +72,8 @@ async def create_session(db: AsyncSession, user: User, request: Request, remembe
     await db.refresh(session)
 
     # Load the complete RBAC graph inside the async query context. Response
-    # schemas and authorization guards are synchronous and must never trigger
-    # implicit async lazy-loading (MissingGreenlet).
+    # schemas and authorization checks access ORM attributes synchronously, so
+    # they must never trigger implicit async lazy-loading (MissingGreenlet).
     result = await db.execute(
         select(User)
         .where(User.id == user_id)
