@@ -18,11 +18,54 @@ async def client():
         await connection.run_sync(Base.metadata.create_all)
     factory = async_sessionmaker(engine, expire_on_commit=False)
     async with factory() as seed:
-        roles = {name: Role(name=name, description=f"Test role {name}") for name in ("free", "premium", "artist", "admin")}
-        permission = Permission(code="admin.dashboard.access", description="Admin dashboard access")
-        seed.add_all([*roles.values(), permission])
+        roles = {
+            name: Role(name=name, description=f"Test role {name}")
+            for name in ("free", "premium", "artist", "admin")
+        }
+        permission_definitions = {
+            "account.self.read": "Consultar el propio perfil",
+            "music.stream": "Reproducir música",
+            "playlist.manage.self": "Administrar listas propias",
+            "premium.offline.download": "Descargas offline premium",
+            "artist.catalog.manage": "Administrar catálogo de artista",
+            "artist.analytics.read": "Consultar estadísticas de artista",
+            "admin.dashboard.access": "Acceder al panel administrativo",
+            "admin.users.manage": "Administrar usuarios",
+            "admin.roles.manage": "Administrar roles y permisos",
+            "admin.catalog.manage": "Administrar catálogo global",
+            "admin.platform.settings": "Administrar configuración de plataforma",
+            "admin.audit.read": "Consultar auditoría",
+        }
+        permissions = {
+            code: Permission(code=code, description=description)
+            for code, description in permission_definitions.items()
+        }
+        role_permissions = {
+            "free": ("account.self.read", "music.stream", "playlist.manage.self"),
+            "premium": (
+                "account.self.read",
+                "music.stream",
+                "playlist.manage.self",
+                "premium.offline.download",
+            ),
+            "artist": (
+                "account.self.read",
+                "music.stream",
+                "playlist.manage.self",
+                "artist.catalog.manage",
+                "artist.analytics.read",
+            ),
+            "admin": tuple(permission_definitions),
+        }
+        seed.add_all([*roles.values(), *permissions.values()])
         await seed.flush()
-        seed.add(RolePermission(role=roles["admin"], permission=permission))
+        seed.add_all(
+            [
+                RolePermission(role=roles[role_name], permission=permissions[code])
+                for role_name, codes in role_permissions.items()
+                for code in codes
+            ]
+        )
         await seed.commit()
     async def override_db():
         async with factory() as session:
