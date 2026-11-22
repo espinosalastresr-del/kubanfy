@@ -41,7 +41,7 @@ class RolePermission(Base):
     __tablename__ = "role_permissions"
     __table_args__ = (UniqueConstraint("role_id", "permission_id", name="uq_auth_v2_role_permission"), Index("ix_auth_v2_role_permissions_role_id", "role_id"))
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    role_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("auth_v2.roles.id", ondelete="CASCADE"), nullable=False, index=True)
+    role_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("auth_v2.roles.id", ondelete="CASCADE"), nullable=False
     permission_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("auth_v2.permissions.id", ondelete="CASCADE"), nullable=False)
     role: Mapped[Role] = relationship(back_populates="permissions")
     permission: Mapped[Permission] = relationship(back_populates="roles")
