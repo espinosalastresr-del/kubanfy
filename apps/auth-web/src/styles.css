@@ -14,3 +14,14 @@
 @media(max-width:1000px){.layout{grid-template-columns:minmax(0,.8fr) minmax(400px,1.2fr)}.hero{padding:36px 5vw}.hero h1{font-size:clamp(48px,6vw,66px);letter-spacing:-3px}.panel{padding:36px 4vw}.card{padding:28px}}
 @media(max-width:700px){.layout{display:block;background:radial-gradient(ellipse at 90% 0%,#35204b 0,transparent 35%),#090a10}.hero{display:none}.panel{min-height:100vh;padding:20px 16px 26px;justify-content:flex-start;background:radial-gradient(ellipse at 10% 20%,#16403a35,transparent 50%)}.mobile{display:flex;width:min(100%,440px);justify-content:space-between;align-items:center;margin:4px 0 28px}.mobile .brand{font-size:19px}.mobile .brand>b{width:31px;height:31px}.mobile small{font-size:10px;color:#aaa5bc}.card{margin:auto 0;padding:25px 21px;border-radius:24px}.card h2{font-size:35px}.bottom{margin-top:28px}.row{grid-template-columns:.7fr 1fr}}
 @media(prefers-reduced-motion:reduce){*,*:before,*:after{animation:none!important;transition:none!important}}
+
+/* Concept 3: keep the signature artwork present on narrow screens too. */
+@media(max-width:700px){
+  .panel{position:relative;isolation:isolate;overflow:hidden}
+  .panel:before{content:"";position:absolute;z-index:0;pointer-events:none;width:430px;aspect-ratio:1;top:78px;right:-190px;border-radius:50%;background:conic-gradient(from 28deg,#ff835c,#b05cff 22%,#45e2d0 48%,#d7ff65 68%,#ff835c);opacity:.9;filter:drop-shadow(0 0 30px #8c5cff48);mask:radial-gradient(circle,transparent 0 19%,#000 20% 27%,transparent 28% 32%,#000 33% 42%,transparent 43% 48%,#000 49% 57%,transparent 58% 100%)}
+  .panel:after{content:"";position:absolute;z-index:0;pointer-events:none;width:330px;height:330px;top:128px;right:-140px;border-radius:50%;background:radial-gradient(circle at 50% 50%,#c5aaff55 0 3%,#090a10 4% 7%,#a0fff022 8% 9%,transparent 10% 100%);filter:blur(1px)}
+  .panel>.mobile,.panel>.card,.panel>.bottom{position:relative;z-index:1}
+  .mobile{margin-bottom:30px}
+  .card{background:linear-gradient(145deg,rgba(35,31,55,.82),rgba(13,15,23,.88) 58%,rgba(18,27,32,.82));border-color:rgba(191,164,255,.24);box-shadow:0 28px 90px #0008,inset 0 1px 0 #ffffff20,0 0 45px #8c5cff0d;backdrop-filter:blur(28px);-webkit-backdrop-filter:blur(28px)}
+  .card .eyebrow{color:#c8b8f2}
+}
