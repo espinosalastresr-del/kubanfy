@@ -3,11 +3,20 @@ from fastapi import HTTPException, Request, status
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 from app.core.config import settings
 from app.core.security import hash_password, hash_session_token, new_session_token, verify_password
-from app.models import Role, User, UserRole, UserSession
+from app.models import Role, RolePermission, User, UserRole, UserSession
 from app.schemas.auth import LoginRequest, RegisterRequest
 from app.utils.request_context import client_ip, detected_country
+
+
+USER_AUTHORIZATION_LOAD_OPTIONS = (
+    selectinload(User.role_assignments)
+    .selectinload(UserRole.role)
+    .selectinload(Role.permissions)
+    .selectinload(RolePermission.permission),
+)
 
 async def register_user(db: AsyncSession, payload: RegisterRequest, request: Request) -> tuple[User, UserSession, str]:
     free_role = await db.scalar(select(Role).where(Role.name == "free"))
@@ -58,15 +67,29 @@ async def create_session(db: AsyncSession, user: User, request: Request, remembe
         user_agent=request.headers.get("user-agent", "")[:512] or None,
     )
     db.add(session)
+    user_id = user.id
     await db.commit()
-    await db.refresh(user)
     await db.refresh(session)
+
+    # Load the complete RBAC graph inside the async query context. Response
+    # schemas and authorization guards are synchronous and must never trigger
+    # implicit async lazy-loading (MissingGreenlet).
+    result = await db.execute(
+        select(User)
+        .where(User.id == user_id)
+        .options(*USER_AUTHORIZATION_LOAD_OPTIONS)
+        .execution_options(populate_existing=True)
+    )
+    user = result.scalar_one()
     return user, session, token
 
 async def find_active_session(db: AsyncSession, token: str) -> tuple[User, UserSession] | None:
     now = datetime.now(UTC)
     result = await db.execute(
-        select(User, UserSession).join(UserSession, UserSession.user_id == User.id).where(
+        select(User, UserSession)
+        .options(*USER_AUTHORIZATION_LOAD_OPTIONS)
+        .join(UserSession, UserSession.user_id == User.id)
+        .where(
             UserSession.token_hash == hash_session_token(token), UserSession.revoked_at.is_(None),
             UserSession.expires_at > now, User.is_active.is_(True),
         )
