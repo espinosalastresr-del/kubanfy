@@ -94,6 +94,9 @@ def upgrade():
     for role, codes in ROLE_PERMISSIONS.items():
         op.bulk_insert(rp, [{"id": uuid.uuid4(), "role_id": role_ids[role], "permission_id": permission_ids[code]} for code in codes])
 
+    # Backfill existing accounts as Free so deployment never locks out current users.
+    op.execute(sa.text("INSERT INTO auth_v2.user_roles (id, user_id, role_id) SELECT gen_random_uuid(), u.id, r.id FROM auth_v2.users u CROSS JOIN auth_v2.roles r WHERE r.name = 'free' ON CONFLICT (user_id, role_id) DO NOTHING"))
+
 def downgrade():
     op.drop_index("ix_auth_v2_role_permissions_role_id", table_name="role_permissions", schema=SCHEMA)
     op.drop_table("role_permissions", schema=SCHEMA)
