@@ -12,7 +12,7 @@ class Role(Base):
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     name: Mapped[str] = mapped_column(String(32), nullable=False)
     description: Mapped[str | None] = mapped_column(Text)
-    assignments: Mapped[list["UserRole"]] = relationship(back_populates="role", cascade="all, delete-orphan")
+    assignments: Mapped[list["UserRole"]] = relationship(back_populates="role", cascade="all, delete-orphan", lazy="selectin")
     permissions: Mapped[list["RolePermission"]] = relationship(back_populates="role", cascade="all, delete-orphan")
 
 class Permission(Base):
@@ -21,7 +21,7 @@ class Permission(Base):
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     code: Mapped[str] = mapped_column(String(100), nullable=False)
     description: Mapped[str | None] = mapped_column(Text)
-    roles: Mapped[list["RolePermission"]] = relationship(back_populates="permission", cascade="all, delete-orphan")
+    roles: Mapped[list["RolePermission"]] = relationship(back_populates="permission", cascade="all, delete-orphan", lazy="selectin")
 
 class UserRole(Base):
     __tablename__ = "user_roles"
