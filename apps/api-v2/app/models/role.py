@@ -4,7 +4,7 @@ from datetime import datetime
 from sqlalchemy import DateTime, ForeignKey, Index, String, Text, UniqueConstraint, func
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
-from app.models.base import Base
+\nfrom app.models.base import Base
 
 class Role(Base):
     __tablename__ = "roles"
