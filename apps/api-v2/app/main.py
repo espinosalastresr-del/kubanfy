@@ -4,6 +4,7 @@ from fastapi.responses import JSONResponse
 from sqlalchemy import text
 
 from app.api.routes.auth import router as auth_router
+from app.api.routes.admin import router as admin_router
 from app.core.config import settings
 from app.core.database import SessionFactory
 
@@ -44,3 +45,4 @@ async def health_ready() -> dict[str, str]:
 
 
 app.include_router(auth_router, prefix="/api/v1")
+app.include_router(admin_router, prefix="/api/v1")

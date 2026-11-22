@@ -10,7 +10,7 @@ This service is isolated from the previous implementation at apps/api. It owns i
 - Country/IP context refresh from trusted Cloudflare headers on authenticated requests.
 - Liveness and database-readiness endpoints.
 
-Music, subscriptions, device limits, account recovery, artist, and administrator features are intentionally out of scope.
+Music product endpoints and subscription enforcement are still being built. Authentication now includes database-backed RBAC for Free, Premium, Artist, and Admin.
 
 ## Database isolation
 All tables live in PostgreSQL schema auth_v2. The isolated Neon branch is kubanfy-definitive-auth; production remains untouched. Alembic uses a direct Neon URL. The running API uses the pooled Neon URL to avoid holding unnecessary direct connections.
@@ -22,11 +22,10 @@ All tables live in PostgreSQL schema auth_v2. The isolated Neon branch is kubanf
 4. Start with uvicorn app.main:app --reload --port 8000.
 5. Test with pytest -q.
 
-## API
-- POST /api/v1/auth/register
+## Authorization (RBAC)\n\n- Alembic revision `0003_roles_permissions` creates roles, permissions, assignments, and role-permission mappings in `auth_v2`.\n- Seeds `free`, `premium`, `artist`, and `admin`; existing and newly registered accounts receive `free` unless explicitly granted another role.\n- Login and `/api/v1/auth/me` return the server-resolved `user.roles` and `user.permissions`. The browser cannot grant or change either value.\n- Protect feature endpoints with `require_roles(...)` or `require_permissions(...)` from `app.api.authorization`; the sample `GET /api/v1/admin/access` requires `admin.dashboard.access`.\n- A first admin can be provisioned explicitly with `scripts/bootstrap_admin.py`. Set the `KUBANFY_BOOTSTRAP_ADMIN_*` variables in the deployment/local environment and the one-time `KUBANFY_BOOTSTRAP_ADMIN_ENABLED=1` switch. It never stores or prints the password, and an existing account's password is not overwritten.\n\n## API\n- POST /api/v1/auth/register
 - POST /api/v1/auth/login
 - POST /api/v1/auth/logout
-- GET /api/v1/auth/me
+- GET /api/v1/auth/me\n- GET /api/v1/admin/access (admin permission required)
 - GET /health/live
 - GET /health/ready
 

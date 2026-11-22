@@ -1,132 +1,47 @@
 from datetime import UTC, datetime
-
 from fastapi import APIRouter, HTTPException, Request, Response, status
 from sqlalchemy import select
-
 from app.api.deps import CurrentIdentity, DbSession
 from app.core.config import settings
 from app.core.security import hash_session_token
 from app.models import UserSession
-from app.schemas.auth import (
-    AuthResponse,
-    LoginRequest,
-    MeResponse,
-    PasswordForgotRequest,
-    PasswordRecoveryAccepted,
-    PasswordResetRequest,
-    RegisterRequest,
-    SessionRead,
-    UserRead,
-)
+from app.schemas.auth import AuthResponse, LoginRequest, MeResponse, PasswordForgotRequest, PasswordRecoveryAccepted, PasswordResetRequest, RegisterRequest, SessionRead, UserRead
 from app.services.auth import authenticate_user, register_user
-from app.services.password_recovery import (
-    RECOVERY_MESSAGE,
-    request_password_reset,
-    reset_user_password,
-)
-
+from app.services.password_recovery import RECOVERY_MESSAGE, request_password_reset, reset_user_password
 router = APIRouter(prefix="/auth", tags=["authentication"])
-
-
 def attach_session_cookie(response: Response, token: str, expires_at: datetime) -> None:
     max_age = max(0, int((expires_at - datetime.now(UTC)).total_seconds()))
-    response.set_cookie(
-        key=settings.cookie_name,
-        value=token,
-        max_age=max_age,
-        httponly=True,
-        secure=settings.cookie_secure,
-        samesite="lax",
-        path="/",
-    )
-
-
+    response.set_cookie(key=settings.cookie_name, value=token, max_age=max_age, httponly=True, secure=settings.cookie_secure, samesite="lax", path="/")
 @router.post("/register", response_model=AuthResponse, status_code=status.HTTP_201_CREATED)
-async def register(
-    payload: RegisterRequest, request: Request, response: Response, db: DbSession
-) -> AuthResponse:
-    if not settings.registration_enabled:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail='El registro público aún no está habilitado.',
-        )
+async def register(payload: RegisterRequest, request: Request, response: Response, db: DbSession) -> AuthResponse:
+    if not settings.registration_enabled: raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="El registro público aún no está habilitado.")
     user, session, token = await register_user(db, payload, request)
     attach_session_cookie(response, token, session.expires_at)
-    return AuthResponse(
-        message="Cuenta creada correctamente.",
-        user=UserRead.model_validate(user),
-        terms_version=user.accepted_terms_version,
-        terms_status="provisional",
-    )
-
-
+    return AuthResponse(message="Cuenta creada correctamente.", user=UserRead.from_user(user), terms_version=user.accepted_terms_version, terms_status="provisional")
 @router.post("/login", response_model=AuthResponse)
-async def login(
-    payload: LoginRequest, request: Request, response: Response, db: DbSession
-) -> AuthResponse:
+async def login(payload: LoginRequest, request: Request, response: Response, db: DbSession) -> AuthResponse:
     user, session, token = await authenticate_user(db, payload, request)
     attach_session_cookie(response, token, session.expires_at)
-    return AuthResponse(
-        message="Sesión iniciada correctamente.",
-        user=UserRead.model_validate(user),
-    )
-
-
+    return AuthResponse(message="Sesión iniciada correctamente.", user=UserRead.from_user(user))
 @router.post("/logout", status_code=status.HTTP_204_NO_CONTENT)
 async def logout(request: Request, response: Response, db: DbSession) -> Response:
     token = request.cookies.get(settings.cookie_name)
     if token:
-        session = await db.scalar(
-            select(UserSession).where(
-                UserSession.token_hash == hash_session_token(token),
-                UserSession.revoked_at.is_(None),
-            )
-        )
-        if session is not None:
-            session.revoked_at = datetime.now(UTC)
-            await db.commit()
-    response.delete_cookie(
-        key=settings.cookie_name,
-        path="/",
-        secure=settings.cookie_secure,
-        httponly=True,
-        samesite="lax",
-    )
+        session = await db.scalar(select(UserSession).where(UserSession.token_hash == hash_session_token(token), UserSession.revoked_at.is_(None)))
+        if session is not None: session.revoked_at = datetime.now(UTC); await db.commit()
+    response.delete_cookie(key=settings.cookie_name, path="/", secure=settings.cookie_secure, httponly=True, samesite="lax")
     response.status_code = status.HTTP_204_NO_CONTENT
     return response
-
-
 @router.get("/me", response_model=MeResponse)
 async def me(identity: CurrentIdentity) -> MeResponse:
     user, session = identity
-    content_country = (
-        user.preferred_content_country
-        if user.content_country_mode == "manual" and user.preferred_content_country
-        else session.last_country or user.country_of_origin
-    )
-    return MeResponse(
-        user=UserRead.model_validate(user),
-        session=SessionRead(
-            id=session.id,
-            expires_at=session.expires_at,
-            detected_country=session.last_country,
-            content_country=content_country,
-        ),
-    )
-
-@router.post(
-    "/password/forgot",
-    response_model=PasswordRecoveryAccepted,
-    status_code=status.HTTP_202_ACCEPTED,
-)
+    country = user.preferred_content_country if user.content_country_mode == "manual" and user.preferred_content_country else session.last_country or user.country_of_origin
+    return MeResponse(user=UserRead.from_user(user), session=SessionRead(id=session.id, expires_at=session.expires_at, detected_country=session.last_country, content_country=country))
+@router.post("/password/forgot", response_model=PasswordRecoveryAccepted, status_code=status.HTTP_202_ACCEPTED)
 async def forgot_password(payload: PasswordForgotRequest, db: DbSession) -> PasswordRecoveryAccepted:
     await request_password_reset(db, str(payload.email))
     return PasswordRecoveryAccepted(message=RECOVERY_MESSAGE)
-
-
 @router.post("/password/reset", response_model=PasswordRecoveryAccepted)
-async def reset_password(
-    payload: PasswordResetRequest, db: DbSession
-) -> PasswordRecoveryAccepted:
+async def reset_password(payload: PasswordResetRequest, db: DbSession) -> PasswordRecoveryAccepted:
     await reset_user_password(db, payload)
     return PasswordRecoveryAccepted(message="La contraseña se actualizó. Inicia sesión de nuevo.")
