@@ -64,7 +64,12 @@ async def test_login_me_and_logout_revoke_session(client):
         json={"email": "LOGIN@example.com", "password": "A-Strong-Password-2026", "remember_me": True},
     )
     assert login.status_code == 200
-    assert (await client.get("/api/v1/auth/me")).status_code == 200
+    assert login.json()["user"]["roles"] == ["free"]
+    assert "music.stream" in login.json()["user"]["permissions"]
+    current = await client.get("/api/v1/auth/me")
+    assert current.status_code == 200
+    assert current.json()["user"]["roles"] == ["free"]
+    assert "music.stream" in current.json()["user"]["permissions"]
     assert (await client.post("/api/v1/auth/logout")).status_code == 204
     assert (await client.get("/api/v1/auth/me")).status_code == 401
 
