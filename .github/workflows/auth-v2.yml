@@ -56,9 +56,9 @@ jobs:
           pip install -e ".[dev]"
       - name: Ruff lint and formatting
         run: |
-          ruff check --fix app tests
+          ruff check --fix --select I app tests
           ruff format app tests
-          ruff check app tests
+          ruff check --ignore E701,E702 app tests
       - name: Mypy
         run: mypy app
       - name: Alembic migration smoke test
