@@ -19,6 +19,8 @@ async def test_register_creates_account_and_persistent_session(client):
     )
     assert response.status_code == 201
     assert response.json()["user"]["country_of_origin"] == "CU"
+    assert response.json()["user"]["roles"] == ["free"]
+    assert "music.stream" in response.json()["user"]["permissions"]
     assert response.json()["terms_status"] == "provisional"
     cookie = response.headers["set-cookie"].lower()
     assert "httponly" in cookie
@@ -155,3 +157,27 @@ async def test_public_registration_can_be_closed_until_terms_are_approved(client
         assert response.status_code == 403
     finally:
         settings.registration_enabled = previous
+
+@pytest.mark.asyncio
+async def test_admin_endpoint_is_denied_to_free_and_granted_by_database_role(client):
+    from sqlalchemy import select
+    from app.core.database import SessionFactory
+    from app.models import User, Role, UserRole
+    payload = {
+        "full_name": "RBAC Test User", "age": 30, "email": "rbac@example.com",
+        "password": "A-Strong-Password-2026", "password_confirmation": "A-Strong-Password-2026",
+        "country_of_origin": "CU", "accept_terms": True,
+    }
+    created = await client.post("/api/v1/auth/register", json=payload)
+    assert created.status_code == 201
+    assert (await client.get("/api/v1/admin/access")).status_code == 403
+    async with SessionFactory() as db:
+        user = await db.scalar(select(User).where(User.email == "rbac@example.com"))
+        admin = await db.scalar(select(Role).where(Role.name == "admin"))
+        db.add(UserRole(user_id=user.id, role_id=admin.id))
+        await db.commit()
+    result = await client.get("/api/v1/admin/access")
+    assert result.status_code == 200
+    assert result.json()["admin"] is True
+    assert "admin" in result.json()["roles"]
+    assert "admin.dashboard.access" in result.json()["permissions"]
