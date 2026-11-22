@@ -2,6 +2,8 @@ import pytest
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+from app import main as main_module
+from app.core import database as database_module
 from app.core.config import settings
 from app.core.database import get_db
 from app.main import app
@@ -17,6 +19,12 @@ async def client():
         await connection.run_sync(Base.metadata.drop_all)
         await connection.run_sync(Base.metadata.create_all)
     factory = async_sessionmaker(engine, expire_on_commit=False)
+    original_database_factory = database_module.SessionFactory
+    original_main_factory = main_module.SessionFactory
+    # Each test owns its async engine. Reusing the module-level production pool
+    # across pytest event loops can attach asyncpg futures to a closed loop.
+    database_module.SessionFactory = factory
+    main_module.SessionFactory = factory
     async with factory() as seed:
         roles = {
             name: Role(name=name, description=f"Test role {name}")
@@ -70,12 +78,16 @@ async def client():
     async def override_db():
         async with factory() as session:
             yield session
-    app.dependency_overrides[get_db] = override_db
-    transport = ASGITransport(app=app)
-    async with AsyncClient(transport=transport, base_url="http://testserver") as test_client:
-        yield test_client
-    app.dependency_overrides.clear()
-    async with engine.begin() as connection:
-        await connection.run_sync(Base.metadata.drop_all)
-        await connection.execute(text("DROP SCHEMA IF EXISTS auth_v2"))
-    await engine.dispose()
+    try:
+        app.dependency_overrides[get_db] = override_db
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://testserver") as test_client:
+            yield test_client
+    finally:
+        app.dependency_overrides.clear()
+        database_module.SessionFactory = original_database_factory
+        main_module.SessionFactory = original_main_factory
+        async with engine.begin() as connection:
+            await connection.run_sync(Base.metadata.drop_all)
+            await connection.execute(text("DROP SCHEMA IF EXISTS auth_v2"))
+        await engine.dispose()
