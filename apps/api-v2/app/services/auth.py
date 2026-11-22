@@ -21,7 +21,7 @@ async def register_user(db: AsyncSession, payload: RegisterRequest, request: Req
         free_role = await db.scalar(select(Role).where(Role.name == "free"))
         if free_role is None:
             raise RuntimeError("RBAC seed is missing: free role must exist before registration.")
-        db.add(UserRole(user_id=user.id, role_id=free_role.id))
+        user.role_assignments.append(UserRole(role=free_role))
     except IntegrityError as exc:
         await db.rollback()
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Ya existe una cuenta con ese correo electrónico.") from exc
