@@ -1,4 +1,3 @@
-from collections.abc import Iterable
 from fastapi import Depends, HTTPException, status
 from app.api.deps import CurrentIdentity
 from app.models import User
