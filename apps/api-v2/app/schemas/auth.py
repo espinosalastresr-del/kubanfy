@@ -49,8 +49,8 @@ class UserRead(BaseModel):
     preferred_content_country: str | None
     content_country_mode: str
     created_at: datetime
-    roles: list[str] = []
-    permissions: list[str] = []
+    roles: list[str] = Field(default_factory=list)
+    permissions: list[str] = Field(default_factory=list)
 
     @classmethod
     def from_user(cls, user):
