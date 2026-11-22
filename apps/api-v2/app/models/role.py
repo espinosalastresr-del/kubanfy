@@ -1,7 +1,7 @@
 from __future__ import annotations
 import uuid
 from datetime import datetime
-from sqlalchemy import DateTime, ForeignKey, String, Text, UniqueConstraint, func
+from sqlalchemy import DateTime, ForeignKey, Index, String, Text, UniqueConstraint, func
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.models.base import Base
@@ -25,9 +25,9 @@ class Permission(Base):
 
 class UserRole(Base):
     __tablename__ = "user_roles"
-    __table_args__ = (UniqueConstraint("user_id", "role_id", name="uq_auth_v2_user_role"),)
+    __table_args__ = (UniqueConstraint("user_id", "role_id", name="uq_auth_v2_user_role"), Index("ix_auth_v2_user_roles_user_id", "user_id"))
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("auth_v2.users.id", ondelete="CASCADE"), nullable=False, index=True)
+    user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("auth_v2.users.id", ondelete="CASCADE"), nullable=False)
     role_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("auth_v2.roles.id", ondelete="CASCADE"), nullable=False)
     granted_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     granted_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
@@ -36,7 +36,7 @@ class UserRole(Base):
 
 class RolePermission(Base):
     __tablename__ = "role_permissions"
-    __table_args__ = (UniqueConstraint("role_id", "permission_id", name="uq_auth_v2_role_permission"),)
+    __table_args__ = (UniqueConstraint("role_id", "permission_id", name="uq_auth_v2_role_permission"), Index("ix_auth_v2_role_permissions_role_id", "role_id"))
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     role_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("auth_v2.roles.id", ondelete="CASCADE"), nullable=False, index=True)
     permission_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("auth_v2.permissions.id", ondelete="CASCADE"), nullable=False)
