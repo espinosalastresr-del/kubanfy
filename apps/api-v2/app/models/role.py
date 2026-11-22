@@ -13,7 +13,7 @@ class Role(Base):
     name: Mapped[str] = mapped_column(String(32), nullable=False)
     description: Mapped[str | None] = mapped_column(Text)
     assignments: Mapped[list["UserRole"]] = relationship(back_populates="role", cascade="all, delete-orphan", lazy="selectin")
-    permissions: Mapped[list["RolePermission"]] = relationship(back_populates="role", cascade="all, delete-orphan")
+    permissions: Mapped[list["RolePermission"]] = relationship(back_populates="role", cascade="all, delete-orphan", lazy="selectin")
 
 class Permission(Base):
     __tablename__ = "permissions"
