@@ -3,28 +3,47 @@ from fastapi import HTTPException, Request, status
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 from app.core.config import settings
 from app.core.security import hash_password, hash_session_token, new_session_token, verify_password
-from app.models import Role, User, UserRole, UserSession
+from app.models import Role, RolePermission, User, UserRole, UserSession
 from app.schemas.auth import LoginRequest, RegisterRequest
 from app.utils.request_context import client_ip, detected_country
 
+
+USER_AUTHORIZATION_LOAD_OPTIONS = (
+    selectinload(User.role_assignments)
+    .selectinload(UserRole.role)
+    .selectinload(Role.permissions)
+    .selectinload(RolePermission.permission),
+)
+
 async def register_user(db: AsyncSession, payload: RegisterRequest, request: Request) -> tuple[User, UserSession, str]:
+    free_role = await db.scalar(select(Role).where(Role.name == "free"))
+    if free_role is None:
+        raise RuntimeError("RBAC seed is missing: free role must exist before registration.")
+
     user = User(
-        full_name=payload.full_name, age=payload.age, email=str(payload.email).strip().lower(),
-        password_hash=hash_password(payload.password), country_of_origin=payload.country_of_origin,
-        accepted_terms_version=settings.terms_version, accepted_terms_at=datetime.now(UTC),
+        full_name=payload.full_name,
+        age=payload.age,
+        email=str(payload.email).strip().lower(),
+        password_hash=hash_password(payload.password),
+        country_of_origin=payload.country_of_origin,
+        accepted_terms_version=settings.terms_version,
+        accepted_terms_at=datetime.now(UTC),
+        # Initialize the collection while the instance is transient; accessing an
+        # unloaded relationship after flush triggers async lazy-loading (MissingGreenlet).
+        role_assignments=[UserRole(role=free_role)],
     )
     db.add(user)
     try:
         await db.flush()
-        free_role = await db.scalar(select(Role).where(Role.name == "free"))
-        if free_role is None:
-            raise RuntimeError("RBAC seed is missing: free role must exist before registration.")
-        user.role_assignments.append(UserRole(role=free_role))
     except IntegrityError as exc:
         await db.rollback()
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Ya existe una cuenta con ese correo electrónico.") from exc
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Ya existe una cuenta con ese correo electrónico.",
+        ) from exc
     return await create_session(db, user, request, remember_me=True)
 
 async def authenticate_user(db: AsyncSession, payload: LoginRequest, request: Request) -> tuple[User, UserSession, str]:
@@ -48,15 +67,29 @@ async def create_session(db: AsyncSession, user: User, request: Request, remembe
         user_agent=request.headers.get("user-agent", "")[:512] or None,
     )
     db.add(session)
+    user_id = user.id
     await db.commit()
-    await db.refresh(user)
     await db.refresh(session)
+
+    # Load the complete RBAC graph inside the async query context. Response
+    # schemas and authorization checks access ORM attributes synchronously, so
+    # they must never trigger implicit async lazy-loading (MissingGreenlet).
+    result = await db.execute(
+        select(User)
+        .where(User.id == user_id)
+        .options(*USER_AUTHORIZATION_LOAD_OPTIONS)
+        .execution_options(populate_existing=True)
+    )
+    user = result.scalar_one()
     return user, session, token
 
 async def find_active_session(db: AsyncSession, token: str) -> tuple[User, UserSession] | None:
     now = datetime.now(UTC)
     result = await db.execute(
-        select(User, UserSession).join(UserSession, UserSession.user_id == User.id).where(
+        select(User, UserSession)
+        .options(*USER_AUTHORIZATION_LOAD_OPTIONS)
+        .join(UserSession, UserSession.user_id == User.id)
+        .where(
             UserSession.token_hash == hash_session_token(token), UserSession.revoked_at.is_(None),
             UserSession.expires_at > now, User.is_active.is_(True),
         )
