@@ -52,8 +52,7 @@ export default function Dashboard() {
   const [current, setCurrent] = useState<Track>(tracks[1]);
   const [playing, setPlaying] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
-  const [notice, setNotice] = useState("");
-  const [userName, setUserName] = useState("Tu universo musical");
+  const userName = "Tu universo musical";
 
   useEffect(() => {
     try {
@@ -76,7 +75,7 @@ export default function Dashboard() {
   }, [query]);
 
   const toggleFavorite = (id: string) => setFavorites((old) => old.includes(id) ? old.filter((item) => item !== id) : [...old, id]);
-  const playTrack = (track: Track) => { setCurrent(track); setPlaying(true); setNotice(""); };
+  const playTrack = (track: Track) => { setCurrent(track); setPlaying(true); };
   const countryName = country === "CU" ? "Cuba" : country === "US" ? "Estados Unidos" : country === "ES" ? "España" : country === "PR" ? "Puerto Rico" : "México";
 
   async function logout() {
@@ -127,7 +126,6 @@ export default function Dashboard() {
       <nav className="mobile-nav" aria-label="Navegación móvil">{nav.map(item=><button key={item.id} className={tab===item.id?"mobile-nav-item active":"mobile-nav-item"} onClick={()=>setTab(item.id)}><span>{item.glyph}</span><small>{item.id==="biblioteca"?"Biblioteca":item.label}</small></button>)}</nav>
 
       <div className="player-bar"><Cover track={current} size="small"/><div className="player-track"><strong>{current.title}</strong><small>{current.artist}</small></div><button className={favorites.includes(current.id)?"player-heart loved":"player-heart"} aria-label="Añadir a favoritos" onClick={()=>toggleFavorite(current.id)}><Icon name="heart"/></button><div className="player-controls"><button aria-label="Canción anterior" onClick={()=>playTrack(tracks[(tracks.findIndex(t=>t.id===current.id)+tracks.length-1)%tracks.length])}><Icon name="previous"/></button><button className="player-play" aria-label={playing?"Pausar":"Reproducir"} onClick={()=>setPlaying(!playing)}><Icon name={playing?"pause":"play"}/></button><button aria-label="Canción siguiente" onClick={()=>playTrack(tracks[(tracks.findIndex(t=>t.id===current.id)+1)%tracks.length])}><Icon name="next"/></button></div><div className="player-progress"><span/><i/></div><span className="player-duration">{current.duration}</span></div>
-      {notice && <div role="status" className="toast">{notice}</div>}
     </main>
   );
 }
